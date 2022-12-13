@@ -422,10 +422,10 @@ pub struct AliceCanceled {
 
 impl StateMachine<Runtime, Error> for SwapStateMachine {
     fn next(self, event: Event, runtime: &mut Runtime) -> Result<Option<Self>, Error> {
-        debug!(
+        runtime.log_debug(format!(
             "Checking event request {} from {} for state transition",
             event.request, event.source
-        );
+        ));
         match self {
             SwapStateMachine::StartTaker(swap_role) => {
                 attempt_transition_to_init_taker(event, runtime, swap_role)
@@ -562,29 +562,25 @@ impl SwapStateMachineExecutor {
             let new_sm_display = new_sm.to_string();
             // relegate state transitions staying the same to debug
             if new_sm_display == sm_display {
-                info!(
-                    "{} | {} state self transition {}",
-                    runtime.swap_id.swap_id(),
+                runtime.log_info(format!(
+                    "{} state self transition {}",
                     sm_name,
                     new_sm.bright_green_bold()
-                );
+                ));
             } else {
-                info!(
-                    "{} | {} state transition {} -> {}",
-                    runtime.swap_id.swap_id(),
+                runtime.log_info(format!(
+                    "{} state transition {} -> {}",
                     sm_name,
                     sm_display.red_bold(),
                     new_sm.bright_green_bold()
-                );
+                ));
             }
             Ok(Some(new_sm))
         } else {
-            debug!(
-                "{} | {} no state change for request {}",
-                runtime.swap_id.swap_id(),
-                sm_name,
-                request_str
-            );
+            runtime.log_debug(format!(
+                "{} no state change for request {}",
+                sm_name, request_str
+            ));
             Ok(None)
         }
     }
@@ -605,10 +601,10 @@ fn attempt_transition_to_init_taker(
             target_monero_address,
         })) => {
             if ServiceId::Swap(swap_id) != runtime.identity {
-                error!(
-                    "{}: {}",
-                    "This swapd instance is not reponsible for swap_id", swap_id
-                );
+                runtime.log_error(format!(
+                    "This swapd instance is not reponsible for swap_id {}",
+                    swap_id
+                ));
                 return Ok(None);
             };
             // start fee estimation and block height changes
@@ -633,7 +629,7 @@ fn attempt_transition_to_init_taker(
             let local_commit = runtime
                 .taker_commit(event.endpoints, local_params.clone())
                 .map_err(|err| {
-                    error!("{}", err);
+                    runtime.log_error(&err);
                     runtime.report_failure_to(
                         event.endpoints,
                         &runtime.enquirer.clone(),
@@ -713,7 +709,7 @@ fn attempt_transition_to_init_maker(
                     )
                 })?;
             // send maker commit message to counter-party
-            trace!("sending peer MakerCommit msg {}", &local_commit);
+            runtime.log_trace(format!("sending peer MakerCommit msg {}", &local_commit));
             runtime.send_peer(event.endpoints, PeerMsg::MakerCommit(local_commit.clone()))?;
             match swap_role {
                 SwapRole::Bob => Ok(Some(SwapStateMachine::BobInitMaker(BobInitMaker {
@@ -748,22 +744,20 @@ fn try_bob_init_taker_to_bob_taker_maker_commit(
         mut wallet,
     } = bob_init_taker;
     match event.request.clone() {
-        BusMsg::P2p(PeerMsg::OfferNotFound(swap_id)) => {
-            error!(
-                "{} | Taken offer {} was not found by the maker, aborting this swap.",
-                swap_id.swap_id(),
+        BusMsg::P2p(PeerMsg::OfferNotFound(_)) => {
+            runtime.log_error(format!(
+                "Taken offer {} was not found by the maker, aborting this swap.",
                 runtime.public_offer.id().swap_id(),
-            );
+            ));
             // just cancel the swap, no additional logic required
             handle_bob_abort_swap(event, runtime, wallet, funding_address)
         }
         BusMsg::P2p(PeerMsg::MakerCommit(remote_commit)) => {
-            debug!("{} | received remote maker commitment", runtime.swap_id);
-            debug!(
-                "{} | bob, watch arbitrating funding {}",
-                runtime.swap_id,
+            runtime.log_debug("Received remote maker commitment");
+            runtime.log_debug(format!(
+                "Watch arbitratring funding {}",
                 funding_address.clone()
-            );
+            ));
             let txlabel = TxLabel::Funding;
             if !runtime.syncer_state.is_watched_addr(&txlabel) {
                 let task = runtime
@@ -776,15 +770,9 @@ fn try_bob_init_taker_to_bob_taker_maker_commit(
             }
             let reveal =
                 wallet.handle_maker_commit(remote_commit.clone(), runtime.swap_id.clone())?;
-            debug!(
-                "{} | Wallet handled maker commit and produced reveal",
-                runtime.swap_id.swap_id()
-            );
+            runtime.log_debug("Wallet handled maker commit and produced reveal");
             runtime.send_peer(event.endpoints, PeerMsg::Reveal(reveal))?;
-            trace!(
-                "{} | Sent reveal peer message to peerd",
-                runtime.swap_id.swap_id()
-            );
+            runtime.log_trace("Sent reveal peer message to peerd");
             Ok(Some(SwapStateMachine::BobTakerMakerCommit(
                 BobTakerMakerCommit {
                     local_commit,
@@ -813,28 +801,21 @@ fn try_alice_init_taker_to_alice_taker_maker_commit(
         mut wallet,
     } = bob_init_taker;
     match event.request {
-        BusMsg::P2p(PeerMsg::OfferNotFound(swap_id)) => {
-            error!(
-                "{} | Taken offer {} was not found by the maker, aborting this swap.",
-                swap_id.swap_id(),
+        BusMsg::P2p(PeerMsg::OfferNotFound(_)) => {
+            runtime.log_error(format!(
+                "Taken offer {} was not found by the maker, aborting this swap.",
                 runtime.public_offer.id().swap_id(),
-            );
+            ));
             // just cancel the swap, no additional logic required
             handle_abort_swap(event, runtime)
         }
         BusMsg::P2p(PeerMsg::MakerCommit(remote_commit)) => {
-            debug!("{} | received remote maker commitment", runtime.swap_id);
+            runtime.log_debug("Received remote maker commitment");
             let reveal =
                 wallet.handle_maker_commit(remote_commit.clone(), runtime.swap_id.clone())?;
-            debug!(
-                "{} | Wallet handled maker commit and produced reveal",
-                runtime.swap_id.swap_id()
-            );
+            runtime.log_debug("Wallet handled maker commit and produced reveal");
             runtime.send_peer(event.endpoints, PeerMsg::Reveal(reveal))?;
-            info!(
-                "{} | Sent reveal peer message to peerd",
-                runtime.swap_id.swap_id()
-            );
+            runtime.log_info("Sent reveal peer message to peerd");
             Ok(Some(SwapStateMachine::AliceTakerMakerCommit(
                 AliceTakerMakerCommit {
                     local_params,
@@ -951,10 +932,10 @@ fn try_bob_reveal_to_bob_funded(
             let tx = bitcoin::Transaction::deserialize(
                 &tx.into_iter().flatten().copied().collect::<Vec<u8>>(),
             )?;
-            info!(
+            runtime.log_info(format!(
                 "Received AddressTransaction, processing tx {}",
                 &tx.txid().tx_hash()
-            );
+            ));
             log_tx_seen(runtime.swap_id, &TxLabel::Funding, &tx.txid());
             runtime.syncer_state.awaiting_funding = false;
             // If the bitcoin amount does not match the expected funding amount, abort the swap
@@ -963,7 +944,7 @@ fn try_bob_reveal_to_bob_funded(
             if amount != required_funding_amount {
                 // incorrect funding, start aborting procedure
                 let msg = format!("Incorrect amount funded. Required: {}, Funded: {}. Do not fund this swap anymore, will abort and atttempt to sweep the Bitcoin to the provided address.", amount, required_funding_amount);
-                error!("{}", msg);
+                runtime.log_error(&msg);
                 runtime.report_progress_message_to(event.endpoints, ServiceId::Farcasterd, msg)?;
                 return handle_bob_abort_swap(event, runtime, wallet, funding_address);
             } else {
@@ -974,16 +955,13 @@ fn try_bob_reveal_to_bob_funded(
                 )?;
             }
 
-            // forward tx to wallet
+            // process tx with wallet
             wallet.process_funding_tx(Tx::Funding(tx), runtime.swap_id)?;
             let (reveal, core_arb_setup) =
                 wallet.handle_alice_reveals(alice_reveal, runtime.swap_id.clone())?;
 
             if let Some(reveal) = reveal {
-                info!(
-                    "{} | Sending Bob reveal to Alice",
-                    runtime.swap_id.swap_id()
-                );
+                runtime.log_info("Sending Bob reveal to Alice");
                 runtime.send_peer(event.endpoints, PeerMsg::Reveal(reveal))?;
             }
 
@@ -996,7 +974,7 @@ fn try_bob_reveal_to_bob_funded(
             .iter()
             .zip([TxLabel::Lock, TxLabel::Cancel, TxLabel::Refund])
             {
-                debug!("{} | register watch {} tx", runtime.swap_id, tx_label);
+                runtime.log_debug(format!("register watch {} tx", tx_label.label()));
                 if !runtime.syncer_state.is_watched_tx(&tx_label) {
                     let txid = tx.clone().extract_tx().txid();
                     let task = runtime.syncer_state.watch_tx_btc(txid, tx_label);
@@ -1014,7 +992,7 @@ fn try_bob_reveal_to_bob_funded(
             }
 
             // checkpoint swap pre lock bob
-            debug!("{} | checkpointing bob pre lock state", runtime.swap_id);
+            runtime.log_debug("checkpointing bob pre lock state");
             // transition to new state
             let new_ssm = SwapStateMachine::BobFunded(BobFunded {
                 local_params,
@@ -1029,7 +1007,7 @@ fn try_bob_reveal_to_bob_funded(
             )?;
 
             // send the message to counter-party
-            debug!("{} | send core arb setup to peer", runtime.swap_id);
+            runtime.log_debug("sending core arb setup to peer");
             runtime.send_peer(
                 event.endpoints,
                 PeerMsg::CoreArbitratingSetup(core_arb_setup.clone()),
@@ -1056,7 +1034,7 @@ fn try_bob_funded_to_bob_refund_procedure_signature(
     } = bob_funded;
     match &event.request {
         BusMsg::P2p(PeerMsg::RefundProcedureSignatures(refund_proc)) => {
-            debug!("{} | forward refund proc sig to wallet", runtime.swap_id);
+            runtime.log_debug("Processing refund proc sig with wallet.");
             let HandleRefundProcedureSignaturesRes {
                 buy_procedure_signature,
                 lock_tx,
@@ -1083,7 +1061,8 @@ fn try_bob_funded_to_bob_refund_procedure_signature(
                     )?
                 }
             } else {
-                error!("On Bob state, but local params not Bob or remote params not Alice");
+                runtime
+                    .log_error("On Bob state, but local params not Bob or remote params not Alice");
             }
             // Handle Cancel and Refund transaction
             log_tx_created(runtime.swap_id, TxLabel::Cancel);
@@ -1105,7 +1084,7 @@ fn try_bob_funded_to_bob_refund_procedure_signature(
                 )?;
             }
             // register a watch task for buy
-            debug!("{} | register watch buy tx", runtime.swap_id);
+            runtime.log_debug("register watch buy tx task");
             if !runtime.syncer_state.is_watched_tx(&TxLabel::Buy) {
                 let buy_tx = buy_procedure_signature.buy.clone().extract_tx();
                 let task = runtime
@@ -1125,10 +1104,7 @@ fn try_bob_funded_to_bob_refund_procedure_signature(
                     wallet,
                     buy_procedure_signature,
                 });
-            debug!(
-                "{} | checkpointing bob pre buy swapd state",
-                runtime.swap_id
-            );
+            runtime.log_debug("Checkpointing bob pre buy swapd state.");
             runtime.checkpoint_state(event.endpoints, None, new_ssm.clone())?;
             Ok(Some(new_ssm))
         }
@@ -1164,10 +1140,10 @@ fn try_bob_refund_procedure_signatures_to_bob_accordant_lock(
         {
             let amount = monero::Amount::from_pico(amount.clone());
             if amount < runtime.syncer_state.monero_amount {
-                warn!(
+                runtime.log_warn(format!(
                     "Not enough monero locked: expected {}, found {}",
                     runtime.syncer_state.monero_amount, amount
-                );
+                ));
                 return Ok(None);
             }
             if let Some(tx_label) = runtime.syncer_state.tasks.watched_addrs.remove(&id) {
@@ -1267,9 +1243,9 @@ fn try_bob_accordant_lock_final_to_bob_buy_final(
                 runtime.swap_id(),
                 runtime.temporal_safety.btc_finality_thr,
             );
-            warn!(
+            runtime.log_warn(
                 "Peerd might crash, just ignore it, counterparty closed \
-                    connection, because they are down with the swap, but you don't need it anymore either!"
+                    connection, because they are done with the swap, but you don't need it anymore either!"
             );
             let (txlabel, txid) = runtime
                 .syncer_state
@@ -1322,23 +1298,21 @@ fn try_bob_accordant_lock_final_to_bob_buy_final(
                 .unwrap_or(runtime.temporal_safety.sweep_monero_thr);
             let sweep_block =
                 runtime.syncer_state.height(Blockchain::Monero) + acc_confs_needs as u64;
-            info!(
-                "{} | Tx {} needs {} confirmations, and has {} confirmations",
-                runtime.swap_id.swap_id(),
+            runtime.log_info(format!(
+                "Tx {} needs {} confirmations, and has {} confirmations",
                 TxLabel::AccLock.label(),
                 acc_confs_needs.bright_green_bold(),
                 runtime
                     .syncer_state
                     .get_confs(TxLabel::AccLock)
                     .unwrap_or(0),
-            );
-            info!(
-                "{} | {} reaches your address {} after block {}",
-                runtime.swap_id.swap_id(),
+            ));
+            runtime.log_info(format!(
+                "{} reaches your address {} after block {}",
                 Blockchain::Monero.label(),
                 sweep_xmr.destination_address.addr(),
                 sweep_block.bright_blue_bold(),
-            );
+            ));
             Ok(Some(SwapStateMachine::BobBuyFinal(sweep_address)))
         }
         _ => handle_bob_swap_interrupt_after_lock(event, runtime),
@@ -1359,11 +1333,10 @@ fn try_bob_buy_final_to_bob_buy_sweeping(
         ))) if confirmations >= runtime.temporal_safety.sweep_monero_thr => {
             // safe cast
             let request = SyncMsg::Task(Task::SweepAddress(task));
-            info!(
-                "{} | Monero are spendable now (height {}), sweeping ephemeral wallet",
-                runtime.swap_id.swap_id(),
+            runtime.log_info(format!(
+                "Monero are spendable now (height {}), sweeping ephemeral wallet",
                 runtime.syncer_state.monero_height.label()
-            );
+            ));
             event.send_sync_service(runtime.syncer_state.monero_syncer(), request)?;
             Ok(Some(SwapStateMachine::BobBuySweeping))
         }
@@ -1442,9 +1415,9 @@ fn try_bob_canceled_to_bob_cancel_final(
                 runtime.swap_id(),
                 runtime.temporal_safety.btc_finality_thr,
             );
-            trace!("here Bob publishes refund tx");
+            runtime.log_trace("Bob publishes refund tx");
             if !runtime.temporal_safety.safe_refund(confirmations) {
-                warn!("Publishing refund tx, but we might already have been punished");
+                runtime.log_warn("Publishing refund tx, but we might already have been punished");
             }
             let (tx_label, refund_tx) = runtime.txs.remove_entry(&TxLabel::Refund).unwrap();
             runtime.broadcast(refund_tx, tx_label, event.endpoints)?;
@@ -1491,7 +1464,7 @@ fn try_alice_reveal_to_alice_core_arbitrating_setup(
                 TxLabel::Cancel,
                 TxLabel::Refund,
             ]) {
-                debug!("{} | register watch {} tx", runtime.swap_id, tx_label);
+                runtime.log_debug(format!("Register watch {} tx", tx_label));
                 if !runtime.syncer_state.is_watched_tx(&tx_label) {
                     let txid = tx.clone().extract_tx().txid();
                     let task = runtime.syncer_state.watch_tx_btc(txid, tx_label);
@@ -1502,7 +1475,7 @@ fn try_alice_reveal_to_alice_core_arbitrating_setup(
                 }
             }
             // handle the core arbitrating setup message with the wallet
-            debug!("{} | forward core arb setup to wallet", runtime.swap_id);
+            runtime.log_debug("Handling core arb setup with wallet");
             let HandleCoreArbitratingSetupRes {
                 refund_procedure_signatures,
                 cancel_tx,
@@ -1533,7 +1506,7 @@ fn try_alice_reveal_to_alice_core_arbitrating_setup(
                 remote_params,
                 wallet,
             });
-            debug!("{} | checkpointing alice pre lock state", runtime.swap_id);
+            runtime.log_debug("checkpointing alice pre lock state");
             runtime.checkpoint_state(
                 event.endpoints,
                 Some(PeerMsg::RefundProcedureSignatures(
@@ -1542,7 +1515,7 @@ fn try_alice_reveal_to_alice_core_arbitrating_setup(
                 new_ssm.clone(),
             )?;
             // send refund procedure signature message to counter-party
-            debug!("{} | send refund proc sig to peer", runtime.swap_id);
+            runtime.log_debug("sending refund proc sig to peer");
             runtime.send_peer(
                 event.endpoints,
                 PeerMsg::RefundProcedureSignatures(refund_procedure_signatures),
@@ -1617,7 +1590,7 @@ fn try_alice_core_arbitrating_setup_to_alice_arbitrating_lock_final(
                     },
                 )))
             } else {
-                error!("local_params not Alice or remote_params not Bob on state Alice");
+                runtime.log_error("local_params not Alice or remote_params not Bob on state Alice");
                 Ok(None)
             }
         }
@@ -1641,12 +1614,11 @@ fn try_alice_arbitrating_lock_final_to_alice_accordant_lock(
                 && runtime.syncer_state.tasks.watched_addrs.get(&id).unwrap()
                     == &TxLabel::AccLock =>
         {
-            info!(
-                "{} | Send {} to {}",
-                runtime.swap_id.bright_blue_italic(),
+            runtime.log_info(format!(
+                "Send {} to {}",
                 funding_info.amount.bright_green_bold(),
                 funding_info.address.addr(),
-            );
+            ));
             runtime.syncer_state.awaiting_funding = true;
             if let Some(enquirer) = runtime.enquirer.clone() {
                 event.send_ctl_service(
@@ -1678,10 +1650,7 @@ fn try_alice_arbitrating_lock_final_to_alice_accordant_lock(
                 .stop_funding_before_cancel(confirmations)
             && runtime.syncer_state.awaiting_funding =>
         {
-            warn!(
-                "{} | Alice, the swap may be cancelled soon. Do not fund anymore",
-                runtime.swap_id.swap_id()
-            );
+            runtime.log_warn("Alice, the swap may be cancelled soon. Do not fund anymore");
             event.complete_ctl_service(
                 ServiceId::Farcasterd,
                 CtlMsg::FundingCanceled(Blockchain::Monero),
@@ -1705,10 +1674,10 @@ fn try_alice_arbitrating_lock_final_to_alice_accordant_lock(
         }))) if runtime.syncer_state.tasks.watched_addrs.contains_key(&id)
             && runtime.syncer_state.tasks.watched_addrs.get(&id).unwrap() == &TxLabel::AccLock =>
         {
-            debug!(
+            runtime.log_debug(format!(
                 "Event details: {} {:?} {} {:?} {:?}",
                 id, hash, amount, block, tx
-            );
+            ));
             let txlabel = TxLabel::AccLock;
             if !runtime.syncer_state.is_watched_tx(&txlabel) {
                 let task = runtime.syncer_state.watch_tx_xmr(hash.clone(), txlabel);
@@ -1743,7 +1712,7 @@ fn try_alice_arbitrating_lock_final_to_alice_accordant_lock(
                                 required_funding_amount,
                                 monero::Amount::from_pico(amount.clone())
                             );
-                error!("{}", msg);
+                runtime.log_error(&msg);
                 runtime.report_progress_message_to(
                     event.endpoints,
                     runtime.enquirer.clone(),
@@ -1757,7 +1726,7 @@ fn try_alice_arbitrating_lock_final_to_alice_accordant_lock(
                                 required_funding_amount,
                                 monero::Amount::from_pico(amount.clone())
                             );
-                error!("{}", msg);
+                runtime.log_error(&msg);
                 runtime.report_progress_message_to(
                     event.endpoints,
                     runtime.enquirer.clone(),
@@ -1785,7 +1754,7 @@ fn try_alice_accordant_lock_to_alice_buy_procedure_signature(
     match event.request.clone() {
         BusMsg::P2p(PeerMsg::BuyProcedureSignature(buy_procedure_signature)) => {
             // register a watch task for buy
-            debug!("{} | register watch buy tx", runtime.swap_id);
+            runtime.log_debug("Registering watch buy tx task");
             if !runtime.syncer_state.is_watched_tx(&TxLabel::Buy) {
                 let txid = buy_procedure_signature.buy.clone().extract_tx().txid();
                 let task = runtime.syncer_state.watch_tx_btc(txid, TxLabel::Buy);
@@ -1795,7 +1764,7 @@ fn try_alice_accordant_lock_to_alice_buy_procedure_signature(
                 )?;
             }
             // Handle the received buy procedure signature message with the wallet
-            debug!("{} | forward buy proc sig to wallet", runtime.swap_id);
+            runtime.log_debug("Handling buy procedure signature with wallet");
             let HandleBuyProcedureSignatureRes { cancel_tx, buy_tx } = wallet
                 .handle_buy_procedure_signature(buy_procedure_signature, runtime.swap_id.clone())?;
 
@@ -1828,10 +1797,7 @@ fn try_alice_accordant_lock_to_alice_buy_procedure_signature(
 
             // checkpoint swap alice pre buy
             let new_ssm = SwapStateMachine::AliceBuyProcedureSignature;
-            debug!(
-                "{} | checkpointing alice pre buy swapd state",
-                runtime.swap_id
-            );
+            runtime.log_debug("checkpointing alice pre buy swapd state");
             runtime.checkpoint_state(event.endpoints, None, new_ssm.clone())?;
             Ok(Some(new_ssm))
         }
@@ -1907,7 +1873,7 @@ fn try_alice_canceled_to_alice_refund_or_alice_punish(
                         .txids
                         .contains_key(&TxLabel::Refund) =>
                 {
-                    debug!("subscribe Refund address task");
+                    runtime.log_debug("Subscribe Refund address task");
                     let (txlabel, txid) = runtime
                         .syncer_state
                         .tasks
@@ -1927,8 +1893,7 @@ fn try_alice_canceled_to_alice_refund_or_alice_punish(
                     if runtime.temporal_safety.valid_punish(confirmations)
                         && runtime.txs.contains_key(&TxLabel::Punish) =>
                 {
-                    trace!("Alice publishes punish tx");
-
+                    runtime.log_debug("Publishing punish tx");
                     let (tx_label, punish_tx) = runtime.txs.remove_entry(&TxLabel::Punish).unwrap();
                     // syncer's watch punish tx task
                     if !runtime.syncer_state.is_watched_tx(&tx_label) {
@@ -1968,7 +1933,7 @@ fn try_alice_canceled_to_alice_refund_or_alice_punish(
                 runtime.monero_address_creation_height,
             )?;
             // Check if we already registered the lock transaction, if so, initiate sweeping procedure
-            info!("{:?}", runtime.syncer_state.confirmations);
+            runtime.log_debug(format!("{:?}", runtime.syncer_state.confirmations));
             if runtime
                 .syncer_state
                 .confirmations
@@ -1994,31 +1959,31 @@ fn try_alice_canceled_to_alice_refund_or_alice_punish(
                     .unwrap_or(runtime.temporal_safety.sweep_monero_thr);
                 let sweep_block =
                     runtime.syncer_state.height(Blockchain::Monero) + acc_confs_needs as u64;
-                info!(
-                    "{} | Tx {} needs {} more confirmations, and has {} confirmations",
-                    runtime.swap_id.swap_id(),
+                runtime.log_info(format!(
+                    "Tx {} needs {} more confirmations, and has {} confirmations",
                     TxLabel::AccLock.label(),
                     acc_confs_needs.bright_green_bold(),
                     runtime
                         .syncer_state
                         .get_confs(TxLabel::AccLock)
                         .unwrap_or(0),
-                );
-                info!(
-                    "{} | {} reaches your address {} after block {}",
-                    runtime.swap_id.swap_id(),
+                ));
+                runtime.log_info(format!(
+                    "{} reaches your address {} after block {}",
                     Blockchain::Monero.label(),
                     sweep_xmr.destination_address.addr(),
                     sweep_block.bright_blue_bold(),
-                );
-                warn!(
-                    "Peerd might crash, just ignore it, counterparty closed\
-                                       connection but you don't need it anymore!"
+                ));
+                runtime.log_warn(
+                    "Peerd might crash, just ignore it, counterparty closed \
+                        connection but you don't need it anymore!",
                 );
                 Ok(Some(SwapStateMachine::AliceRefund(sweep_address)))
             } else {
                 if runtime.syncer_state.awaiting_funding {
-                    warn!("FundingCompleted never emitted, emitting it now to clean up farcasterd");
+                    runtime.log_warn(
+                        "FundingCompleted never emitted, emitting it now to clean up farcasterd",
+                    );
                     runtime.syncer_state.awaiting_funding = false;
                     event.send_ctl_service(
                         ServiceId::Farcasterd,
@@ -2061,11 +2026,10 @@ fn try_alice_refund_to_alice_refund_sweeping(
                 ..
             },
         ))) if confirmations >= runtime.temporal_safety.sweep_monero_thr => {
-            info!(
-                "{} | Monero are spendable now (height {}), sweeping ephemeral wallet",
-                runtime.swap_id.swap_id(),
-                runtime.syncer_state.monero_height.label()
-            );
+            runtime.log_info(format!(
+                "Monero are spendable now (height {}), sweeping ephemeral wallet",
+                runtime.syncer_state.monero_height.label(),
+            ));
             event.send_sync_service(
                 runtime.syncer_state.monero_syncer(),
                 SyncMsg::Task(Task::SweepAddress(sweep_address)),
@@ -2086,10 +2050,10 @@ fn try_alice_refund_sweeping_to_swap_end(
                 && runtime.syncer_state.tasks.sweeping_addr.unwrap() == id =>
         {
             if runtime.syncer_state.awaiting_funding {
-                warn!(
+                runtime.log_warn(
                     "FundingCompleted never emitted, but not possible to sweep \
                         monero without passing through funding completed: \
-                        emitting it now to clean up farcasterd"
+                        emitting it now to clean up farcasterd",
                 );
                 runtime.syncer_state.awaiting_funding = false;
                 event.send_ctl_service(
@@ -2162,10 +2126,10 @@ fn try_bob_buy_sweeping_to_swap_end(
                 && runtime.syncer_state.tasks.sweeping_addr.unwrap() == id =>
         {
             if runtime.syncer_state.awaiting_funding {
-                warn!(
-                    "FundingCompleted never emitted, but not possible to sweep\
-                                   monero without passing through funding completed:\
-                                   emitting it now to clean up farcasterd"
+                runtime.log_warn(
+                    "FundingCompleted never emitted, but not possible to sweep \
+                                   monero without passing through funding completed: \
+                                   emitting it now to clean up farcasterd",
                 );
                 runtime.syncer_state.awaiting_funding = false;
                 event.send_ctl_service(
@@ -2211,16 +2175,16 @@ fn attempt_transition_to_bob_reveal(
         BusMsg::P2p(PeerMsg::Reveal(reveal)) => {
             let remote_params =
                 if let Ok(validated_params) = validate_reveal(&reveal, remote_commit.clone()) {
-                    debug!("{} | remote params successfully validated", runtime.swap_id);
+                    runtime.log_debug("remote params successfully validated");
                     validated_params
                 } else {
-                    let msg = format!("{} | remote params validation failed", runtime.swap_id);
-                    error!("{}", msg);
+                    let msg = "remote params validation failed".to_string();
+                    runtime.log_error(&msg);
                     return Err(Error::Farcaster(msg));
                 };
 
             if let Some(sat_per_kvb) = runtime.syncer_state.btc_fee_estimate_sat_per_kvb {
-                debug!("{} | bob: send funding info to farcasterd", runtime.swap_id);
+                runtime.log_debug("Sending funding info to farcasterd");
                 let required_funding_amount = runtime.ask_bob_to_fund(
                     sat_per_kvb,
                     funding_address.clone(),
@@ -2245,10 +2209,7 @@ fn attempt_transition_to_bob_reveal(
                 })))
             } else {
                 // fee estimate not available yet, defer handling for later
-                debug!(
-                    "{} | bob: deferring for when fee available",
-                    runtime.swap_id
-                );
+                runtime.log_debug("Deferring handling of of Reveal for when fee available.");
                 match local_trade_role {
                     TradeRole::Maker => Ok(Some(SwapStateMachine::BobInitMaker(BobInitMaker {
                         local_commit,
@@ -2280,14 +2241,14 @@ fn attempt_transition_to_bob_reveal(
             {
                 let remote_params =
                     if let Ok(validated_params) = validate_reveal(&reveal, remote_commit.clone()) {
-                        debug!("{} | remote params successfully validated", runtime.swap_id);
+                        runtime.log_debug("Remote params successfully validated");
                         validated_params
                     } else {
-                        let msg = format!("{} | remote params validation failed", runtime.swap_id);
-                        error!("{}", msg);
+                        let msg = "Remote params validation failed".to_string();
+                        runtime.log_error(&msg);
                         return Err(Error::Farcaster(msg));
                     };
-                debug!("{} | bob: send funding info to farcasterd", runtime.swap_id);
+                runtime.log_debug("Sending funding info to farcasterd");
                 let required_funding_amount = runtime.ask_bob_to_fund(
                     sat_per_kvb,
                     funding_address.clone(),
@@ -2328,17 +2289,14 @@ fn attempt_transition_to_alice_reveal(
         BusMsg::P2p(PeerMsg::Reveal(reveal)) => {
             let remote_params =
                 if let Ok(validated_params) = validate_reveal(&reveal, remote_commit.clone()) {
-                    debug!("{} | remote params successfully validated", runtime.swap_id);
+                    runtime.log_debug("Remote params successfully validated");
                     validated_params
                 } else {
-                    let msg = format!("{} | remote params validation failed", runtime.swap_id);
-                    error!("{}", msg);
+                    let msg = "Remote params validation failed".to_string();
+                    runtime.log_error(&msg);
                     return Err(Error::Farcaster(msg));
                 };
-            info!(
-                "{} | Alice: handling reveal with wallet",
-                runtime.swap_id.swap_id()
-            );
+            runtime.log_info("Handling reveal with wallet");
             let reveal = wallet.handle_bob_reveals(reveal, runtime.swap_id.clone())?;
 
             // The wallet only returns reveal if we are Alice Maker
@@ -2408,10 +2366,7 @@ fn handle_alice_swap_interrupt_afer_lock(
                 ..
             },
         ))) if runtime.syncer_state.tasks.watched_txs.get(&id) == Some(&TxLabel::Cancel) => {
-            warn!(
-                "{} | Alice, this swap was canceled. Do not fund anymore.",
-                runtime.swap_id.swap_id()
-            );
+            runtime.log_warn("This swap was canceled. Do not fund anymore.");
             if runtime.syncer_state.awaiting_funding {
                 event.send_ctl_service(
                     ServiceId::Farcasterd,
@@ -2459,7 +2414,7 @@ fn handle_abort_swap(
     runtime: &mut Runtime,
 ) -> Result<Option<SwapStateMachine>, Error> {
     event.complete_client_info(InfoMsg::String("Aborted swap".to_string()))?;
-    info!("{} | Aborted swap.", runtime.swap_id.swap_id());
+    runtime.log_info("Aborted swap.");
     Ok(Some(SwapStateMachine::SwapEnd(Outcome::FailureAbort)))
 }
 
@@ -2468,7 +2423,7 @@ fn handle_abort_impossible(
     runtime: &mut Runtime,
 ) -> Result<Option<SwapStateMachine>, Error> {
     let msg = "Swap is already locked-in, cannot manually abort anymore.".to_string();
-    warn!("{} | {}", runtime.swap_id.swap_id(), msg);
+    runtime.log_warn(&msg);
     event.complete_client_ctl(CtlMsg::Failure(Failure {
         code: FailureCode::Unknown,
         info: msg,
@@ -2484,12 +2439,11 @@ fn handle_bob_abort_swap(
 ) -> Result<Option<SwapStateMachine>, Error> {
     let sweep_btc =
         wallet.process_get_sweep_bitcoin_address(funding_address, runtime.swap_id.clone())?;
-    info!(
-        "{} | Sweeping source (funding) address: {} to destination address: {}",
-        runtime.swap_id.swap_id(),
+    runtime.log_info(format!(
+        "Sweeping source (funding) address: {} to destination address: {}",
         sweep_btc.source_address.addr(),
         sweep_btc.destination_address.addr()
-    );
+    ));
     let task = runtime.syncer_state.sweep_btc(sweep_btc, false);
     event.send_sync_service(runtime.syncer_state.bitcoin_syncer(), SyncMsg::Task(task))?;
     event.complete_client_info(InfoMsg::String(

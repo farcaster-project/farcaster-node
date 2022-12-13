@@ -29,6 +29,7 @@ use std::time::{Duration, SystemTime};
 use std::{any::Any, collections::HashMap};
 
 use bitcoin::Txid;
+use colored::ColoredString;
 use farcaster_core::{
     blockchain::Blockchain,
     crypto::{CommitmentEngine, SharedKeyId},
@@ -81,11 +82,6 @@ pub fn run(config: ServiceConfig, opts: Opts) -> Result<(), Error> {
         "Starting swap".to_string().bright_green_bold(),
         format!("{:#x}", swap_id).swap_id()
     );
-    // info!(
-    // "{} | Initial state: {}",
-    // swap_id.swap_id(),
-    // init_state.label()
-    // );
 
     let temporal_safety = TemporalSafety {
         cancel_timelock: cancel_timelock.as_u32(),
@@ -146,6 +142,7 @@ pub fn run(config: ServiceConfig, opts: Opts) -> Result<(), Error> {
         txs: none!(),
         public_offer,
         local_trade_role,
+        local_swap_role,
         latest_state_report: state_report,
         monero_address_creation_height: None,
         swap_state_machine,
@@ -170,6 +167,7 @@ pub struct Runtime {
     pub txs: HashMap<TxLabel, bitcoin::Transaction>,
     pub public_offer: PublicOffer,
     pub local_trade_role: TradeRole,
+    pub local_swap_role: SwapRole,
     pub latest_state_report: StateReport,
     pub monero_address_creation_height: Option<u64>,
     pub swap_state_machine: SwapStateMachine,
@@ -243,19 +241,24 @@ impl esb::Handler<ServiceBus> for Runtime {
 
 impl Runtime {
     pub fn send_peer(&mut self, endpoints: &mut Endpoints, msg: PeerMsg) -> Result<(), Error> {
-        trace!("sending peer message {} to {}", msg, self.peer_service);
+        self.log_trace(format!(
+            "sending peer message {} to {}",
+            msg, self.peer_service
+        ));
         if let Err(error) = endpoints.send_to(
             ServiceBus::Msg,
             self.identity(),
             self.peer_service.clone(),
             BusMsg::P2p(msg.clone()),
         ) {
-            error!(
+            self.log_error(format!(
                 "could not send message {} to {} due to {}",
                 msg, self.peer_service, error
-            );
+            ));
             self.connected = false;
-            warn!("notifying farcasterd of peer error, farcasterd will attempt to reconnect");
+            self.log_warn(
+                "notifying farcasterd of peer error, farcasterd will attempt to reconnect",
+            );
             endpoints.send_to(
                 ServiceBus::Ctl,
                 self.identity(),
@@ -282,12 +285,11 @@ impl Runtime {
         tx_label: TxLabel,
         endpoints: &mut Endpoints,
     ) -> Result<(), Error> {
-        info!(
-            "{} | Broadcasting {} tx ({})",
-            self.swap_id.swap_id(),
+        self.log_info(format!(
+            "Broadcasting {} tx({})",
             tx_label.label(),
             tx.txid().tx_hash()
-        );
+        ));
         let task = self.syncer_state.broadcast(tx);
         Ok(endpoints.send_to(
             ServiceBus::Sync,
@@ -309,7 +311,7 @@ impl Runtime {
                 "Incorrect peer connection: expected {}, found {}",
                 self.peer_service, source
             );
-            error!("{}", msg);
+            self.log_error(&msg);
             return Err(Error::Farcaster(msg));
         }
 
@@ -320,7 +322,7 @@ impl Runtime {
                 self.swap_id(),
                 request.swap_id(),
             );
-            error!("{}", msg);
+            self.log_error(&msg);
             return Err(Error::Farcaster(msg));
         }
 
@@ -351,19 +353,13 @@ impl Runtime {
     ) -> Result<(), Error> {
         match request {
             CtlMsg::Hello => {
-                info!(
-                    "{} | Service {} daemon is now {}",
-                    self.swap_id.swap_id(),
+                self.log_info(format!(
+                    "Service {} daemon is now connected",
                     source.bright_green_bold(),
-                    "connected"
-                );
+                ));
             }
             CtlMsg::Terminate if source == ServiceId::Farcasterd => {
-                info!(
-                    "{} | {}",
-                    self.swap_id.swap_id(),
-                    format!("Terminating {}", self.identity()).label()
-                );
+                self.log_info(format!("Terminating {}", self.identity()).label());
                 std::process::exit(0);
             }
 
@@ -380,7 +376,7 @@ impl Runtime {
             // after a manual connect call, or a new connection with the same
             // node address is established
             CtlMsg::PeerdReconnected(service_id) => {
-                info!("{} | Peer {} reconnected", self.swap_id, service_id);
+                self.log_info(format!("Peer {} reconnected", service_id));
                 self.peer_service = service_id.clone();
                 self.connected = true;
                 for msg in self.pending_peer_request.clone().iter() {
@@ -390,14 +386,14 @@ impl Runtime {
             }
 
             CtlMsg::FailedPeerMessage(msg) => {
-                warn!(
-                    "{} | Sending the peer message {} failed. Adding to pending peer requests",
-                    self.swap_id, msg
-                );
+                self.log_warn(format!(
+                    "Sending the peer message {} failed. Adding to pending peer requests",
+                    msg
+                ));
                 self.pending_peer_request.push(msg);
             }
 
-            CtlMsg::Checkpoint(Checkpoint { swap_id, state }) => {
+            CtlMsg::Checkpoint(Checkpoint { swap_id: _, state }) => {
                 let CheckpointSwapd {
                     pending_msg,
                     enquirer,
@@ -411,7 +407,7 @@ impl Runtime {
                     state,
                     ..
                 } = state;
-                info!("{} | Restoring swap", swap_id.swap_id());
+                self.log_info("Restoring swap");
                 self.swap_state_machine = state;
                 self.enquirer = enquirer;
                 self.temporal_safety = temporal_safety;
@@ -419,7 +415,7 @@ impl Runtime {
                 // We need to update the peerd for the pending requests in case of reconnect
                 self.local_trade_role = local_trade_role;
                 self.txs = txs.drain(..).collect();
-                trace!("Watch height bitcoin");
+                self.log_trace("Watch height bitcoin");
                 let watch_height_bitcoin = self.syncer_state.watch_height(Blockchain::Bitcoin);
                 endpoints.send_to(
                     ServiceBus::Sync,
@@ -428,7 +424,7 @@ impl Runtime {
                     BusMsg::Sync(SyncMsg::Task(watch_height_bitcoin)),
                 )?;
 
-                trace!("Watch height monero");
+                self.log_trace("Watch height monero");
                 let watch_height_monero = self.syncer_state.watch_height(Blockchain::Monero);
                 endpoints.send_to(
                     ServiceBus::Sync,
@@ -437,7 +433,7 @@ impl Runtime {
                     BusMsg::Sync(SyncMsg::Task(watch_height_monero)),
                 )?;
 
-                trace!("Watching transactions");
+                self.log_trace("Watching transactions");
                 for (tx_label, txid) in txids.iter() {
                     let task = self
                         .syncer_state
@@ -450,7 +446,7 @@ impl Runtime {
                     )?;
                 }
 
-                trace!("broadcasting txs pending broadcast");
+                self.log_trace("Broadcasting txs pending broadcast");
                 for tx in pending_broadcasts.iter() {
                     let task = self.syncer_state.broadcast(tx.clone());
                     endpoints.send_to(
@@ -530,10 +526,10 @@ impl Runtime {
             }
 
             req => {
-                error!(
+                self.log_error(format!(
                     "BusMsg {} is not supported by the INFO interface",
                     req.to_string()
-                );
+                ));
             }
         }
 
@@ -576,7 +572,7 @@ impl Runtime {
                     Event::Empty(_) => {}
 
                     event => {
-                        error!("event not handled {}", event)
+                        self.log_error(format!("event not handled {}", event));
                     }
                 };
             }
@@ -654,19 +650,19 @@ impl Runtime {
                     Event::AddressTransaction(_) => {}
 
                     Event::TaskAborted(event) => {
-                        debug!("{}", event)
+                        self.log_debug(event);
                     }
 
                     Event::SweepSuccess(event) => {
-                        debug!("{}", event)
+                        self.log_debug(event);
                     }
 
                     Event::TransactionRetrieved(event) => {
-                        debug!("{}", event)
+                        self.log_debug(event);
                     }
 
                     Event::AddressBalance(event) => {
-                        debug!("{}", event)
+                        self.log_debug(event);
                     }
 
                     Event::FeeEstimation(FeeEstimation {
@@ -678,15 +674,13 @@ impl Runtime {
                         id: _,
                     }) => {
                         // FIXME handle low priority as well
-                        info!("Fee: {} sat/kvB", high_priority_sats_per_kvbyte);
+                        self.log_info(format!("Fee: {} sat/kvB", high_priority_sats_per_kvbyte));
                         self.syncer_state.btc_fee_estimate_sat_per_kvb =
                             Some(*high_priority_sats_per_kvbyte);
                     }
-                    Event::Empty(_) => debug!("empty event not handled for Bitcoin"),
+                    Event::Empty(_) => self.log_debug("empty event not handled for Bitcoin"),
 
-                    Event::HealthResult(_) => {
-                        debug!("ignoring health result in swapd")
-                    }
+                    Event::HealthResult(_) => self.log_debug("ignoring health result in swapd"),
                 };
             }
             _ => {}
@@ -792,13 +786,12 @@ impl Runtime {
         let total_fees =
             bitcoin::Amount::from_sat(p2wpkh_signed_tx_fee(sat_per_kvb, vsize, nr_inputs));
         let amount = self.syncer_state.bitcoin_amount + total_fees;
-        info!(
-            "{} | Send {} to {}, this includes {} for the Lock transaction network fees",
-            swap_id.swap_id(),
+        self.log_info(format!(
+            "Send {} to {}, this includes {} for the Lock transaction network fees",
             amount.bright_green_bold(),
             address.addr(),
             total_fees.label(),
-        );
+        ));
         let req = BusMsg::Ctl(CtlMsg::FundingInfo(FundingInfo::Bitcoin(
             BitcoinFundingInfo {
                 swap_id,
@@ -819,11 +812,10 @@ impl Runtime {
         endpoints: &mut Endpoints,
         params: Params,
     ) -> Result<Commit, Error> {
-        info!(
-            "{} | {} to Maker remote peer",
-            self.swap_id().swap_id(),
+        self.log_info(format!(
+            "{} to Maker remote peer",
             "Proposing to take swap".bright_white_bold(),
-        );
+        ));
 
         let msg = format!(
             "Proposing to take swap {} to Maker remote peer",
@@ -852,12 +844,11 @@ impl Runtime {
         swap_id: SwapId,
         params: Params,
     ) -> Result<Commit, Error> {
-        info!(
-            "{} | {} as Maker from Taker through peerd {}",
-            swap_id.swap_id(),
+        self.log_info(format!(
+            "{} as Maker from Taker through peerd {}",
             "Accepting swap".bright_white_bold(),
             self.peer_service.bright_blue_italic()
-        );
+        ));
 
         let msg = format!(
             "Accepting swap {} as Maker from Taker through peerd {}",
@@ -884,7 +875,7 @@ impl Runtime {
     pub fn abort_swap(&mut self, endpoints: &mut Endpoints) -> Result<(), Error> {
         let swap_success_req = BusMsg::Ctl(CtlMsg::SwapOutcome(Outcome::FailureAbort));
         self.send_ctl(endpoints, ServiceId::Farcasterd, swap_success_req)?;
-        info!("{} | Aborted swap.", self.swap_id.swap_id());
+        self.log_info("Aborted swap.");
         Ok(())
     }
 
@@ -917,6 +908,34 @@ impl Runtime {
             })),
         )?;
         Ok(())
+    }
+
+    pub fn log_info(&self, msg: impl std::fmt::Display) {
+        info!("{} | {}", self.log_prefix(), msg);
+    }
+
+    pub fn log_error(&self, msg: impl std::fmt::Display) {
+        error!("{} | {}", self.log_prefix(), msg);
+    }
+
+    pub fn log_debug(&self, msg: impl std::fmt::Display) {
+        debug!("{} | {}", self.log_prefix(), msg);
+    }
+
+    pub fn log_trace(&self, msg: impl std::fmt::Display) {
+        trace!("{} | {}", self.log_prefix(), msg);
+    }
+
+    pub fn log_warn(&self, msg: impl std::fmt::Display) {
+        warn!("{} | {}", self.log_prefix(), msg);
+    }
+
+    fn log_prefix(&self) -> ColoredString {
+        format!(
+            "{} as {} {}",
+            self.swap_id, self.local_swap_role, self.local_trade_role
+        )
+        .bright_blue_italic()
     }
 }
 
