@@ -86,11 +86,11 @@ use super::{
 ///                               |                                   |
 ///                               V                                   V
 ///                           BobFunded                   AliceCoreArbitratingSetup
-///        _______________________|                                   |_____________________
-///       |                       |                                   |                     |
-///       |                       V                                   V                     |
-///       |          BobRefundProcedureSignatures          AliceArbitratingLockFinal        |
-///       |_______________________|                                   |_____________________|
+///                               |                                   |_____________________
+///                               |                                   |                     |
+///                               V                                   V                     |
+///                  BobRefundProcedureSignatures          AliceArbitratingLockFinal        |
+///        _______________________|                                   |_____________________|
 ///       |                       |                                   |                     |
 ///       |                       V                                   V                     |
 ///       |                BobAccordantLock                    AliceAccordantLock           |
@@ -185,9 +185,9 @@ pub enum SwapStateMachine {
     #[display("Bob Reveal")]
     BobReveal(BobReveal),
     // BobFunded state - transitions to BobRefundProcedureSignatures on request
-    // RefundProcedureSignatures or BobCanceled on event
-    // TransactionConfirmations. Broadcasts Lock, watches AccLock, watches Buy,
-    // checkpoints the Bob pre Buy state.
+    // RefundProcedureSignatures or BobAbortAwaitingSweep on request AbortSwap.
+    // Broadcasts Lock, watches AccLock, watches Buy, checkpoints the Bob pre
+    // Buy state.
     #[display("Bob Funded")]
     BobFunded(BobFunded),
     // BobRefundProcedureSignatures state - transitions to BobAccordantLock on event
@@ -1044,7 +1044,6 @@ fn try_bob_funded_to_bob_refund_procedure_signature(
                 .handle_refund_procedure_signatures(refund_proc.clone(), runtime.swap_id.clone())?;
             // Process and broadcast lock tx
             log_tx_created(runtime.swap_id, TxLabel::Lock);
-            runtime.broadcast(lock_tx, TxLabel::Lock, event.endpoints)?;
             // Process params, aggregate and watch xmr address
             if let (Params::Bob(bob_params), Params::Alice(alice_params)) =
                 (&local_params, &remote_params)
@@ -1106,6 +1105,7 @@ fn try_bob_funded_to_bob_refund_procedure_signature(
                 });
             runtime.log_debug("Checkpointing bob pre buy swapd state.");
             runtime.checkpoint_state(event.endpoints, None, new_ssm.clone())?;
+            runtime.broadcast(lock_tx, TxLabel::Lock, event.endpoints)?;
             Ok(Some(new_ssm))
         }
         BusMsg::Ctl(CtlMsg::AbortSwap) => {
