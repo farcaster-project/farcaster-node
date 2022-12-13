@@ -2178,7 +2178,6 @@ impl Runtime {
                                         self.syncer_state.network.into(),
                                         &viewpair,
                                     );
-                                    // safe the monero address to the database now
                                     let swap_id = self.swap_id();
                                     let amount = self.syncer_state.monero_amount;
                                     self.state.a_sup_required_funding_amount(amount);
