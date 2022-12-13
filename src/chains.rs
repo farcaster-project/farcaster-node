@@ -1,3 +1,9 @@
+// Copyright 2020-2022 Farcaster Devs & LNP/BP Standards Association
+//
+// Use of this source code is governed by an MIT-style
+// license that can be found in the LICENSE file or at
+// https://opensource.org/licenses/MIT.
+
 //! This module defines the currently supported blockchains in the node for the arbitrating and
 //! the accordant roles. The types defined here are convertible with core `Blockchain` type.
 

@@ -4,7 +4,6 @@
 // license that can be found in the LICENSE file or at
 // https://opensource.org/licenses/MIT.
 
-use std::fmt::{self, Debug, Display, Formatter};
 use std::{
     fmt::{self, Debug, Display, Formatter},
     str::FromStr,
