@@ -1693,8 +1693,8 @@ fn try_alice_arbitrating_lock_final_to_alice_accordant_lock(
                     msg,
                 )?;
             } else if amount.clone() > required_funding_amount.as_pico() {
-                // Alice overfunded to ensure that she does not publish the buy transaction if Bob gives her the BuySig,
-                // go straight to AliceCanceled
+                // Alice overfunded. To ensure that she does not publish the buy transaction
+                // if Bob gives her the BuySig, go straight to AliceCanceled
                 let msg = format!(
                                 "Too big amount funded. Required: {}, Funded: {}. Do not fund this swap anymore, will attempt to refund.",
                                 required_funding_amount,
@@ -1883,6 +1883,29 @@ fn try_alice_canceled_to_alice_refund_or_alice_punish(
                     }
                     runtime.broadcast(punish_tx, tx_label, event.endpoints)?;
                     Ok(Some(SwapStateMachine::AlicePunish))
+                }
+                // hit this path if Alice overfunded, moved on to AliceCanceled,
+                // but could not broadcast cancel yet since not available,
+                // so broadcast if available now
+                // Note that this will also broadcast if Bob broadcasted cancel,
+                // which is fine
+                Some(TxLabel::Lock)
+                    if runtime.temporal_safety.valid_cancel(confirmations)
+                        && runtime.txs.contains_key(&TxLabel::Cancel) =>
+                {
+                    runtime.log_debug("Publishing cancel tx");
+                    let (tx_label, cancel_tx) = runtime.txs.remove_entry(&TxLabel::Cancel).unwrap();
+                    // syncer's watch cancel tx task
+                    let txid = cancel_tx.txid();
+                    let task = runtime.syncer_state.watch_tx_btc(txid, tx_label);
+                    event.send_sync_service(
+                        runtime.syncer_state.bitcoin_syncer(),
+                        SyncMsg::Task(task),
+                    )?;
+                    runtime.broadcast(cancel_tx, tx_label, event.endpoints)?;
+                    Ok(Some(SwapStateMachine::AliceCanceled(AliceCanceled {
+                        wallet,
+                    })))
                 }
                 _ => Ok(None),
             }
