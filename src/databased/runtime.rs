@@ -19,8 +19,8 @@ use strict_encoding::{StrictDecode, StrictEncode};
 use crate::bus::{
     ctl::{Checkpoint, CtlMsg},
     info::{Address, InfoMsg, OfferStatusSelector},
-    AddressSecretKey, BusMsg, CheckpointEntry, Failure, FailureCode, List, OfferStatus,
-    OfferStatusPair, ServiceBus,
+    AddressSecretKey, BusMsg, CheckpointEntry, Failure, FailureCode, OfferStatus, OfferStatusPair,
+    ServiceBus,
 };
 use crate::{swapd::CheckpointSwapd, Endpoints};
 use crate::{CtlServer, Error, LogStyle, Service, ServiceConfig, ServiceId};
@@ -97,11 +97,9 @@ impl Runtime {
                     expected_counterparty_node_id: state.connected_counterparty_node_id.clone(),
                 };
                 debug!("{} | setting checkpoint info entry", swap_id.swap_id());
-                let mut info_encoded = vec![];
-                let _info_size = info.strict_encode(&mut info_encoded);
-                self.database.set_checkpoint_info(&swap_id, &info_encoded)?;
+                self.database.set_checkpoint_info(&swap_id, &info)?;
 
-                debug!("setting swap checkpoint");
+                debug!("{} | setting swap checkpoint", swap_id.swap_id());
                 let key = CheckpointKey {
                     swap_id,
                     service_id: source,
@@ -180,11 +178,8 @@ impl Runtime {
                 let checkpointed_pub_offers: Vec<PublicOffer> = self
                     .database
                     .get_all_checkpoint_info()?
-                    .iter()
-                    .filter_map(|(_, info)| {
-                        CheckpointEntry::strict_decode(std::io::Cursor::new(info)).ok()
-                    })
-                    .map(|c| c.public_offer)
+                    .drain(..)
+                    .map(|info| info.public_offer)
                     .collect();
                 self.database
                     .get_offers(OfferStatusSelector::InProgress)?
@@ -227,42 +222,40 @@ impl Runtime {
                 )?;
             }
 
-            InfoMsg::RetrieveAllCheckpointInfo => {
-                let pairs = self.database.get_all_checkpoint_info()?;
-                let checkpointed_pub_offers: List<CheckpointEntry> = pairs
-                    .iter()
-                    .filter_map(|(_, info)| {
-                        CheckpointEntry::strict_decode(std::io::Cursor::new(info)).ok()
-                    })
-                    .collect();
-                self.send_client_info(
-                    endpoints,
-                    source,
-                    InfoMsg::CheckpointList(checkpointed_pub_offers),
-                )?;
-            }
-
-            InfoMsg::GetCheckpointEntry(swap_id) => {
-                let entry = match self.database.get_checkpoint_info(&swap_id) {
-                    Ok(raw_state) => {
-                        match CheckpointEntry::strict_decode(std::io::Cursor::new(raw_state)) {
-                            Ok(info) => Some(info),
-                            _ => None,
-                        }
-                    }
-                    _ => None,
-                };
-                if let Some(entry) = entry {
-                    self.send_client_info(endpoints, source, InfoMsg::CheckpointEntry(entry))?;
-                } else {
+            InfoMsg::RetrieveAllCheckpointInfo => match self.database.get_all_checkpoint_info() {
+                Ok(list) => {
+                    self.send_client_info(endpoints, source, InfoMsg::CheckpointList(list.into()))?;
+                }
+                Err(_) => {
                     self.send_client_ctl(
                         endpoints,
                         source,
                         CtlMsg::Failure(Failure {
                             code: FailureCode::Unknown,
-                            info: format!("Could not retrieve checkpoint entry for {}", swap_id),
+                            info: "Failed to retrieve checkpoint list".to_string(),
                         }),
                     )?;
+                }
+            },
+
+            InfoMsg::GetCheckpointEntry(swap_id) => {
+                match self.database.get_checkpoint_info(&swap_id) {
+                    Ok(entry) => {
+                        self.send_client_info(endpoints, source, InfoMsg::CheckpointEntry(entry))?
+                    }
+                    Err(_) => {
+                        self.send_client_ctl(
+                            endpoints,
+                            source,
+                            CtlMsg::Failure(Failure {
+                                code: FailureCode::Unknown,
+                                info: format!(
+                                    "Could not retrieve checkpoint entry for {}",
+                                    swap_id
+                                ),
+                            }),
+                        )?;
+                    }
                 }
             }
 
@@ -436,34 +429,41 @@ impl Database {
         Ok(())
     }
 
-    fn get_offers(
-        &mut self,
-        selector: OfferStatusSelector,
-    ) -> Result<Vec<OfferStatusPair>, lmdb::Error> {
+    fn get_offers(&mut self, selector: OfferStatusSelector) -> Result<Vec<OfferStatusPair>, Error> {
         let db = self.0.open_db(Some(LMDB_OFFER_HISTORY))?;
         let tx = self.0.begin_ro_txn()?;
         let mut cursor = tx.open_ro_cursor(db)?;
         let res = cursor
             .iter()
             .filter_map(|(key, val)| {
-                let status = OfferStatus::strict_decode(std::io::Cursor::new(val.to_vec())).ok()?;
+                let status = OfferStatus::strict_decode(std::io::Cursor::new(val.to_vec()));
                 let filtered_status = match status {
-                    OfferStatus::Open if selector == OfferStatusSelector::Open => Some(status),
-                    OfferStatus::InProgress if selector == OfferStatusSelector::InProgress => {
-                        Some(status)
+                    Err(err) => {
+                        return Some(Err(Error::from(err)));
                     }
-                    OfferStatus::Ended(_) if selector == OfferStatusSelector::Ended => Some(status),
-                    _ if selector == OfferStatusSelector::All => Some(status),
+                    Ok(OfferStatus::Open) if selector == OfferStatusSelector::Open => {
+                        Some(status.unwrap())
+                    }
+                    Ok(OfferStatus::InProgress) if selector == OfferStatusSelector::InProgress => {
+                        Some(status.unwrap())
+                    }
+                    Ok(OfferStatus::Ended(_)) if selector == OfferStatusSelector::Ended => {
+                        Some(status.unwrap())
+                    }
+                    _ if selector == OfferStatusSelector::All => Some(status.unwrap()),
                     _ => None,
                 }?;
-                let offer = PublicOffer::strict_decode(std::io::Cursor::new(key.to_vec())).ok()?;
-                Some(OfferStatusPair {
-                    offer,
-                    status: filtered_status,
-                })
+                Some(
+                    PublicOffer::strict_decode(std::io::Cursor::new(key.to_vec()))
+                        .map(|offer| OfferStatusPair {
+                            offer,
+                            status: filtered_status,
+                        })
+                        .map_err(|err| Error::from(err)),
+                )
             })
             .collect();
-        Ok(res)
+        res
     }
 
     fn set_bitcoin_address(
@@ -504,29 +504,23 @@ impl Database {
 
     fn get_all_bitcoin_addresses(
         &mut self,
-    ) -> Result<Vec<(bitcoin::Address, Option<SwapId>)>, lmdb::Error> {
+    ) -> Result<Vec<(bitcoin::Address, Option<SwapId>)>, Error> {
         let db = self.0.open_db(Some(LMDB_BITCOIN_ADDRESSES))?;
         let tx = self.0.begin_ro_txn()?;
         let mut cursor = tx.open_ro_cursor(db)?;
         let res = cursor
             .iter()
-            .filter_map(|(key, val)| {
-                bitcoin::Address::strict_decode(std::io::Cursor::new(key.to_vec()))
-                    .ok()
-                    .map(|a| {
-                        (
-                            a,
-                            BitcoinSecretKeyInfo::strict_decode(std::io::Cursor::new(val.to_vec()))
-                                .ok()
-                                .map(|s| s.swap_id)
-                                .flatten(),
-                        )
-                    })
+            .map(|(key, val)| {
+                Ok((
+                    bitcoin::Address::strict_decode(std::io::Cursor::new(key.to_vec()))?,
+                    BitcoinSecretKeyInfo::strict_decode(std::io::Cursor::new(val.to_vec()))?
+                        .swap_id,
+                ))
             })
             .collect();
         drop(cursor);
         tx.abort();
-        Ok(res)
+        res
     }
 
     fn set_monero_address(
@@ -571,21 +565,16 @@ impl Database {
         let mut cursor = tx.open_ro_cursor(db)?;
         let res = cursor
             .iter()
-            .filter_map(|(key, val)| {
-                monero::Address::from_bytes(key).ok().map(|a| {
-                    (
-                        a,
-                        MoneroSecretKeyInfo::strict_decode(std::io::Cursor::new(val.to_vec()))
-                            .ok()
-                            .map(|s| s.swap_id)
-                            .flatten(),
-                    )
-                })
+            .map(|(key, val)| {
+                Ok((
+                    monero::Address::from_bytes(key)?,
+                    MoneroSecretKeyInfo::strict_decode(std::io::Cursor::new(val.to_vec()))?.swap_id,
+                ))
             })
             .collect();
         drop(cursor);
         tx.abort();
-        Ok(res)
+        res
     }
 
     fn set_checkpoint_state(&mut self, key: &CheckpointKey, val: &[u8]) -> Result<(), lmdb::Error> {
@@ -599,36 +588,46 @@ impl Database {
         Ok(())
     }
 
-    fn set_checkpoint_info(&mut self, key: &SwapId, val: &[u8]) -> Result<(), lmdb::Error> {
+    fn set_checkpoint_info(
+        &mut self,
+        key: &SwapId,
+        checkpoint_entry: &CheckpointEntry,
+    ) -> Result<(), Error> {
         let db = self.0.open_db(Some(LMDB_CHECKPOINT_INFOS))?;
         let mut tx = self.0.begin_rw_txn()?;
         if tx.get(db, &key.as_bytes()).is_ok() {
             tx.del(db, &key.as_bytes(), None)?;
         }
+        let mut val = vec![];
+        checkpoint_entry.strict_encode(&mut val)?;
         tx.put(db, &key.as_bytes(), &val, lmdb::WriteFlags::empty())?;
         tx.commit()?;
         Ok(())
     }
 
-    fn get_checkpoint_info(&mut self, key: &SwapId) -> Result<Vec<u8>, lmdb::Error> {
+    fn get_checkpoint_info(&mut self, key: &SwapId) -> Result<CheckpointEntry, Error> {
         let db = self.0.open_db(Some(LMDB_CHECKPOINT_INFOS))?;
         let tx = self.0.begin_ro_txn()?;
-        let val: Vec<u8> = tx.get(db, &key.as_bytes())?.into();
+        let val = tx.get(db, &key.as_bytes())?.to_vec();
         tx.abort();
-        Ok(val)
+        Ok(CheckpointEntry::strict_decode(std::io::Cursor::new(val))?)
     }
 
-    fn get_all_checkpoint_info(&mut self) -> Result<Vec<(SwapId, Vec<u8>)>, lmdb::Error> {
+    fn get_all_checkpoint_info(&mut self) -> Result<Vec<CheckpointEntry>, Error> {
         let db = self.0.open_db(Some(LMDB_CHECKPOINT_INFOS))?;
         let tx = self.0.begin_ro_txn()?;
         let mut cursor = tx.open_ro_cursor(db)?;
         let res = cursor
             .iter()
-            .map(|(key, value)| (SwapId::from_slice(key), value.to_vec()))
+            .map(|(_, value)| {
+                Ok(CheckpointEntry::strict_decode(std::io::Cursor::new(
+                    value.to_vec(),
+                ))?)
+            })
             .collect();
         drop(cursor);
         tx.abort();
-        Ok(res)
+        res
     }
 
     fn get_checkpoint_state(&mut self, key: &CheckpointKey) -> Result<Vec<u8>, lmdb::Error> {
@@ -660,7 +659,11 @@ impl Database {
 fn test_lmdb_state() {
     use crate::bus::Outcome;
     use bitcoin::secp256k1::SecretKey;
+    use farcaster_core::role::TradeRole;
     use std::str::FromStr;
+
+    let env = env_logger::Env::new().default_filter_or("info,farcaster_node=debug");
+    let _ = env_logger::from_env(env).is_test(false).try_init();
 
     let val1 = vec![0, 1];
     let val2 = vec![2, 3, 4, 5];
@@ -688,7 +691,12 @@ fn test_lmdb_state() {
     assert!(res.is_err());
 
     let key_info = SwapId::random();
-    let val_info = vec![0, 1, 2];
+    let val_info = CheckpointEntry {
+        swap_id: key_info.clone(),
+        trade_role: TradeRole::Maker,
+        public_offer: PublicOffer::from_str("Offer:Cke4ftrP5A781Vq85dgBQJNwYgBS4nuUV1LQM2fvVdFMNR4h5TrWhRR11111uMFuZTAsNgpdK8DiK11111TB9zym113GTvtvqfD1111114A4TTfFfmZoWyvpcjDBtTZCdWFSUWcRKYfEC3Y17hqaXZ3dWz11111111111111111111111111111111111111111AfZ113SEBTEspU3a").unwrap(),
+        expected_counterparty_node_id: None,
+    };
     database.set_checkpoint_info(&key_info, &val_info).unwrap();
     let res = database.get_checkpoint_info(&key_info).unwrap();
     assert_eq!(val_info, res);
