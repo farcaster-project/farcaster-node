@@ -436,7 +436,7 @@ impl Database {
         let db = self.0.open_db(Some(LMDB_OFFER_HISTORY))?;
         let tx = self.0.begin_ro_txn()?;
         let mut cursor = tx.open_ro_cursor(db)?;
-        let res = cursor
+        cursor
             .iter()
             .filter_map(|(key, val)| {
                 let status = OfferStatus::strict_decode(IoCursor::new(val.to_vec()));
@@ -465,8 +465,7 @@ impl Database {
                         .map_err(|err| Error::from(err)),
                 )
             })
-            .collect();
-        res
+            .collect()
     }
 
     fn set_bitcoin_address(
@@ -516,8 +515,7 @@ impl Database {
             .map(|(key, val)| {
                 Ok((
                     bitcoin::Address::strict_decode(IoCursor::new(key.to_vec()))?,
-                    BitcoinSecretKeyInfo::strict_decode(IoCursor::new(val.to_vec()))?
-                        .swap_id,
+                    BitcoinSecretKeyInfo::strict_decode(IoCursor::new(val.to_vec()))?.swap_id,
                 ))
             })
             .collect();
