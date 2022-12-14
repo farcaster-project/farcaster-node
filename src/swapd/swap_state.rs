@@ -541,7 +541,10 @@ impl StateMachine<Runtime, Error> for SwapStateMachine {
             }
             SwapStateMachine::AlicePunish => try_alice_punish_to_swap_end(event, runtime),
 
-            _ => Ok(Some(self)),
+            SwapStateMachine::SwapEnd(_) => {
+                runtime.log_warn("Received event after swap end");
+                Ok(Some(self))
+            }
         }
     }
 
