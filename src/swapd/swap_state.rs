@@ -759,7 +759,7 @@ fn try_bob_init_taker_to_bob_taker_maker_commit(
         BusMsg::P2p(PeerMsg::MakerCommit(remote_commit)) => {
             runtime.log_debug("Received remote maker commitment");
             runtime.log_debug(format!(
-                "Watch arbitratring funding {}",
+                "Watch arbitrating funding {}",
                 funding_address.clone()
             ));
             let txlabel = TxLabel::Funding;
@@ -1072,7 +1072,8 @@ fn try_bob_funded_to_bob_refund_procedure_signature(
             log_tx_created(runtime.swap_id, TxLabel::Refund);
             runtime.txs.insert(TxLabel::Cancel, cancel_tx);
             runtime.txs.insert(TxLabel::Refund, refund_tx);
-            // register a watch task for buy
+            // register a watch task for buy tx.
+            // registration performed now already to ensure it's present in checkpoint.
             runtime.log_debug("register watch buy tx task");
             if !runtime.syncer_state.is_watched_tx(&TxLabel::Buy) {
                 let buy_tx = buy_procedure_signature.buy.clone().extract_tx();
@@ -1620,6 +1621,8 @@ fn try_alice_arbitrating_lock_final_to_alice_accordant_lock(
             )))
         }
 
+        // warn user about funding if we're close to cancel becoming valid,
+        // and remain in AliceArbitratingLockFinal state
         BusMsg::Sync(SyncMsg::Event(SyncEvent::TransactionConfirmations(
             TransactionConfirmations {
                 id,
@@ -1715,6 +1718,8 @@ fn try_alice_arbitrating_lock_final_to_alice_accordant_lock(
                     runtime.enquirer.clone(),
                     msg,
                 )?;
+
+                // Alice moves on to AliceCanceled despite not broadcasting the cancel transaction.
                 return Ok(Some(SwapStateMachine::AliceCanceled(AliceCanceled {
                     wallet,
                 })));
@@ -1755,7 +1760,7 @@ fn try_alice_accordant_lock_to_alice_buy_procedure_signature(
             log_tx_created(runtime.swap_id, TxLabel::Cancel);
             log_tx_created(runtime.swap_id, TxLabel::Buy);
 
-            // Insert transaction in the runtime
+            // Insert transactions into the runtime
             runtime.txs.insert(TxLabel::Cancel, cancel_tx.clone());
             runtime.txs.insert(TxLabel::Buy, buy_tx.clone());
 
@@ -1849,6 +1854,7 @@ fn try_alice_canceled_to_alice_refund_or_alice_punish(
         {
             let txlabel = runtime.syncer_state.tasks.watched_txs.get(&id);
             match txlabel {
+                // if Alice sees the refund transaction, she subscribes to the address
                 Some(TxLabel::Refund)
                     if runtime
                         .syncer_state
@@ -2108,9 +2114,7 @@ fn try_bob_buy_sweeping_to_swap_end(
         {
             if runtime.syncer_state.awaiting_funding {
                 runtime.log_warn(
-                    "FundingCompleted never emitted, but not possible to sweep \
-                                   monero without passing through funding completed: \
-                                   emitting it now to clean up farcasterd",
+                    "FundingCompleted never emitted, emitting it now to clean up farcasterd stats",
                 );
                 runtime.syncer_state.awaiting_funding = false;
                 event.send_ctl_service(
@@ -2190,7 +2194,7 @@ fn attempt_transition_to_bob_reveal(
                 })))
             } else {
                 // fee estimate not available yet, defer handling for later
-                runtime.log_debug("Deferring handling of of Reveal for when fee available.");
+                runtime.log_debug("Deferring handling of Reveal for when fee available.");
                 match local_trade_role {
                     TradeRole::Maker => Ok(Some(SwapStateMachine::BobInitMaker(BobInitMaker {
                         local_commit,
@@ -2216,6 +2220,8 @@ fn attempt_transition_to_bob_reveal(
         BusMsg::Ctl(CtlMsg::AbortSwap) => {
             handle_bob_abort_swap(event, runtime, wallet, funding_address)
         }
+        // catch-all for when fee estimate was not available when received reveal from Alice
+        // if fee estimate available now, transition to BobReveal
         _ => {
             if let (Some(reveal), Some(sat_per_kvb)) =
                 (reveal, runtime.syncer_state.btc_fee_estimate_sat_per_kvb)
@@ -2295,7 +2301,8 @@ fn attempt_transition_to_alice_reveal(
     }
 }
 
-// Here we check for cancel, abort, etc.
+/// Checks whether Bob can cancel the swap and does so if possible.
+/// Throws a warning if Bob tries to abort since swap already locked in.
 fn handle_bob_swap_interrupt_after_lock(
     event: Event,
     runtime: &mut Runtime,
@@ -2334,7 +2341,10 @@ fn handle_bob_swap_interrupt_after_lock(
     }
 }
 
-fn handle_alice_swap_interrupt_afer_lock(
+/// Checks whether the swap has already been cancelled.
+/// Checks whether Alice can cancel the swap and does so if possible.
+/// Throws a warning if Alice tries to abort since swap already locked in.
+fn handle_alice_swap_interrupt_after_lock(
     mut event: Event,
     runtime: &mut Runtime,
     wallet: Wallet,

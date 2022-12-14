@@ -201,6 +201,7 @@ impl SyncerState {
         height - delta
     }
 
+    /// Watches an xmr address. If no `from_height` is provided, it will be set to current_height - 20.
     pub fn watch_addr_xmr(
         &mut self,
         spend: monero::PublicKey,
