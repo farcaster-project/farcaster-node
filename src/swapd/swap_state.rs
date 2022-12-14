@@ -988,14 +988,12 @@ fn try_bob_reveal_to_bob_funded(
             .zip([TxLabel::Lock, TxLabel::Cancel, TxLabel::Refund])
             {
                 runtime.log_debug(format!("register watch {} tx", tx_label.label()));
-                if !runtime.syncer_state.is_watched_tx(&tx_label) {
-                    let txid = tx.clone().extract_tx().txid();
-                    let task = runtime.syncer_state.watch_tx_btc(txid, tx_label);
-                    event.send_sync_service(
-                        runtime.syncer_state.bitcoin_syncer(),
-                        SyncMsg::Task(task),
-                    )?;
-                }
+                let txid = tx.clone().extract_tx().txid();
+                let task = runtime.syncer_state.watch_tx_btc(txid, tx_label);
+                event.send_sync_service(
+                    runtime.syncer_state.bitcoin_syncer(),
+                    SyncMsg::Task(task),
+                )?;
             }
 
             // Set the monero address creation height for Bob before setting the first checkpoint
@@ -1080,16 +1078,11 @@ fn try_bob_funded_to_bob_refund_procedure_signature(
             // register a watch task for buy tx.
             // registration performed now already to ensure it's present in checkpoint.
             runtime.log_debug("register watch buy tx task");
-            if !runtime.syncer_state.is_watched_tx(&TxLabel::Buy) {
-                let buy_tx = buy_procedure_signature.buy.clone().extract_tx();
-                let task = runtime
-                    .syncer_state
-                    .watch_tx_btc(buy_tx.txid(), TxLabel::Buy);
-                event.send_sync_service(
-                    runtime.syncer_state.bitcoin_syncer(),
-                    SyncMsg::Task(task),
-                )?;
-            }
+            let buy_tx = buy_procedure_signature.buy.clone().extract_tx();
+            let task = runtime
+                .syncer_state
+                .watch_tx_btc(buy_tx.txid(), TxLabel::Buy);
+            event.send_sync_service(runtime.syncer_state.bitcoin_syncer(), SyncMsg::Task(task))?;
             // Checkpoint BobRefundProcedureSignatures
             let new_ssm =
                 SwapStateMachine::BobRefundProcedureSignatures(BobRefundProcedureSignatures {
@@ -1146,13 +1139,11 @@ fn try_bob_refund_procedure_signatures_to_bob_accordant_lock(
             }
             if let Some(tx_label) = runtime.syncer_state.tasks.watched_addrs.remove(&id) {
                 let abort_task = runtime.syncer_state.abort_task(id.clone());
-                if !runtime.syncer_state.is_watched_tx(&tx_label) {
-                    let watch_tx = runtime.syncer_state.watch_tx_xmr(hash.clone(), tx_label);
-                    event.send_sync_service(
-                        runtime.syncer_state.monero_syncer(),
-                        SyncMsg::Task(watch_tx),
-                    )?;
-                }
+                let watch_tx = runtime.syncer_state.watch_tx_xmr(hash.clone(), tx_label);
+                event.send_sync_service(
+                    runtime.syncer_state.monero_syncer(),
+                    SyncMsg::Task(watch_tx),
+                )?;
                 event.send_sync_service(
                     runtime.syncer_state.monero_syncer(),
                     SyncMsg::Task(abort_task),
@@ -1471,14 +1462,12 @@ fn try_alice_reveal_to_alice_core_arbitrating_setup(
                 TxLabel::Refund,
             ]) {
                 runtime.log_debug(format!("Register watch {} tx", tx_label));
-                if !runtime.syncer_state.is_watched_tx(&tx_label) {
-                    let txid = tx.clone().extract_tx().txid();
-                    let task = runtime.syncer_state.watch_tx_btc(txid, tx_label);
-                    event.send_sync_service(
-                        runtime.syncer_state.bitcoin_syncer(),
-                        SyncMsg::Task(task),
-                    )?;
-                }
+                let txid = tx.clone().extract_tx().txid();
+                let task = runtime.syncer_state.watch_tx_btc(txid, tx_label);
+                event.send_sync_service(
+                    runtime.syncer_state.bitcoin_syncer(),
+                    SyncMsg::Task(task),
+                )?;
             }
             // handle the core arbitrating setup message with the wallet
             runtime.log_debug("Handling core arb setup with wallet");
@@ -1667,18 +1656,15 @@ fn try_alice_arbitrating_lock_final_to_alice_accordant_lock(
                 id, hash, amount, block, tx
             ));
             let txlabel = TxLabel::AccLock;
-            if !runtime.syncer_state.is_watched_tx(&txlabel) {
-                let task = runtime.syncer_state.watch_tx_xmr(hash.clone(), txlabel);
-                if runtime.syncer_state.awaiting_funding {
-                    event.send_ctl_service(
-                        ServiceId::Farcasterd,
-                        CtlMsg::FundingCompleted(Blockchain::Monero),
-                    )?;
-                    runtime.syncer_state.awaiting_funding = false;
-                }
-                event
-                    .send_sync_service(runtime.syncer_state.monero_syncer(), SyncMsg::Task(task))?;
+            let task = runtime.syncer_state.watch_tx_xmr(hash.clone(), txlabel);
+            if runtime.syncer_state.awaiting_funding {
+                event.send_ctl_service(
+                    ServiceId::Farcasterd,
+                    CtlMsg::FundingCompleted(Blockchain::Monero),
+                )?;
+                runtime.syncer_state.awaiting_funding = false;
             }
+            event.send_sync_service(runtime.syncer_state.monero_syncer(), SyncMsg::Task(task))?;
             if runtime
                 .syncer_state
                 .tasks
@@ -1745,14 +1731,9 @@ fn try_alice_accordant_lock_to_alice_buy_procedure_signature(
         BusMsg::P2p(PeerMsg::BuyProcedureSignature(buy_procedure_signature)) => {
             // register a watch task for buy
             runtime.log_debug("Registering watch buy tx task");
-            if !runtime.syncer_state.is_watched_tx(&TxLabel::Buy) {
-                let txid = buy_procedure_signature.buy.clone().extract_tx().txid();
-                let task = runtime.syncer_state.watch_tx_btc(txid, TxLabel::Buy);
-                event.send_sync_service(
-                    runtime.syncer_state.bitcoin_syncer(),
-                    SyncMsg::Task(task),
-                )?;
-            }
+            let txid = buy_procedure_signature.buy.clone().extract_tx().txid();
+            let task = runtime.syncer_state.watch_tx_btc(txid, TxLabel::Buy);
+            event.send_sync_service(runtime.syncer_state.bitcoin_syncer(), SyncMsg::Task(task))?;
             // Handle the received buy procedure signature message with the wallet
             runtime.log_debug("Handling buy procedure signature with wallet");
             let HandleBuyProcedureSignatureRes { cancel_tx, buy_tx } = wallet
@@ -1887,14 +1868,12 @@ fn try_alice_canceled_to_alice_refund_or_alice_punish(
                     runtime.log_debug("Publishing punish tx");
                     let (tx_label, punish_tx) = runtime.txs.remove_entry(&TxLabel::Punish).unwrap();
                     // syncer's watch punish tx task
-                    if !runtime.syncer_state.is_watched_tx(&tx_label) {
-                        let txid = punish_tx.txid();
-                        let task = runtime.syncer_state.watch_tx_btc(txid, tx_label);
-                        event.send_sync_service(
-                            runtime.syncer_state.bitcoin_syncer(),
-                            SyncMsg::Task(task),
-                        )?;
-                    }
+                    let txid = punish_tx.txid();
+                    let task = runtime.syncer_state.watch_tx_btc(txid, tx_label);
+                    event.send_sync_service(
+                        runtime.syncer_state.bitcoin_syncer(),
+                        SyncMsg::Task(task),
+                    )?;
                     runtime.broadcast(punish_tx, tx_label, event.endpoints)?;
                     Ok(Some(SwapStateMachine::AlicePunish))
                 }
