@@ -223,22 +223,28 @@ impl Runtime {
                 )?;
             }
 
-            InfoMsg::RetrieveAllCheckpointInfo => match self.database.get_all_checkpoint_info() {
-                Ok(list) => {
-                    self.send_client_info(endpoints, source, InfoMsg::CheckpointList(list.into()))?;
-                }
-                Err(err) => {
-                    error!("Failed to retrieve checkpoint info list: {}", err);
-                    self.send_client_ctl(
-                        endpoints,
-                        source,
-                        CtlMsg::Failure(Failure {
-                            code: FailureCode::Unknown,
-                            info: "Failed to retrieve checkpoint list".to_string(),
-                        }),
-                    )?;
-                }
-            },
+            InfoMsg::RetrieveAllCheckpointInfo => {
+                match self.database.get_all_checkpoint_info() {
+                    Ok(list) => {
+                        self.send_client_info(
+                            endpoints,
+                            source,
+                            InfoMsg::CheckpointList(list.into()),
+                        )?;
+                    }
+                    Err(err) => {
+                        error!("Failed to retrieve checkpoint info list: {}", err);
+                        self.send_client_ctl(
+                            endpoints,
+                            source,
+                            CtlMsg::Failure(Failure {
+                                code: FailureCode::Unknown,
+                                info: "Failed to retrieve checkpoint list".to_string(),
+                            }),
+                        )?;
+                    }
+                };
+            }
 
             InfoMsg::GetCheckpointEntry(swap_id) => {
                 match self.database.get_checkpoint_info(&swap_id) {
