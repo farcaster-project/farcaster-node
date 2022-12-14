@@ -149,145 +149,178 @@ impl From<Outcome> for farcaster::Outcome {
 
 impl From<StateReport> for farcaster::State {
     fn from(state_report: StateReport) -> farcaster::State {
-        match state_report.clone() {
-            StateReport::StartA => farcaster::State {
-                state: Some(farcaster::state::State::StartA(StartA {})),
-            },
-            StateReport::CommitA => farcaster::State {
-                state: Some(farcaster::state::State::CommitA(CommitA {})),
-            },
-            StateReport::RevealA => farcaster::State {
-                state: Some(farcaster::state::State::RevealA(RevealA {})),
-            },
-            StateReport::RefundSigA {
-                arb_block_height,
-                acc_block_height,
-                arb_locked,
-                acc_locked,
-                buy_published,
-                cancel_seen,
-                refund_seen,
-                overfunded,
-                arb_lock_confirmations,
-                acc_lock_confirmations,
-                blocks_until_cancel_possible,
-                cancel_confirmations,
-                blocks_until_punish_possible,
-                blocks_until_safe_buy,
-            } => farcaster::State {
-                state: Some(farcaster::state::State::RefundSigA(RefundSigA {
-                    arb_block_height,
-                    acc_block_height,
-                    arb_locked,
-                    acc_locked,
-                    buy_published,
-                    cancel_seen,
-                    refund_seen,
-                    overfunded,
-                    arb_lock_confirmations: arb_lock_confirmations
-                        .map(|c| farcaster::refund_sig_a::ArbLockConfirmations::ArbConfs(c)),
-                    acc_lock_confirmations: acc_lock_confirmations
-                        .map(|c| farcaster::refund_sig_a::AccLockConfirmations::AccConfs(c)),
-                    blocks_until_cancel_possible: blocks_until_cancel_possible.map(|b| {
-                        farcaster::refund_sig_a::BlocksUntilCancelPossible::CancelBlocks(b)
-                    }),
-                    cancel_confirmations: cancel_confirmations
-                        .map(|c| farcaster::refund_sig_a::CancelConfirmations::CancelConfs(c)),
-                    blocks_until_punish_possible: blocks_until_punish_possible.map(|b| {
-                        farcaster::refund_sig_a::BlocksUntilPunishPossible::PunishBlocks(b)
-                    }),
-                    blocks_until_safe_buy: blocks_until_safe_buy
-                        .map(|b| farcaster::refund_sig_a::BlocksUntilSafeBuy::BuyBlocks(b)),
-                })),
-            },
-            StateReport::FinishA(outcome) => farcaster::State {
-                state: Some(farcaster::state::State::FinishA(FinishA {
-                    outcome: farcaster::Outcome::from(outcome).into(),
-                })),
-            },
-            StateReport::StartB => farcaster::State {
-                state: Some(farcaster::state::State::StartB(StartB {})),
-            },
-            StateReport::CommitB => farcaster::State {
-                state: Some(farcaster::state::State::CommitB(CommitB {})),
-            },
-            StateReport::RevealB => farcaster::State {
-                state: Some(farcaster::state::State::RevealB(RevealB {})),
-            },
-            StateReport::CoreArbB {
-                arb_block_height,
-                acc_block_height,
-                arb_locked,
-                acc_locked,
-                buy_published,
-                refund_seen,
-                arb_lock_confirmations,
-                acc_lock_confirmations,
-                blocks_until_cancel_possible,
-                cancel_confirmations,
-                blocks_until_refund,
-                blocks_until_punish_possible,
-            } => farcaster::State {
-                state: Some(farcaster::state::State::CoreArbB(CoreArbB {
-                    arb_block_height,
-                    acc_block_height,
-                    arb_locked,
-                    acc_locked,
-                    buy_published,
-                    refund_seen,
-                    arb_lock_confirmations: arb_lock_confirmations
-                        .map(|c| farcaster::core_arb_b::ArbLockConfirmations::ArbConfs(c)),
-                    acc_lock_confirmations: acc_lock_confirmations
-                        .map(|c| farcaster::core_arb_b::AccLockConfirmations::AccConfs(c)),
-                    blocks_until_cancel_possible: blocks_until_cancel_possible
-                        .map(|b| farcaster::core_arb_b::BlocksUntilCancelPossible::CancelBlocks(b)),
-                    cancel_confirmations: cancel_confirmations
-                        .map(|c| farcaster::core_arb_b::CancelConfirmations::CancelConfs(c)),
-                    blocks_until_refund: blocks_until_refund
-                        .map(|b| farcaster::core_arb_b::BlocksUntilRefund::RefundBlocks(b)),
-                    blocks_until_punish_possible: blocks_until_punish_possible
-                        .map(|b| farcaster::core_arb_b::BlocksUntilPunishPossible::PunishBlocks(b)),
-                })),
-            },
-            StateReport::BuySigB {
-                arb_block_height,
-                acc_block_height,
-                buy_tx_seen,
-                arb_lock_confirmations,
-                acc_lock_confirmations,
-                blocks_until_cancel_possible,
-                cancel_confirmations,
-                blocks_until_refund,
-                blocks_until_punish_possible,
-                blocks_until_safe_monero_buy_sweep,
-            } => farcaster::State {
-                state: Some(farcaster::state::State::BuySigB(BuySigB {
-                    arb_block_height,
-                    acc_block_height,
-                    buy_tx_seen,
-                    arb_lock_confirmations: arb_lock_confirmations
-                        .map(|c| farcaster::buy_sig_b::ArbLockConfirmations::ArbConfs(c)),
-                    acc_lock_confirmations: acc_lock_confirmations
-                        .map(|c| farcaster::buy_sig_b::AccLockConfirmations::AccConfs(c)),
-                    blocks_until_cancel_possible: blocks_until_cancel_possible
-                        .map(|b| farcaster::buy_sig_b::BlocksUntilCancelPossible::CancelBlocks(b)),
-                    cancel_confirmations: cancel_confirmations
-                        .map(|c| farcaster::buy_sig_b::CancelConfirmations::CancelConfs(c)),
-                    blocks_until_refund: blocks_until_refund
-                        .map(|b| farcaster::buy_sig_b::BlocksUntilRefund::RefundBlocks(b)),
-                    blocks_until_punish_possible: blocks_until_punish_possible
-                        .map(|b| farcaster::buy_sig_b::BlocksUntilPunishPossible::PunishBlocks(b)),
-                    blocks_until_safe_monero_buy_sweep: blocks_until_safe_monero_buy_sweep.map(
-                        |b| farcaster::buy_sig_b::BlocksUntilSafeMoneroBuySweep::BuyMoneroBlocks(b),
-                    ),
-                })),
-            },
-            StateReport::FinishB(outcome) => farcaster::State {
-                state: Some(farcaster::state::State::FinishB(FinishB {
-                    outcome: farcaster::Outcome::from(outcome).into(),
-                })),
-            },
-        }
+        let state = farcaster::State {
+            state: state_report.state,
+            arb_block_height: state_report.arb_block_height,
+            acc_block_height: state_report.acc_block_height,
+            arb_locked: state_report.arb_locked,
+            acc_locked: state_report.acc_locked,
+            canceled: state_report.canceled,
+            buy_seen: state_report.buy_seen,
+            refund_seen: state_report.refund_seen,
+            overfunded: state_report.overfunded,
+            arb_lock_confirmations: state_report
+                .arb_lock_confirmations
+                .map(|c| farcaster::state::ArbLockConfirmations::ArbConfs(c)),
+            acc_lock_confirmations: state_report
+                .acc_lock_confirmations
+                .map(|c| farcaster::state::AccLockConfirmations::AccConfs(c)),
+            cancel_confirmations: state_report
+                .cancel_confirmations
+                .map(|c| farcaster::state::CancelConfirmations::CancelConfs(c)),
+            blocks_until_cancel_possible: state_report
+                .blocks_until_cancel_possible
+                .map(|b| farcaster::state::BlocksUntilCancelPossible::CancelBlocks(b)),
+            blocks_until_punish_possible: state_report
+                .blocks_until_punish_possible
+                .map(|b| farcaster::state::BlocksUntilPunishPossible::PunishBlocks(b)),
+            blocks_until_safe_buy: state_report
+                .blocks_until_safe_buy
+                .map(|b| farcaster::state::BlocksUntilSafeBuy::BuyBlocks(b)),
+            blocks_until_safe_monero_buy_sweep: state_report
+                .blocks_until_safe_monero_buy_sweep
+                .map(|b| farcaster::state::BlocksUntilSafeMoneroBuySweep::BuyMoneroBlocks(b)),
+        };
+        state
+        // match state_report.clone() {
+        //     StateReport::StartA => farcaster::State {
+        //         state: Some(farcaster::state::State::StartA(StartA {})),
+        //     },
+        //     StateReport::CommitA => farcaster::State {
+        //         state: Some(farcaster::state::State::CommitA(CommitA {})),
+        //     },
+        //     StateReport::RevealA => farcaster::State {
+        //         state: Some(farcaster::state::State::RevealA(RevealA {})),
+        //     },
+        //     StateReport::RefundSigA {
+        //         arb_block_height,
+        //         acc_block_height,
+        //         arb_locked,
+        //         acc_locked,
+        //         buy_published,
+        //         cancel_seen,
+        //         refund_seen,
+        //         overfunded,
+        //         arb_lock_confirmations,
+        //         acc_lock_confirmations,
+        //         blocks_until_cancel_possible,
+        //         cancel_confirmations,
+        //         blocks_until_punish_possible,
+        //         blocks_until_safe_buy,
+        //     } => farcaster::State {
+        //         state: Some(farcaster::state::State::RefundSigA(RefundSigA {
+        //             arb_block_height,
+        //             acc_block_height,
+        //             arb_locked,
+        //             acc_locked,
+        //             buy_published,
+        //             cancel_seen,
+        //             refund_seen,
+        //             overfunded,
+        //             arb_lock_confirmations: arb_lock_confirmations
+        //                 .map(|c| farcaster::refund_sig_a::ArbLockConfirmations::ArbConfs(c)),
+        //             acc_lock_confirmations: acc_lock_confirmations
+        //                 .map(|c| farcaster::refund_sig_a::AccLockConfirmations::AccConfs(c)),
+        //             blocks_until_cancel_possible: blocks_until_cancel_possible.map(|b| {
+        //                 farcaster::refund_sig_a::BlocksUntilCancelPossible::CancelBlocks(b)
+        //             }),
+        //             cancel_confirmations: cancel_confirmations
+        //                 .map(|c| farcaster::refund_sig_a::CancelConfirmations::CancelConfs(c)),
+        //             blocks_until_punish_possible: blocks_until_punish_possible.map(|b| {
+        //                 farcaster::refund_sig_a::BlocksUntilPunishPossible::PunishBlocks(b)
+        //             }),
+        //             blocks_until_safe_buy: blocks_until_safe_buy
+        //                 .map(|b| farcaster::refund_sig_a::BlocksUntilSafeBuy::BuyBlocks(b)),
+        //         })),
+        //     },
+        //     StateReport::FinishA(outcome) => farcaster::State {
+        //         state: Some(farcaster::state::State::FinishA(FinishA {
+        //             outcome: farcaster::Outcome::from(outcome).into(),
+        //         })),
+        //     },
+        //     StateReport::StartB => farcaster::State {
+        //         state: Some(farcaster::state::State::StartB(StartB {})),
+        //     },
+        //     StateReport::CommitB => farcaster::State {
+        //         state: Some(farcaster::state::State::CommitB(CommitB {})),
+        //     },
+        //     StateReport::RevealB => farcaster::State {
+        //         state: Some(farcaster::state::State::RevealB(RevealB {})),
+        //     },
+        //     StateReport::CoreArbB {
+        //         arb_block_height,
+        //         acc_block_height,
+        //         arb_locked,
+        //         acc_locked,
+        //         buy_published,
+        //         refund_seen,
+        //         arb_lock_confirmations,
+        //         acc_lock_confirmations,
+        //         blocks_until_cancel_possible,
+        //         cancel_confirmations,
+        //         blocks_until_refund,
+        //         blocks_until_punish_possible,
+        //     } => farcaster::State {
+        //         state: Some(farcaster::state::State::CoreArbB(CoreArbB {
+        //             arb_block_height,
+        //             acc_block_height,
+        //             arb_locked,
+        //             acc_locked,
+        //             buy_published,
+        //             refund_seen,
+        //             arb_lock_confirmations: arb_lock_confirmations
+        //                 .map(|c| farcaster::core_arb_b::ArbLockConfirmations::ArbConfs(c)),
+        //             acc_lock_confirmations: acc_lock_confirmations
+        //                 .map(|c| farcaster::core_arb_b::AccLockConfirmations::AccConfs(c)),
+        //             blocks_until_cancel_possible: blocks_until_cancel_possible
+        //                 .map(|b| farcaster::core_arb_b::BlocksUntilCancelPossible::CancelBlocks(b)),
+        //             cancel_confirmations: cancel_confirmations
+        //                 .map(|c| farcaster::core_arb_b::CancelConfirmations::CancelConfs(c)),
+        //             blocks_until_refund: blocks_until_refund
+        //                 .map(|b| farcaster::core_arb_b::BlocksUntilRefund::RefundBlocks(b)),
+        //             blocks_until_punish_possible: blocks_until_punish_possible
+        //                 .map(|b| farcaster::core_arb_b::BlocksUntilPunishPossible::PunishBlocks(b)),
+        //         })),
+        //     },
+        //     StateReport::BuySigB {
+        //         arb_block_height,
+        //         acc_block_height,
+        //         buy_tx_seen,
+        //         arb_lock_confirmations,
+        //         acc_lock_confirmations,
+        //         blocks_until_cancel_possible,
+        //         cancel_confirmations,
+        //         blocks_until_refund,
+        //         blocks_until_punish_possible,
+        //         blocks_until_safe_monero_buy_sweep,
+        //     } => farcaster::State {
+        //         state: Some(farcaster::state::State::BuySigB(BuySigB {
+        //             arb_block_height,
+        //             acc_block_height,
+        //             buy_tx_seen,
+        //             arb_lock_confirmations: arb_lock_confirmations
+        //                 .map(|c| farcaster::buy_sig_b::ArbLockConfirmations::ArbConfs(c)),
+        //             acc_lock_confirmations: acc_lock_confirmations
+        //                 .map(|c| farcaster::buy_sig_b::AccLockConfirmations::AccConfs(c)),
+        //             blocks_until_cancel_possible: blocks_until_cancel_possible
+        //                 .map(|b| farcaster::buy_sig_b::BlocksUntilCancelPossible::CancelBlocks(b)),
+        //             cancel_confirmations: cancel_confirmations
+        //                 .map(|c| farcaster::buy_sig_b::CancelConfirmations::CancelConfs(c)),
+        //             blocks_until_refund: blocks_until_refund
+        //                 .map(|b| farcaster::buy_sig_b::BlocksUntilRefund::RefundBlocks(b)),
+        //             blocks_until_punish_possible: blocks_until_punish_possible
+        //                 .map(|b| farcaster::buy_sig_b::BlocksUntilPunishPossible::PunishBlocks(b)),
+        //             blocks_until_safe_monero_buy_sweep: blocks_until_safe_monero_buy_sweep.map(
+        //                 |b| farcaster::buy_sig_b::BlocksUntilSafeMoneroBuySweep::BuyMoneroBlocks(b),
+        //             ),
+        //         })),
+        //     },
+        //     StateReport::FinishB(outcome) => farcaster::State {
+        //         state: Some(farcaster::state::State::FinishB(FinishB {
+        //             outcome: farcaster::Outcome::from(outcome).into(),
+        //         })),
+        //     },
+        // }
     }
 }
 

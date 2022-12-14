@@ -63,7 +63,8 @@ end
 t_swap -> peerd : Msg Reveal (taker is sender)
 peerd -> m_swap : Msg Reveal (taker is sender)
 group for Bob swap role
-m_swap -> m_swap : ADD Msg Reveal
+// Add Alice reveal message to state for later processing once the funding transaction is available 
+m_swap -> m_swap : Add to state Msg Reveal
 m_swap -> m_farcasterd : Ctl FundingInfo
 m_swap -> m_syncer: Watch Arbitrating Funding Address
 
@@ -72,7 +73,8 @@ peerd <- m_swap : Msg Reveal (maker is sender)
 peerd -> t_swap : Msg Reveal (maker is sender)
 
 group for Bob swap role
-t_swap -> t_swap : ADD Msg Reveal
+// Add Alice reveal message to state for later processing once the funding transaction is available 
+t_swap -> t_swap : Add to state Msg Reveal
 t_swap -> t_farcasterd : Ctl FundingInfo
 m_swap -> m_syncer: Watch Arbitrating Funding Address
 end
@@ -104,7 +106,8 @@ activate t_swap
 t_swap -> t_syncer: Sync Task(Broadcast Arbitrating Lock)
 t_swap -> t_syncer : Sync Task(Watch Accordant Lock)
 t_swap -> t_syncer : Sync Task(Watch Buy)
-t_swap -> t_swap: ADD Pending Msg BuyProcSig
+// Add this to the state so we can emit it once Accordant Lock is final
+t_swap -> t_swap: Add to state Msg BuyProcSig
 t_swap -> t_database : Ctl CheckpointSwapBobPreBuySig
 deactivate t_swap
 
@@ -144,9 +147,13 @@ m_swap <- m_syncer : Sync Event(Buy seen on mempool)
 activate t_swap
 t_swap <- t_syncer : Sync Event(Buy seen on mempool)
 parallel off
+m_swap -> m_farcasterd: Ctl SwapOutcome(Success Swap)
 t_swap -> t_swap : recover accordant keys
-t_swap -> t_swap : ADD Pending SweepMonero
 deactivate t_swap
+t_syncer -> t_swap : Sync Event(Monero sweepable)
+t_swap -> t_syncer : Sync Task(Sweep Monero)
+t_syncer -> t_swap : Sync Event(Sweep Success)
+t_swap -> t_farcasterd : Ctl SwapOutcome(Success Swap)
 
 ==Cancel Init t > t0: Bob is left, Alice right, either have a fully signed and valid cancel tx, and can publish==
 parallel
@@ -165,11 +172,16 @@ t_syncer -> t_swap : Sync Event(Refund seen)
 activate m_swap
 m_syncer -> m_swap : Sync Event(Refund seen)
 parallel off
+t_swap -> t_farcasterd : Ctl SwapOutcome(Refund Swap)
 m_swap -> m_swap : recover accordant keys
-m_swap -> m_swap : ADD Pending SweepMonero
 deactivate m_swap
+m_syncer -> m_swap : Sync Event(Monero sweepable)
+m_swap -> m_syncer : Sync Task(Sweep Monero)
+m_syncer -> m_swap : Sync Event(Sweep Success)
+m_swap -> m_farcasterd : Ctl SwapOutcome(Refund Swap)
 
 == Punish process t > t1 > t0 ==
 m_swap<-m_syncer:Ctl Punish valid
 m_swap->m_syncer: Sync Task(Broadcast Punish)
+m_swap->m_farcasterd: Ctl SwapOutcome(Punish Swap)
 

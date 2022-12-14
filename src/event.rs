@@ -204,6 +204,21 @@ impl<'esb> Event<'esb> {
         )
     }
 
+    /// Sends reply request via SYNC message bus to a specific service (different from the event
+    /// originating service).
+    pub fn send_sync_service(
+        &mut self,
+        service: ServiceId,
+        request: sync::SyncMsg,
+    ) -> Result<(), esb::Error<ServiceId>> {
+        self.endpoints.send_to(
+            ServiceBus::Sync,
+            self.service.clone(),
+            service,
+            BusMsg::Sync(request),
+        )
+    }
+
     /// Finalizes event processing by sending reply request via RPC message bus to a client
     pub fn send_client_info(
         &mut self,
