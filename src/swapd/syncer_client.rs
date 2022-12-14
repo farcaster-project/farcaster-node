@@ -170,7 +170,11 @@ impl SyncerState {
     }
     pub fn watch_addr_btc(&mut self, address: bitcoin::Address, tx_label: TxLabel) -> Task {
         if self.is_watched_addr(&tx_label) {
-            warn!("{} | Address already watched for {} - notifications will be repeated", self.swap_id.swap_id(), tx_label.label());
+            warn!(
+                "{} | Address already watched for {} - notifications will be repeated",
+                self.swap_id.swap_id(),
+                tx_label.label()
+            );
         }
         let id = self.tasks.new_taskid();
         let from_height = self.from_height(Blockchain::Bitcoin, 6);
@@ -213,7 +217,11 @@ impl SyncerState {
         from_height: Option<u64>,
     ) -> Task {
         if self.is_watched_addr(&tx_label) {
-            warn!("{} | Address already watched for {} - notifications will be repeated", self.swap_id.swap_id(), tx_label.label());
+            warn!(
+                "{} | Address already watched for {} - notifications will be repeated",
+                self.swap_id.swap_id(),
+                tx_label.label()
+            );
         }
         debug!(
             "{} | Address's secret view key for {}: {}",

@@ -766,10 +766,7 @@ fn try_bob_init_taker_to_bob_taker_maker_commit(
             let task = runtime
                 .syncer_state
                 .watch_addr_btc(funding_address.clone(), txlabel);
-            event.send_sync_service(
-                runtime.syncer_state.bitcoin_syncer(),
-                SyncMsg::Task(task),
-            )?;
+            event.send_sync_service(runtime.syncer_state.bitcoin_syncer(), SyncMsg::Task(task))?;
             let reveal =
                 wallet.handle_maker_commit(remote_commit.clone(), runtime.swap_id.clone())?;
             runtime.log_debug("Wallet handled maker commit and produced reveal");
@@ -1055,10 +1052,8 @@ fn try_bob_funded_to_bob_refund_procedure_signature(
                 let task = runtime
                     .syncer_state
                     .watch_addr_xmr(spend, view, txlabel, None);
-                event.send_sync_service(
-                    runtime.syncer_state.monero_syncer(),
-                    SyncMsg::Task(task),
-                )?
+                event
+                    .send_sync_service(runtime.syncer_state.monero_syncer(), SyncMsg::Task(task))?
             } else {
                 runtime
                     .log_error("On Bob state, but local params not Bob or remote params not Alice");
