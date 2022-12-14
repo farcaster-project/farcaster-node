@@ -1395,7 +1395,6 @@ fn try_bob_canceled_to_bob_cancel_final(
             .temporal_safety
             .final_tx(confirmations, Blockchain::Bitcoin)
             && runtime.syncer_state.tasks.watched_txs.get(&id) == Some(&TxLabel::Cancel)
-            && runtime.syncer_state.buy_tx_confs.is_none()
             && runtime.txs.contains_key(&TxLabel::Refund) =>
         {
             runtime.syncer_state.handle_tx_confs(
