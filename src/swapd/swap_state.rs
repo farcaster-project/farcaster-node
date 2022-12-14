@@ -9,6 +9,7 @@ use farcaster_core::{
     blockchain::Blockchain,
     role::{SwapRole, TradeRole},
     swap::btcxmr::message::BuyProcedureSignature,
+    transaction::Fundable,
     transaction::TxLabel,
 };
 use microservices::esb::Handler;
@@ -32,7 +33,7 @@ use crate::{
     swapd::{
         runtime::aggregate_xmr_spend_view,
         syncer_client::{log_tx_created, log_tx_seen},
-        wallet::{HandleBuyProcedureSignatureRes, HandleRefundProcedureSignaturesRes},
+        wallet::{BobState, HandleBuyProcedureSignatureRes, HandleRefundProcedureSignaturesRes},
     },
     syncerd::{
         Abort, Boolean, SweepSuccess, Task, TaskTarget, TransactionConfirmations,
@@ -694,7 +695,6 @@ fn attempt_transition_to_init_maker(
                 commit.clone(),
             )?;
             let local_params = wallet.local_params();
-            let funding_address = wallet.funding_address();
             runtime.peer_service = peerd;
             if runtime.peer_service != ServiceId::Loopback {
                 runtime.connected = true;
@@ -715,20 +715,31 @@ fn attempt_transition_to_init_maker(
             // send maker commit message to counter-party
             runtime.log_trace(format!("sending peer MakerCommit msg {}", &local_commit));
             runtime.send_peer(event.endpoints, PeerMsg::MakerCommit(local_commit.clone()))?;
-            match swap_role {
-                SwapRole::Bob => Ok(Some(SwapStateMachine::BobInitMaker(BobInitMaker {
-                    local_commit,
-                    local_params,
-                    funding_address: funding_address.unwrap(),
-                    remote_commit: commit,
-                    wallet,
-                    reveal: None,
-                }))),
-                SwapRole::Alice => Ok(Some(SwapStateMachine::AliceInitMaker(AliceInitMaker {
-                    local_params,
-                    remote_commit: commit,
-                    wallet,
-                }))),
+            match (swap_role, wallet.clone()) {
+                (SwapRole::Bob, Wallet::Bob(BobState { funding_tx, .. })) => {
+                    Ok(Some(SwapStateMachine::BobInitMaker(BobInitMaker {
+                        local_commit,
+                        local_params,
+                        funding_address: funding_tx.get_address().ok().unwrap(),
+                        remote_commit: commit,
+                        wallet,
+                        reveal: None,
+                    })))
+                }
+                (SwapRole::Alice, Wallet::Alice(_)) => {
+                    Ok(Some(SwapStateMachine::AliceInitMaker(AliceInitMaker {
+                        local_params,
+                        remote_commit: commit,
+                        wallet,
+                    })))
+                }
+                _ => {
+                    runtime.log_error(format!(
+                        "Invalid swap role {} for wallet {:?}",
+                        swap_role, wallet
+                    ));
+                    Ok(None)
+                }
             }
         }
         BusMsg::Ctl(CtlMsg::AbortSwap) => handle_abort_swap(event, runtime),
