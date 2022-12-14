@@ -1123,10 +1123,10 @@ fn try_bob_refund_procedure_signatures_to_bob_accordant_lock(
             && runtime.syncer_state.tasks.watched_addrs.get(&id) == Some(&TxLabel::AccLock) =>
         {
             let amount = monero::Amount::from_pico(amount.clone());
-            if amount < runtime.syncer_state.monero_amount {
+            if amount < runtime.public_offer.offer.accordant_amount {
                 runtime.log_warn(format!(
                     "Not enough monero locked: expected {}, found {}",
-                    runtime.syncer_state.monero_amount, amount
+                    runtime.public_offer.offer.accordant_amount, amount
                 ));
                 return Ok(None);
             }
@@ -1541,7 +1541,7 @@ fn try_alice_core_arbitrating_setup_to_alice_arbitrating_lock_final(
                 let address =
                     monero::Address::from_viewpair(runtime.syncer_state.network.into(), &viewpair);
                 let swap_id = runtime.swap_id();
-                let amount = runtime.syncer_state.monero_amount;
+                let amount = runtime.public_offer.offer.accordant_amount;
                 let funding_info = MoneroFundingInfo {
                     swap_id,
                     address,
