@@ -862,8 +862,8 @@ impl Wallet {
                     key_manager,
                     pub_offer,
                     remote_commit: Some(remote_commit),
-                    remote_params,  // None
-                    remote_proof,   // None
+                    remote_params, // None
+                    remote_proof,  // None
                     ..
                 }) = self
                 {

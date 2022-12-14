@@ -954,8 +954,7 @@ fn try_bob_reveal_to_bob_funded(
 
             // process tx with wallet
             wallet.process_funding_tx(Tx::Funding(tx), runtime.swap_id)?;
-            let core_arb_setup =
-                wallet.create_core_arb(runtime.swap_id.clone())?;
+            let core_arb_setup = wallet.create_core_arb(runtime.swap_id.clone())?;
 
             // register a watch task for arb lock, cancel, and refund
             for (&tx, tx_label) in [
@@ -2172,7 +2171,10 @@ fn attempt_transition_to_bob_reveal(
                     return Err(Error::Farcaster(msg));
                 };
 
-            if wallet.handle_alice_reveals(reveal.clone(), runtime.swap_id).is_err() {
+            if wallet
+                .handle_alice_reveals(reveal.clone(), runtime.swap_id)
+                .is_err()
+            {
                 let msg = "wallet failed to handle reveal".to_string();
                 runtime.log_error(&msg);
                 return Err(Error::Farcaster(msg));
