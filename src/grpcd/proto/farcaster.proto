@@ -79,7 +79,7 @@ message SwapInfoResponse {
     string connection = 2;
     uint64 uptime = 3;
     uint64 since= 4;
-    string public_offer = 5;
+    OfferInfo offer = 5;
     bool connected = 6;
     TradeRole trade_role = 7;
     SwapRole swap_role = 8;
@@ -94,18 +94,23 @@ message OfferInfoRequest {
 
 message OfferInfoResponse {
     uint32 id = 1;
-    uint64 arbitrating_amount = 2;
-    uint64 accordant_amount = 3;
-    uint32 cancel_timelock = 4;
-    uint32 punish_timelock = 5;
-    string fee_strategy = 6;
-    SwapRole maker_role = 7;
-    string uuid = 8;
-    Network network = 9;
-    Blockchain arbitrating_blockchain = 10;
-    Blockchain accordant_blockchain = 11;
-    string node_id = 12;
-    string peer_address = 13;
+    OfferInfo offer_info = 2;
+}
+
+message OfferInfo {
+    uint64 arbitrating_amount = 1;
+    uint64 accordant_amount = 2;
+    uint32 cancel_timelock = 3;
+    uint32 punish_timelock = 4;
+    string fee_strategy = 5;
+    SwapRole maker_role = 6;
+    string uuid = 7;
+    Network network = 8;
+    Blockchain arbitrating_blockchain = 9;
+    Blockchain accordant_blockchain = 10;
+    string node_id = 11;
+    string peer_address = 12;
+    string encoded_offer = 13;
 }
 
 message PeersRequest {
@@ -131,7 +136,7 @@ enum OfferSelector {
 
 message ListOffersResponse {
     uint32 id = 1;
-    repeated string public_offers = 2;
+    repeated OfferInfo offers = 2;
 }
 
 message CheckpointsRequest {
@@ -151,7 +156,7 @@ enum CheckpointSelector {
 
 message CheckpointEntry {
     string swap_id = 1;
-    string public_offer = 2;
+    OfferInfo offer = 2;
     TradeRole trade_role = 3;
 }
 
@@ -206,7 +211,7 @@ message MakeRequest {
  
 message MakeResponse {
     uint32 id = 1;
-    string offer = 2;
+    OfferInfo offer = 2;
 }
 
 message TakeRequest {

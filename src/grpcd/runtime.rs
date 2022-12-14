@@ -147,6 +147,32 @@ impl From<Outcome> for farcaster::Outcome {
     }
 }
 
+impl From<PublicOffer> for OfferInfo {
+    fn from(public_offer: PublicOffer) -> OfferInfo {
+        OfferInfo {
+            arbitrating_amount: public_offer.offer.arbitrating_amount.as_sat(),
+            accordant_amount: public_offer.offer.accordant_amount.as_pico(),
+            cancel_timelock: public_offer.offer.cancel_timelock.as_u32(),
+            punish_timelock: public_offer.offer.punish_timelock.as_u32(),
+            fee_strategy: public_offer.offer.fee_strategy.to_string(),
+            maker_role: farcaster::SwapRole::from(public_offer.offer.maker_role).into(),
+            uuid: public_offer.offer.uuid.to_string(),
+            network: farcaster::Network::from(public_offer.offer.network).into(),
+            arbitrating_blockchain: farcaster::Blockchain::from(
+                public_offer.offer.arbitrating_blockchain,
+            )
+            .into(),
+            accordant_blockchain: farcaster::Blockchain::from(
+                public_offer.offer.accordant_blockchain,
+            )
+            .into(),
+            node_id: public_offer.node_id.to_string(),
+            peer_address: public_offer.peer_address.to_string(),
+            encoded_offer: public_offer.to_string(),
+        }
+    }
+}
+
 impl From<StateReport> for farcaster::State {
     fn from(state_report: StateReport) -> farcaster::State {
         let state = farcaster::State {
@@ -489,7 +515,7 @@ impl Farcaster for FarcasterService {
                     connected,
                     uptime: uptime.as_secs(),
                     since: since,
-                    public_offer: public_offer.to_string(),
+                    offer: Some(public_offer.into()),
                     trade_role: farcaster::TradeRole::from(local_trade_role).into(),
                     swap_role: farcaster::SwapRole::from(local_swap_role).into(),
                     connected_counterparty_node_id: connected_counterparty_node_id
@@ -525,14 +551,17 @@ impl Farcaster for FarcasterService {
             Ok(BusMsg::Info(InfoMsg::OfferList(mut offers))) => {
                 let reply = ListOffersResponse {
                     id,
-                    public_offers: offers.drain(..).map(|o| o.offer).collect(),
+                    offers: offers
+                        .drain(..)
+                        .map(|o| OfferInfo::from(o.details))
+                        .collect(),
                 };
                 Ok(GrpcResponse::new(reply))
             }
             Ok(BusMsg::Info(InfoMsg::OfferStatusList(mut offers))) => {
                 let reply = ListOffersResponse {
                     id,
-                    public_offers: offers.drain(..).map(|o| o.offer.to_string()).collect(),
+                    offers: offers.drain(..).map(|o| OfferInfo::from(o.offer)).collect(),
                 };
                 Ok(GrpcResponse::new(reply))
             }
@@ -556,24 +585,7 @@ impl Farcaster for FarcasterService {
 
         let reply = OfferInfoResponse {
             id,
-            arbitrating_amount: public_offer.offer.arbitrating_amount.as_sat(),
-            accordant_amount: public_offer.offer.accordant_amount.as_pico(),
-            cancel_timelock: public_offer.offer.cancel_timelock.as_u32(),
-            punish_timelock: public_offer.offer.punish_timelock.as_u32(),
-            fee_strategy: public_offer.offer.fee_strategy.to_string(),
-            maker_role: farcaster::SwapRole::from(public_offer.offer.maker_role).into(),
-            uuid: public_offer.offer.uuid.to_string(),
-            network: farcaster::Network::from(public_offer.offer.network).into(),
-            arbitrating_blockchain: farcaster::Blockchain::from(
-                public_offer.offer.arbitrating_blockchain,
-            )
-            .into(),
-            accordant_blockchain: farcaster::Blockchain::from(
-                public_offer.offer.accordant_blockchain,
-            )
-            .into(),
-            node_id: public_offer.node_id.to_string(),
-            peer_address: public_offer.peer_address.to_string(),
+            offer_info: Some(public_offer.into()),
         };
         Ok(GrpcResponse::new(reply))
     }
@@ -633,7 +645,7 @@ impl Farcaster for FarcasterService {
                         .iter()
                         .map(|entry| farcaster::CheckpointEntry {
                             swap_id: format!("{:#x}", entry.swap_id),
-                            public_offer: format!("{}", entry.public_offer),
+                            offer: Some(entry.public_offer.clone().into()),
                             trade_role: farcaster::TradeRole::from(entry.trade_role) as i32,
                         })
                         .collect(),
@@ -843,7 +855,7 @@ impl Farcaster for FarcasterService {
             Ok(BusMsg::Info(InfoMsg::MadeOffer(made_offer))) => {
                 let reply = farcaster::MakeResponse {
                     id,
-                    offer: made_offer.offer_info.offer,
+                    offer: Some(made_offer.offer_info.details.into()),
                 };
                 Ok(GrpcResponse::new(reply))
             }
