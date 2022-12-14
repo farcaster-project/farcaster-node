@@ -148,6 +148,23 @@ impl From<farcaster::OfferSelector> for OfferStatusSelector {
     }
 }
 
+impl From<FundingInfo> for farcaster::FundingInfo {
+    fn from(t: FundingInfo) -> farcaster::FundingInfo {
+        match t {
+            FundingInfo::Bitcoin(b_info) => farcaster::FundingInfo {
+                swap_id: b_info.swap_id.to_string(),
+                address: b_info.address.to_string(),
+                amount: b_info.amount.as_sat(),
+            },
+            FundingInfo::Monero(m_info) => farcaster::FundingInfo {
+                swap_id: m_info.swap_id.to_string(),
+                address: m_info.address.to_string(),
+                amount: m_info.amount.as_pico(),
+            },
+        }
+    }
+}
+
 impl From<Outcome> for farcaster::Outcome {
     fn from(t: Outcome) -> farcaster::Outcome {
         match t {
@@ -1050,12 +1067,12 @@ impl Farcaster for FarcasterService {
             .await?;
 
         match oneshot_rx.await {
-            Ok(BusMsg::Info(InfoMsg::FundingInfos(infos))) => {
+            Ok(BusMsg::Info(InfoMsg::FundingInfos(mut infos))) => {
                 let reply = NeedsFundingResponse {
                     id,
                     funding_infos: infos
                         .swaps_need_funding
-                        .iter()
+                        .drain(..)
                         .filter(|info| {
                             if network_selector == NetworkSelector::AllNetworks {
                                 true
@@ -1072,18 +1089,7 @@ impl Farcaster for FarcasterService {
                                 }
                             }
                         })
-                        .map(|info| match info {
-                            FundingInfo::Bitcoin(b_info) => farcaster::FundingInfo {
-                                swap_id: b_info.swap_id.to_string(),
-                                address: b_info.address.to_string(),
-                                amount: b_info.amount.as_sat(),
-                            },
-                            FundingInfo::Monero(m_info) => farcaster::FundingInfo {
-                                swap_id: m_info.swap_id.to_string(),
-                                address: m_info.address.to_string(),
-                                amount: m_info.amount.as_pico(),
-                            },
-                        })
+                        .map(|info| farcaster::FundingInfo::from(info))
                         .collect(),
                 };
                 Ok(GrpcResponse::new(reply))
