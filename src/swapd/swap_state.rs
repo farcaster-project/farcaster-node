@@ -1576,7 +1576,7 @@ fn try_alice_core_arbitrating_setup_to_alice_arbitrating_lock_final(
                 Ok(None)
             }
         }
-        _ => handle_alice_swap_interrupt_afer_lock(event, runtime, wallet),
+        _ => handle_alice_swap_interrupt_after_lock(event, runtime, wallet),
     }
 }
 
@@ -1722,7 +1722,7 @@ fn try_alice_arbitrating_lock_final_to_alice_accordant_lock(
                 AliceAccordantLock { wallet },
             )))
         }
-        _ => handle_alice_swap_interrupt_afer_lock(event, runtime, wallet),
+        _ => handle_alice_swap_interrupt_after_lock(event, runtime, wallet),
     }
 }
 
@@ -1783,7 +1783,7 @@ fn try_alice_accordant_lock_to_alice_buy_procedure_signature(
             runtime.checkpoint_state(event.endpoints, None, new_ssm.clone())?;
             Ok(Some(new_ssm))
         }
-        _ => handle_alice_swap_interrupt_afer_lock(event, runtime, wallet),
+        _ => handle_alice_swap_interrupt_after_lock(event, runtime, wallet),
     }
 }
 
