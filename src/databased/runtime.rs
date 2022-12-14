@@ -13,6 +13,7 @@ use farcaster_core::swap::btcxmr::PublicOffer;
 use farcaster_core::swap::SwapId;
 use lmdb::{Cursor, Transaction as LMDBTransaction};
 use std::convert::TryInto;
+use std::io::Cursor as IoCursor;
 use std::path::PathBuf;
 use strict_encoding::{StrictDecode, StrictEncode};
 
@@ -116,7 +117,7 @@ impl Runtime {
                     service_id: ServiceId::Swap(swap_id),
                 }) {
                     Ok(raw_state) => {
-                        match CheckpointSwapd::strict_decode(std::io::Cursor::new(raw_state)) {
+                        match CheckpointSwapd::strict_decode(IoCursor::new(raw_state)) {
                             Ok(state) => {
                                 endpoints.send_to(
                                     ServiceBus::Ctl,
@@ -438,7 +439,7 @@ impl Database {
         let res = cursor
             .iter()
             .filter_map(|(key, val)| {
-                let status = OfferStatus::strict_decode(std::io::Cursor::new(val.to_vec()));
+                let status = OfferStatus::strict_decode(IoCursor::new(val.to_vec()));
                 let filtered_status = match status {
                     Err(err) => {
                         return Some(Err(Error::from(err)));
@@ -456,7 +457,7 @@ impl Database {
                     _ => None,
                 }?;
                 Some(
-                    PublicOffer::strict_decode(std::io::Cursor::new(key.to_vec()))
+                    PublicOffer::strict_decode(IoCursor::new(key.to_vec()))
                         .map(|offer| OfferStatusPair {
                             offer,
                             status: filtered_status,
@@ -514,8 +515,8 @@ impl Database {
             .iter()
             .map(|(key, val)| {
                 Ok((
-                    bitcoin::Address::strict_decode(std::io::Cursor::new(key.to_vec()))?,
-                    BitcoinSecretKeyInfo::strict_decode(std::io::Cursor::new(val.to_vec()))?
+                    bitcoin::Address::strict_decode(IoCursor::new(key.to_vec()))?,
+                    BitcoinSecretKeyInfo::strict_decode(IoCursor::new(val.to_vec()))?
                         .swap_id,
                 ))
             })
@@ -570,7 +571,7 @@ impl Database {
             .map(|(key, val)| {
                 Ok((
                     monero::Address::from_bytes(key)?,
-                    MoneroSecretKeyInfo::strict_decode(std::io::Cursor::new(val.to_vec()))?.swap_id,
+                    MoneroSecretKeyInfo::strict_decode(IoCursor::new(val.to_vec()))?.swap_id,
                 ))
             })
             .collect();
@@ -612,7 +613,7 @@ impl Database {
         let tx = self.0.begin_ro_txn()?;
         let val = tx.get(db, &key.as_bytes())?.to_vec();
         tx.abort();
-        Ok(CheckpointEntry::strict_decode(std::io::Cursor::new(val))?)
+        Ok(CheckpointEntry::strict_decode(IoCursor::new(val))?)
     }
 
     fn get_all_checkpoint_info(&mut self) -> Result<Vec<CheckpointEntry>, Error> {
@@ -622,7 +623,7 @@ impl Database {
         let res = cursor
             .iter()
             .map(|(_, value)| {
-                Ok(CheckpointEntry::strict_decode(std::io::Cursor::new(
+                Ok(CheckpointEntry::strict_decode(IoCursor::new(
                     value.to_vec(),
                 ))?)
             })
