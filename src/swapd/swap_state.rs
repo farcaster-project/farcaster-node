@@ -1885,7 +1885,10 @@ fn try_alice_canceled_to_alice_refund_or_alice_punish(
                     Ok(Some(SwapStateMachine::AlicePunish))
                 }
                 // hit this path if Alice overfunded, moved on to AliceCanceled,
-                // but could not broadcast cancel yet since not available
+                // but could not broadcast cancel yet since not available,
+                // so broadcast if available now
+                // Note that this will also broadcast if Bob broadcasted cancel,
+                // which is fine
                 Some(TxLabel::Lock)
                     if runtime.temporal_safety.valid_cancel(confirmations)
                         && runtime.txs.contains_key(&TxLabel::Cancel) =>
