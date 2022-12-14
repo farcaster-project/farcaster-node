@@ -350,26 +350,7 @@ fn attempt_transition_to_end(
             } else {
                 event.send_client_info(source, InfoMsg::String("Nothing to sweep.".to_string()))?;
             }
-
-            runtime.registered_services = runtime
-                .registered_services
-                .clone()
-                .drain()
-                .filter(|service| {
-                    if let ServiceId::Syncer(..) = service {
-                        if !runtime.syncer_has_client(service) {
-                            info!("Terminating {}", service);
-                            event
-                                .send_ctl_service(service.clone(), CtlMsg::Terminate)
-                                .is_err()
-                        } else {
-                            true
-                        }
-                    } else {
-                        true
-                    }
-                })
-                .collect();
+            runtime.clean_up_after_syncer_usage(event.endpoints)?;
             Ok(None)
         }
 
@@ -393,25 +374,7 @@ fn attempt_transition_to_end(
                     }),
                 )?;
             }
-            runtime.registered_services = runtime
-                .registered_services
-                .clone()
-                .drain()
-                .filter(|service| {
-                    if let ServiceId::Syncer(..) = service {
-                        if !runtime.syncer_has_client(service) {
-                            info!("Terminating {}", service);
-                            event
-                                .send_ctl_service(service.clone(), CtlMsg::Terminate)
-                                .is_err()
-                        } else {
-                            true
-                        }
-                    } else {
-                        true
-                    }
-                })
-                .collect();
+            runtime.clean_up_after_syncer_usage(event.endpoints)?;
             Ok(None)
         }
 
@@ -431,25 +394,7 @@ fn attempt_transition_to_end(
                     ),
                 }),
             )?;
-            runtime.registered_services = runtime
-                .registered_services
-                .clone()
-                .drain()
-                .filter(|service| {
-                    if let ServiceId::Syncer(..) = service {
-                        if !runtime.syncer_has_client(service) {
-                            info!("Terminating {}", service);
-                            event
-                                .send_ctl_service(service.clone(), CtlMsg::Terminate)
-                                .is_err()
-                        } else {
-                            true
-                        }
-                    } else {
-                        true
-                    }
-                })
-                .collect();
+            runtime.clean_up_after_syncer_usage(event.endpoints)?;
             Ok(None)
         }
 
@@ -457,25 +402,7 @@ fn attempt_transition_to_end(
             if syncer == syncer_id && res.id == syncer_task_id =>
         {
             event.send_ctl_service(source, CtlMsg::HealthResult(res.health))?;
-            runtime.registered_services = runtime
-                .registered_services
-                .clone()
-                .drain()
-                .filter(|service| {
-                    if let ServiceId::Syncer(..) = service {
-                        if !runtime.syncer_has_client(service) {
-                            info!("Terminating {}", service);
-                            event
-                                .send_ctl_service(service.clone(), CtlMsg::Terminate)
-                                .is_err()
-                        } else {
-                            true
-                        }
-                    } else {
-                        true
-                    }
-                })
-                .collect();
+            runtime.clean_up_after_syncer_usage(event.endpoints)?;
             Ok(None)
         }
         (req, source) => {

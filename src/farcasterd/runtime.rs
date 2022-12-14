@@ -834,6 +834,34 @@ impl Runtime {
         Ok(())
     }
 
+    pub fn clean_up_after_syncer_usage(&mut self, endpoints: &mut Endpoints) -> Result<(), Error> {
+        self.registered_services = self
+            .registered_services
+            .clone()
+            .drain()
+            .filter(|service| {
+                if let ServiceId::Syncer(..) = service {
+                    if !self.syncer_has_client(service) {
+                        info!("Terminating {}", service);
+                        endpoints
+                            .send_to(
+                                ServiceBus::Ctl,
+                                self.identity(),
+                                service.clone(),
+                                BusMsg::Ctl(CtlMsg::Terminate),
+                            )
+                            .is_err()
+                    } else {
+                        true
+                    }
+                } else {
+                    true
+                }
+            })
+            .collect();
+        Ok(())
+    }
+
     pub fn consumed_deals_contains(&self, deal: &Deal) -> bool {
         self.trade_state_machines
             .iter()
