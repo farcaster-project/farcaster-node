@@ -837,7 +837,7 @@ fn try_bob_taker_maker_commit_to_bob_reveal(
         local_params,
         funding_address,
         remote_commit,
-        mut wallet,
+        wallet,
         reveal,
     } = bob_taker_maker_commit;
     attempt_transition_to_bob_reveal(
@@ -848,7 +848,7 @@ fn try_bob_taker_maker_commit_to_bob_reveal(
         funding_address,
         remote_commit,
         TradeRole::Taker,
-        &mut wallet,
+        wallet,
         reveal,
     )
 }
@@ -876,7 +876,7 @@ fn try_bob_init_maker_to_bob_reveal(
         local_params,
         funding_address,
         remote_commit,
-        mut wallet,
+        wallet,
         reveal,
     } = bob_init_maker;
     attempt_transition_to_bob_reveal(
@@ -887,7 +887,7 @@ fn try_bob_init_maker_to_bob_reveal(
         funding_address,
         remote_commit,
         TradeRole::Maker,
-        &mut wallet,
+        wallet,
         reveal,
     )
 }
@@ -2157,7 +2157,7 @@ fn attempt_transition_to_bob_reveal(
     funding_address: bitcoin::Address,
     remote_commit: Commit,
     local_trade_role: TradeRole,
-    wallet: &mut Wallet,
+    mut wallet: Wallet,
     reveal: Option<Reveal>,
 ) -> Result<Option<SwapStateMachine>, Error> {
     match event.request.clone() {
@@ -2200,7 +2200,7 @@ fn attempt_transition_to_bob_reveal(
                     required_funding_amount,
                     funding_address,
                     remote_params,
-                    wallet: wallet.clone(),
+                    wallet,
                 })))
             } else {
                 // fee estimate not available yet, defer handling for later
@@ -2211,7 +2211,7 @@ fn attempt_transition_to_bob_reveal(
                         local_params,
                         funding_address,
                         remote_commit,
-                        wallet: wallet.clone(),
+                        wallet,
                         reveal: Some(reveal),
                     }))),
                     TradeRole::Taker => Ok(Some(SwapStateMachine::BobTakerMakerCommit(
@@ -2220,7 +2220,7 @@ fn attempt_transition_to_bob_reveal(
                             local_params,
                             funding_address,
                             remote_commit,
-                            wallet: wallet.clone(),
+                            wallet,
                             reveal: Some(reveal),
                         },
                     ))),
@@ -2228,7 +2228,7 @@ fn attempt_transition_to_bob_reveal(
             }
         }
         BusMsg::Ctl(CtlMsg::AbortSwap) => {
-            handle_bob_abort_swap(event, runtime, wallet.clone(), funding_address)
+            handle_bob_abort_swap(event, runtime, wallet, funding_address)
         }
         // catch-all for when fee estimate was not available when received reveal from Alice
         // if fee estimate available now, transition to BobReveal
@@ -2263,7 +2263,7 @@ fn attempt_transition_to_bob_reveal(
                     required_funding_amount,
                     funding_address,
                     remote_params,
-                    wallet: wallet.clone(),
+                    wallet,
                 })))
             } else {
                 Ok(None)
