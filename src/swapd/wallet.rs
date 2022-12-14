@@ -752,8 +752,9 @@ impl Wallet {
                     }
                 } else {
                     error!(
-                        "{} | Wallet not found or not on correct state",
+                        "{} | Not correct wallet, should be Bob: {:?}",
                         swap_id.swap_id(),
+                        self
                     );
                     return Err(Error::Farcaster(
                         "Needs to be a Bob wallet to process Alice Commit".to_string(),
