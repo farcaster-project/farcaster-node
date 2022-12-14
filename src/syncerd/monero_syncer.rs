@@ -71,7 +71,7 @@ pub struct Transaction {
     block_hash: Option<Vec<u8>>,
 }
 
-fn create_monero_rpc_client(rpc_url: String, proxy_url: Option<String>) -> monero_rpc::RpcClient {
+fn create_rpc_client(rpc_url: String, proxy_url: Option<String>) -> monero_rpc::RpcClient {
     let mut client_builder = monero_rpc::RpcClientBuilder::new();
     if let Some(proxy_url) = proxy_url {
         client_builder = client_builder.proxy_address(proxy_url);
@@ -84,9 +84,8 @@ fn create_monero_rpc_client(rpc_url: String, proxy_url: Option<String>) -> moner
 impl MoneroRpc {
     fn new(node_rpc_url: String, proxy_url: Option<String>) -> Self {
         MoneroRpc {
-            daemon_json_rpc: create_monero_rpc_client(node_rpc_url.clone(), proxy_url.clone())
-                .daemon(),
-            daemon_rpc: create_monero_rpc_client(node_rpc_url, proxy_url).daemon_rpc(),
+            daemon_json_rpc: create_rpc_client(node_rpc_url.clone(), proxy_url.clone()).daemon(),
+            daemon_rpc: create_rpc_client(node_rpc_url, proxy_url).daemon_rpc(),
             height: 0,
             block_hash: vec![0],
         }
@@ -492,7 +491,7 @@ async fn run_syncerd_task_receiver(
                         }
                         Task::HealthCheck(HealthCheck { id }) => {
                             debug!("performing health check");
-                            let mut health = match create_monero_rpc_client(
+                            let mut health = match create_rpc_client(
                                 syncer_servers.monero_daemon.clone(),
                                 proxy_address.clone(),
                             )
@@ -504,7 +503,7 @@ async fn run_syncerd_task_receiver(
                                 Err(err) => Health::FaultyMoneroDaemon(err.to_string()),
                             };
 
-                            health = match create_monero_rpc_client(
+                            health = match create_rpc_client(
                                 syncer_servers.monero_daemon.clone(),
                                 proxy_address.clone(),
                             )
@@ -998,7 +997,7 @@ impl Synclet for MoneroSyncer {
                         .unwrap();
                     rt.block_on(async {
                         let wallet_mutex = Arc::new(Mutex::new(
-                            create_monero_rpc_client(
+                            create_rpc_client(
                                 syncer_servers.monero_rpc_wallet.clone(),
                                 proxy_address.clone(),
                             )
