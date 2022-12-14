@@ -79,7 +79,7 @@ message SwapInfoResponse {
     string connection = 2;
     uint64 uptime = 3;
     uint64 since= 4;
-    string public_offer = 5;
+    OfferInfo offer = 5;
     bool connected = 6;
     TradeRole trade_role = 7;
     SwapRole swap_role = 8;
@@ -94,18 +94,23 @@ message OfferInfoRequest {
 
 message OfferInfoResponse {
     uint32 id = 1;
-    uint64 arbitrating_amount = 2;
-    uint64 accordant_amount = 3;
-    uint32 cancel_timelock = 4;
-    uint32 punish_timelock = 5;
-    string fee_strategy = 6;
-    SwapRole maker_role = 7;
-    string uuid = 8;
-    Network network = 9;
-    Blockchain arbitrating_blockchain = 10;
-    Blockchain accordant_blockchain = 11;
-    string node_id = 12;
-    string peer_address = 13;
+    OfferInfo offer_info = 2;
+}
+
+message OfferInfo {
+    uint64 arbitrating_amount = 1;
+    uint64 accordant_amount = 2;
+    uint32 cancel_timelock = 3;
+    uint32 punish_timelock = 4;
+    string fee_strategy = 5;
+    SwapRole maker_role = 6;
+    string uuid = 7;
+    Network network = 8;
+    Blockchain arbitrating_blockchain = 9;
+    Blockchain accordant_blockchain = 10;
+    string node_id = 11;
+    string peer_address = 12;
+    string encoded_offer = 13;
 }
 
 message PeersRequest {
@@ -132,7 +137,7 @@ enum OfferSelector {
 
 message ListOffersResponse {
     uint32 id = 1;
-    repeated string public_offers = 2;
+    repeated OfferInfo offers = 2;
 }
 
 message CheckpointsRequest {
@@ -153,7 +158,7 @@ enum CheckpointSelector {
 
 message CheckpointEntry {
     string swap_id = 1;
-    string public_offer = 2;
+    OfferInfo offer = 2;
     TradeRole trade_role = 3;
 }
 
@@ -209,7 +214,7 @@ message MakeRequest {
  
 message MakeResponse {
     uint32 id = 1;
-    string offer = 2;
+    OfferInfo offer = 2;
 }
 
 message TakeRequest {
@@ -267,114 +272,35 @@ message StateTransition {
 }
 
 message State {
-    oneof state {
-        StartA start_a = 1;
-        CommitA commit_a = 2;
-        RevealA reveal_a = 3;
-        RefundSigA refund_sig_a = 4;
-        FinishA finish_a = 5;
-        StartB start_b = 6;
-        CommitB commit_b = 7;
-        RevealB reveal_b = 8;
-        CoreArbB core_arb_b = 9;
-        BuySigB buy_sig_b = 10;
-        FinishB finish_b = 11;
-    }
-}
-
-message StartA {}
-message CommitA {}
-message RevealA {}
-message FinishA {
-    Outcome outcome = 1;
-}
-message StartB {}
-message CommitB {}
-message RevealB {}
-message FinishB {
-    Outcome outcome = 1;
-}
-
-message RefundSigA {
-    uint64 arb_block_height = 1;
-    uint64 acc_block_height = 2;
-    bool arb_locked = 3;
-    bool acc_locked = 4;
-    bool buy_published = 5;
-    bool cancel_seen = 6;
-    bool refund_seen = 7;
-    bool overfunded = 8;
+    string state = 1;
+    uint64 arb_block_height = 2;
+    uint64 acc_block_height = 3;
+    bool arb_locked = 4;
+    bool acc_locked = 5;
+    bool canceled = 6;
+    bool buy_seen = 7;
+    bool refund_seen = 8;
+    bool overfunded = 9;
     oneof arb_lock_confirmations {
-        uint32 arb_confs = 9;
+        uint32 arb_confs = 10;
     }
     oneof acc_lock_confirmations {
-        uint32 acc_confs = 10;
-    }
-    oneof blocks_until_cancel_possible {
-        int64 cancel_blocks = 11;
+        uint32 acc_confs = 11;
     }
     oneof cancel_confirmations {
         uint32 cancel_confs = 12;
     }
-    oneof blocks_until_punish_possible {
-        int64 punish_blocks = 13;
-    }
-    oneof blocks_until_safe_buy {
-        uint32 buy_blocks = 14;
-    }
-}
-
-message CoreArbB {
-    uint64 arb_block_height = 1;
-    uint64 acc_block_height = 2;
-    bool arb_locked = 3;
-    bool acc_locked = 4;
-    bool buy_published = 5;
-    bool refund_seen = 7;
-    oneof arb_lock_confirmations {
-        uint32 arb_confs = 9;
-    }
-    oneof acc_lock_confirmations {
-        uint32 acc_confs = 10;
-    }
     oneof blocks_until_cancel_possible {
-        int64 cancel_blocks = 11;
-    }
-    oneof cancel_confirmations {
-        uint32 cancel_confs = 12;
-    }
-    oneof blocks_until_refund {
-        int64 refund_blocks = 13;
+        int64 cancel_blocks = 13;
     }
     oneof blocks_until_punish_possible {
         int64 punish_blocks = 14;
     }
-}
-
-message BuySigB {
-    uint64 arb_block_height = 1;
-    uint64 acc_block_height = 2;
-    bool buy_tx_seen = 3;
-    oneof arb_lock_confirmations {
-        uint32 arb_confs = 4;
-    }
-    oneof acc_lock_confirmations {
-        uint32 acc_confs = 5;
-    }
-    oneof blocks_until_cancel_possible {
-        int64 cancel_blocks = 6;
-    }
-    oneof cancel_confirmations {
-        uint32 cancel_confs = 7;
-    }
-    oneof blocks_until_refund {
-        int64 refund_blocks = 8;
-    }
-    oneof blocks_until_punish_possible {
-        int64 punish_blocks = 9;
+    oneof blocks_until_safe_buy {
+        uint32 buy_blocks = 15;
     }
     oneof blocks_until_safe_monero_buy_sweep {
-        uint32 buy_monero_blocks = 10;
+        uint32 buy_monero_blocks = 16;
     }
 }
 

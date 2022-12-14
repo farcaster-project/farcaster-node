@@ -381,7 +381,6 @@ impl TradeStateMachine {
                 peerd,
                 public_offer,
                 trade_role,
-                swap_id,
                 ..
             }) => {
                 // Peerd is none, implies a connect event is possible. A connect
@@ -389,9 +388,6 @@ impl TradeStateMachine {
                 // thus has to match the address of the offer.
                 if *trade_role == TradeRole::Taker && peerd.is_none() {
                     Some(node_addr_from_public_offer(public_offer))
-                } else if peerd.is_none() {
-                    error!("{} | As a maker, the peerd should never be None", swap_id);
-                    None
                 } else {
                     None
                 }
@@ -1463,9 +1459,10 @@ fn attempt_transition_to_end(
                         .unwrap();
                     rt.block_on(async {
                         let host = auto_fund_config.monero_rpc_wallet;
-                        let wallet_client =
-                            monero_rpc::RpcClient::new(host);
-                        let wallet = wallet_client.wallet();
+                        let wallet = monero_rpc::RpcClientBuilder::new()
+                            .build(host)
+                            .expect("client builder failed, cannot recover from bad configuration")
+                            .wallet();
                         let options = monero_rpc::TransferOptions::default();
 
                         let mut auto_funded = false;

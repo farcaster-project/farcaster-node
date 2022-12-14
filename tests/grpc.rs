@@ -96,7 +96,7 @@ async fn grpc_server_functional_test() {
     // Test revoke offer
     let request = tonic::Request::new(RevokeOfferRequest {
         id: 4,
-        public_offer: offer.to_string(),
+        public_offer: offer.unwrap().encoded_offer,
     });
     let response = farcaster_client_1.revoke_offer(request).await;
     assert_eq!(response.unwrap().into_inner().id, 4);
@@ -114,7 +114,7 @@ async fn grpc_server_functional_test() {
     // Test Offer info
     let offer_info_request = tonic::Request::new(OfferInfoRequest {
         id: 21,
-        public_offer: offer.clone().to_string(),
+        public_offer: offer.clone().unwrap().encoded_offer,
     });
     let response = farcaster_client_2.offer_info(offer_info_request).await;
     assert_eq!(response.unwrap().into_inner().id, 21);
@@ -131,7 +131,7 @@ async fn grpc_server_functional_test() {
     // Test take offer
     let take_request = TakeRequest {
         id: 5,
-        public_offer: offer.to_string(),
+        public_offer: offer.unwrap().encoded_offer,
         bitcoin_address: btc_address.to_string(),
         monero_address: xmr_address.to_string(),
     };
@@ -187,7 +187,7 @@ async fn grpc_server_functional_test() {
     let btc_address = bitcoin_rpc.get_new_address(None, None).unwrap();
     let take_request = TakeRequest {
         id: 5,
-        public_offer: offer.to_string(),
+        public_offer: offer.unwrap().encoded_offer,
         bitcoin_address: btc_address.to_string(),
         monero_address: xmr_address.to_string(),
     };

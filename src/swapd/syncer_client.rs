@@ -54,6 +54,7 @@ pub struct SyncerState {
     pub confirmation_bound: u32,
     pub lock_tx_confs: Option<SyncMsg>,
     pub cancel_tx_confs: Option<SyncMsg>,
+    pub buy_tx_confs: Option<SyncMsg>,
     pub network: farcaster_core::blockchain::Network,
     pub bitcoin_syncer: ServiceId,
     pub monero_syncer: ServiceId,
@@ -168,6 +169,13 @@ impl SyncerState {
         task
     }
     pub fn watch_addr_btc(&mut self, address: bitcoin::Address, tx_label: TxLabel) -> Task {
+        if self.is_watched_addr(&tx_label) {
+            warn!(
+                "{} | Address already watched for {} - notifications will be repeated",
+                self.swap_id.swap_id(),
+                tx_label.label()
+            );
+        }
         let id = self.tasks.new_taskid();
         let from_height = self.from_height(Blockchain::Bitcoin, 6);
         self.tasks.watched_addrs.insert(id, tx_label);
@@ -200,6 +208,7 @@ impl SyncerState {
         height - delta
     }
 
+    /// Watches an xmr address. If no `from_height` is provided, it will be set to current_height - 20.
     pub fn watch_addr_xmr(
         &mut self,
         spend: monero::PublicKey,
@@ -207,6 +216,13 @@ impl SyncerState {
         tx_label: TxLabel,
         from_height: Option<u64>,
     ) -> Task {
+        if self.is_watched_addr(&tx_label) {
+            warn!(
+                "{} | Address already watched for {} - notifications will be repeated",
+                self.swap_id.swap_id(),
+                tx_label.label()
+            );
+        }
         debug!(
             "{} | Address's secret view key for {}: {}",
             self.swap_id.bright_blue_italic(),

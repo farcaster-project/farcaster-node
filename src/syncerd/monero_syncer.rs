@@ -72,10 +72,23 @@ pub struct Transaction {
 }
 
 impl MoneroRpc {
-    fn new(node_rpc_url: String) -> Self {
+    fn new(node_rpc_url: String, proxy_url: Option<String>) -> Self {
+        let mut client_builder = monero_rpc::RpcClientBuilder::new();
+        if let Some(proxy_url) = proxy_url {
+            client_builder = client_builder.proxy_address(proxy_url);
+        }
+        let daemon_json_rpc = client_builder
+            .clone()
+            .build(node_rpc_url.clone())
+            .expect("client builder failed, cannot recover from bad configuration")
+            .daemon();
+        let daemon_rpc = client_builder
+            .build(node_rpc_url)
+            .expect("client builder failed, cannot recover from bad configuration")
+            .daemon_rpc();
         MoneroRpc {
-            daemon_json_rpc: monero_rpc::RpcClient::new(node_rpc_url.clone()).daemon(),
-            daemon_rpc: monero_rpc::RpcClient::new(node_rpc_url).daemon_rpc(),
+            daemon_json_rpc,
+            daemon_rpc,
             height: 0,
             block_hash: vec![0],
         }
@@ -480,23 +493,27 @@ async fn run_syncerd_task_receiver(
                         }
                         Task::HealthCheck(HealthCheck { id }) => {
                             debug!("performing health check");
-                            let mut health = match monero_rpc::RpcClient::new(
-                                syncer_servers.monero_daemon.clone(),
-                            )
-                            .daemon()
-                            .get_block_count()
-                            .await
+                            let mut health = match monero_rpc::RpcClientBuilder::new()
+                                .build(syncer_servers.monero_daemon.clone())
+                                .expect(
+                                    "client builder failed, cannot recover from bad configuration",
+                                )
+                                .daemon()
+                                .get_block_count()
+                                .await
                             {
                                 Ok(_) => Health::Healthy,
                                 Err(err) => Health::FaultyMoneroDaemon(err.to_string()),
                             };
 
-                            health = match monero_rpc::RpcClient::new(
-                                syncer_servers.monero_rpc_wallet.clone(),
-                            )
-                            .wallet()
-                            .get_version()
-                            .await
+                            health = match monero_rpc::RpcClientBuilder::new()
+                                .build(syncer_servers.monero_rpc_wallet.clone())
+                                .expect(
+                                    "client builder failed, cannot recover from bad configuration",
+                                )
+                                .wallet()
+                                .get_version()
+                                .await
                             {
                                 Ok(_) => health,
                                 Err(err) => Health::FaultyMoneroRpcWallet(err.to_string()),
@@ -556,7 +573,7 @@ fn address_polling(
     wallet_mutex: Arc<Mutex<monero_rpc::WalletClient>>,
 ) -> tokio::task::JoinHandle<()> {
     tokio::task::spawn(async move {
-        let mut rpc = MoneroRpc::new(syncer_servers.monero_daemon);
+        let mut rpc = MoneroRpc::new(syncer_servers.monero_daemon, None);
         loop {
             let state_guard = state.lock().await;
             let mut addresses = state_guard.addresses.clone();
@@ -655,7 +672,7 @@ fn height_polling(
     syncer_servers: MoneroSyncerServers,
 ) -> tokio::task::JoinHandle<()> {
     tokio::task::spawn(async move {
-        let mut rpc = MoneroRpc::new(syncer_servers.monero_daemon);
+        let mut rpc = MoneroRpc::new(syncer_servers.monero_daemon, None);
         loop {
             let block_notif = match rpc.check_block().await {
                 Ok(notif) => Some(notif),
@@ -749,7 +766,7 @@ fn unseen_transaction_polling(
     syncer_servers: MoneroSyncerServers,
 ) -> tokio::task::JoinHandle<()> {
     tokio::task::spawn(async move {
-        let mut rpc = MoneroRpc::new(syncer_servers.monero_daemon);
+        let mut rpc = MoneroRpc::new(syncer_servers.monero_daemon, None);
         loop {
             let state_guard = state.lock().await;
             let unseen_transactions = state_guard.unseen_transactions.clone();
@@ -812,6 +829,7 @@ async fn fetch_balance(
     wallet_dir_path: Option<PathBuf>,
     address: monero::Address,
     viewkey: PrivateKey,
+    creation_height: Option<u64>,
 ) -> Result<monero::Amount, Error> {
     let wallet_filename = format!("balance:{}", address);
     let password = s!(" ");
@@ -829,7 +847,7 @@ async fn fetch_balance(
         );
         wallet
             .generate_from_keys(GenerateFromKeysArgs {
-                restore_height: Some(0), // fixme
+                restore_height: creation_height,
                 filename: wallet_filename.clone(),
                 address,
                 spendkey: None,
@@ -841,7 +859,7 @@ async fn fetch_balance(
     }
 
     let (account, addrs) = (0, None);
-    wallet.refresh(Some(0)).await?; // fixme
+    wallet.refresh(creation_height).await?;
     let balance = wallet.get_balance(account, addrs).await?;
 
     if let Some(path) = wallet_dir_path {
@@ -877,6 +895,7 @@ fn balance_fetcher(
                         wallet_dir_path.clone(),
                         address,
                         secret_key_info.view,
+                        secret_key_info.creation_height,
                     )
                     .await
                     {
@@ -976,7 +995,11 @@ impl Synclet for MoneroSyncer {
                         .unwrap();
                     rt.block_on(async {
                         let wallet_mutex = Arc::new(Mutex::new(
-                            monero_rpc::RpcClient::new(syncer_servers.monero_rpc_wallet.clone())
+                            monero_rpc::RpcClientBuilder::new()
+                                .build(syncer_servers.monero_rpc_wallet.clone())
+                                .expect(
+                                    "client builder failed, cannot recover from bad configuration",
+                                )
                                 .wallet(),
                         ));
                         let (balance_get_tx, balance_get_rx): (

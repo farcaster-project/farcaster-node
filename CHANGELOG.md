@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.7.0] - 2022-12-13
+
 ### Changed
 
 - Swap wallet by @TheCharlatan in <https://github.com/farcaster-project/farcaster-node/pull/789>
@@ -237,7 +239,8 @@ Initial version of Farcaster Node :tada:
 - Farcaster daemon to orchestrate the micro-services
 - Swap cli to control farcasterd and other services
 
-[Unreleased]: https://github.com/farcaster-project/farcaster-node/compare/v0.6.0...HEAD
+[Unreleased]: https://github.com/farcaster-project/farcaster-node/compare/v0.7.0...HEAD
+[0.7.0]: https://github.com/farcaster-project/farcaster-node/compare/v0.6.0...v0.7.0
 [0.6.0]: https://github.com/farcaster-project/farcaster-node/compare/v0.5.0...v0.6.0
 [0.5.0]: https://github.com/farcaster-project/farcaster-node/compare/v0.4.0...v0.5.0
 [0.4.0]: https://github.com/farcaster-project/farcaster-node/compare/v0.3.0...v0.4.0

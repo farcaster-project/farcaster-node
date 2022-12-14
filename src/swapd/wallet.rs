@@ -723,9 +723,9 @@ impl Wallet {
                 }) = self
                 {
                     if remote_commit.is_some() {
-                        error!("{} | Bob commit (remote) already set", swap_id.swap_id());
+                        error!("{} | Bob Commit (remote) already set", swap_id.swap_id());
                     } else {
-                        trace!("Setting bob commit");
+                        trace!("Setting Bob Commit");
                         *remote_commit = Some(commit);
                     }
                 } else {
@@ -734,7 +734,7 @@ impl Wallet {
                         swap_id.swap_id(),
                     );
                     return Err(Error::Farcaster(
-                        "Needs to be an alice wallet to process bob commit".to_string(),
+                        "Needs to be an Alice wallet to process Bob Commit".to_string(),
                     ));
                 }
             }
@@ -745,9 +745,9 @@ impl Wallet {
                 }) = self
                 {
                     if remote_commit.is_some() {
-                        error!("{} | Alice commit (remote) already set", swap_id.swap_id());
+                        error!("{} | Alice Commit (remote) already set", swap_id.swap_id());
                     } else {
-                        trace!("Setting alice commit");
+                        trace!("Setting Alice Commit");
                         *remote_commit = Some(commit);
                     }
                 } else {
@@ -756,7 +756,7 @@ impl Wallet {
                         swap_id.swap_id(),
                     );
                     return Err(Error::Farcaster(
-                        "Needs to be a bob wallet to process alice commit".to_string(),
+                        "Needs to be a Bob wallet to process Alice Commit".to_string(),
                     ));
                 }
             }
@@ -854,7 +854,7 @@ impl Wallet {
         swap_id: SwapId,
     ) -> Result<(Option<Reveal>, CoreArbitratingSetup), Error> {
         match reveal {
-            // getting parameters from counterparty alice routed through
+            // getting parameters from counterparty Alice routed through
             // swapd, thus I'm Bob on this swap: Bob can proceed
             Reveal::Alice { parameters, proof } => {
                 if let Wallet::Bob(BobState {
