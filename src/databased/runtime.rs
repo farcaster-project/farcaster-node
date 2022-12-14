@@ -528,7 +528,7 @@ impl Database {
         address: &monero::Address,
         secret_key_info: &MoneroSecretKeyInfo,
     ) -> Result<(), Error> {
-        let db = self.0.open_db(Some(LMDB_BITCOIN_ADDRESSES))?;
+        let db = self.0.open_db(Some(LMDB_MONERO_ADDRESSES))?;
         let mut tx = self.0.begin_rw_txn()?;
         let key = address.as_bytes();
         let mut val = vec![];
@@ -549,7 +549,7 @@ impl Database {
         &mut self,
         address: &monero::Address,
     ) -> Result<MoneroSecretKeyInfo, Error> {
-        let db = self.0.open_db(Some(LMDB_BITCOIN_ADDRESSES))?;
+        let db = self.0.open_db(Some(LMDB_MONERO_ADDRESSES))?;
         let tx = self.0.begin_ro_txn()?;
         let key = address.as_bytes();
         let val = MoneroSecretKeyInfo::strict_decode(tx.get(db, &key)?)?;
@@ -559,8 +559,8 @@ impl Database {
 
     fn get_all_monero_addresses(
         &mut self,
-    ) -> Result<Vec<(monero::Address, Option<SwapId>)>, lmdb::Error> {
-        let db = self.0.open_db(Some(LMDB_BITCOIN_ADDRESSES))?;
+    ) -> Result<Vec<(monero::Address, Option<SwapId>)>, Error> {
+        let db = self.0.open_db(Some(LMDB_MONERO_ADDRESSES))?;
         let tx = self.0.begin_ro_txn()?;
         let mut cursor = tx.open_ro_cursor(db)?;
         let res = cursor
