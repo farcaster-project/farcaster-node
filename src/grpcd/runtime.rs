@@ -1089,7 +1089,7 @@ impl Farcaster for FarcasterService {
                                 }
                             }
                         })
-                        .map(|info| farcaster::FundingInfo::from(info))
+                        .map(farcaster::FundingInfo::from)
                         .collect(),
                 };
                 Ok(GrpcResponse::new(reply))
