@@ -226,7 +226,8 @@ impl Runtime {
                 Ok(list) => {
                     self.send_client_info(endpoints, source, InfoMsg::CheckpointList(list.into()))?;
                 }
-                Err(_) => {
+                Err(err) => {
+                    error!("Failed to retrieve checkpoint info list: {}", err);
                     self.send_client_ctl(
                         endpoints,
                         source,
@@ -241,9 +242,10 @@ impl Runtime {
             InfoMsg::GetCheckpointEntry(swap_id) => {
                 match self.database.get_checkpoint_info(&swap_id) {
                     Ok(entry) => {
-                        self.send_client_info(endpoints, source, InfoMsg::CheckpointEntry(entry))?
+                        self.send_client_info(endpoints, source, InfoMsg::CheckpointEntry(entry))?;
                     }
-                    Err(_) => {
+                    Err(err) => {
+                        warn!("Failed to retrieve checkpoint entry: {}", err);
                         self.send_client_ctl(
                             endpoints,
                             source,
