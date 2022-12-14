@@ -852,7 +852,7 @@ impl Wallet {
         &mut self,
         reveal: Reveal,
         swap_id: SwapId,
-    ) -> Result<(Option<Reveal>, CoreArbitratingSetup), Error> {
+    ) -> Result<Option<Reveal>, Error> {
         match reveal {
             // getting parameters from counterparty Alice routed through
             // swapd, thus I'm Bob on this swap: Bob can proceed
@@ -904,7 +904,7 @@ impl Wallet {
                         None
                     };
 
-                    Ok((reveal, self.create_core_arb(swap_id)?))
+                    Ok(reveal)
                 } else {
                     error!("{} | only Some(Wallet::Bob)", swap_id.swap_id());
                     Err(Error::Farcaster("Only wallet::Bob is allowed".to_string()))

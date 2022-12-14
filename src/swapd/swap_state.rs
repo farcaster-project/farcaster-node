@@ -356,7 +356,6 @@ pub struct BobReveal {
     funding_address: bitcoin::Address,
     remote_params: Params,
     wallet: Wallet,
-    alice_reveal: Reveal,
 }
 
 #[derive(Clone, Debug, StrictEncode, StrictDecode)]
@@ -838,7 +837,7 @@ fn try_bob_taker_maker_commit_to_bob_reveal(
         local_params,
         funding_address,
         remote_commit,
-        wallet,
+        mut wallet,
         reveal,
     } = bob_taker_maker_commit;
     attempt_transition_to_bob_reveal(
@@ -849,7 +848,7 @@ fn try_bob_taker_maker_commit_to_bob_reveal(
         funding_address,
         remote_commit,
         TradeRole::Taker,
-        wallet,
+        &mut wallet,
         reveal,
     )
 }
@@ -877,7 +876,7 @@ fn try_bob_init_maker_to_bob_reveal(
         local_params,
         funding_address,
         remote_commit,
-        wallet,
+        mut wallet,
         reveal,
     } = bob_init_maker;
     attempt_transition_to_bob_reveal(
@@ -888,7 +887,7 @@ fn try_bob_init_maker_to_bob_reveal(
         funding_address,
         remote_commit,
         TradeRole::Maker,
-        wallet,
+        &mut wallet,
         reveal,
     )
 }
@@ -915,7 +914,6 @@ fn try_bob_reveal_to_bob_funded(
         local_params,
         remote_params,
         mut wallet,
-        alice_reveal,
         required_funding_amount,
         funding_address,
     } = bob_reveal;
@@ -956,13 +954,8 @@ fn try_bob_reveal_to_bob_funded(
 
             // process tx with wallet
             wallet.process_funding_tx(Tx::Funding(tx), runtime.swap_id)?;
-            let (reveal, core_arb_setup) =
-                wallet.handle_alice_reveals(alice_reveal, runtime.swap_id.clone())?;
-
-            if let Some(reveal) = reveal {
-                runtime.log_info("Sending Bob reveal to Alice");
-                runtime.send_peer(event.endpoints, PeerMsg::Reveal(reveal))?;
-            }
+            let core_arb_setup =
+                wallet.create_core_arb(runtime.swap_id.clone())?;
 
             // register a watch task for arb lock, cancel, and refund
             for (&tx, tx_label) in [
@@ -2164,7 +2157,7 @@ fn attempt_transition_to_bob_reveal(
     funding_address: bitcoin::Address,
     remote_commit: Commit,
     local_trade_role: TradeRole,
-    wallet: Wallet,
+    wallet: &mut Wallet,
     reveal: Option<Reveal>,
 ) -> Result<Option<SwapStateMachine>, Error> {
     match event.request.clone() {
@@ -2178,6 +2171,15 @@ fn attempt_transition_to_bob_reveal(
                     runtime.log_error(&msg);
                     return Err(Error::Farcaster(msg));
                 };
+
+            if wallet.handle_alice_reveals(reveal.clone(), runtime.swap_id).is_err() {
+                let msg = "wallet failed to handle reveal".to_string();
+                runtime.log_error(&msg);
+                return Err(Error::Farcaster(msg));
+            };
+
+            runtime.log_info("Sending Bob reveal to Alice");
+            runtime.send_peer(event.endpoints, PeerMsg::Reveal(reveal.clone()))?;
 
             if let Some(sat_per_kvb) = runtime.syncer_state.btc_fee_estimate_sat_per_kvb {
                 runtime.log_debug("Sending funding info to farcasterd");
@@ -2198,8 +2200,7 @@ fn attempt_transition_to_bob_reveal(
                     required_funding_amount,
                     funding_address,
                     remote_params,
-                    wallet,
-                    alice_reveal: reveal,
+                    wallet: wallet.clone(),
                 })))
             } else {
                 // fee estimate not available yet, defer handling for later
@@ -2210,7 +2211,7 @@ fn attempt_transition_to_bob_reveal(
                         local_params,
                         funding_address,
                         remote_commit,
-                        wallet,
+                        wallet: wallet.clone(),
                         reveal: Some(reveal),
                     }))),
                     TradeRole::Taker => Ok(Some(SwapStateMachine::BobTakerMakerCommit(
@@ -2219,7 +2220,7 @@ fn attempt_transition_to_bob_reveal(
                             local_params,
                             funding_address,
                             remote_commit,
-                            wallet,
+                            wallet: wallet.clone(),
                             reveal: Some(reveal),
                         },
                     ))),
@@ -2227,7 +2228,7 @@ fn attempt_transition_to_bob_reveal(
             }
         }
         BusMsg::Ctl(CtlMsg::AbortSwap) => {
-            handle_bob_abort_swap(event, runtime, wallet, funding_address)
+            handle_bob_abort_swap(event, runtime, wallet.clone(), funding_address)
         }
         // catch-all for when fee estimate was not available when received reveal from Alice
         // if fee estimate available now, transition to BobReveal
@@ -2262,8 +2263,7 @@ fn attempt_transition_to_bob_reveal(
                     required_funding_amount,
                     funding_address,
                     remote_params,
-                    wallet,
-                    alice_reveal: reveal,
+                    wallet: wallet.clone(),
                 })))
             } else {
                 Ok(None)
