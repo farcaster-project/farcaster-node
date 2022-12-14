@@ -763,15 +763,13 @@ fn try_bob_init_taker_to_bob_taker_maker_commit(
                 funding_address.clone()
             ));
             let txlabel = TxLabel::Funding;
-            if !runtime.syncer_state.is_watched_addr(&txlabel) {
-                let task = runtime
-                    .syncer_state
-                    .watch_addr_btc(funding_address.clone(), txlabel);
-                event.send_sync_service(
-                    runtime.syncer_state.bitcoin_syncer(),
-                    SyncMsg::Task(task),
-                )?;
-            }
+            let task = runtime
+                .syncer_state
+                .watch_addr_btc(funding_address.clone(), txlabel);
+            event.send_sync_service(
+                runtime.syncer_state.bitcoin_syncer(),
+                SyncMsg::Task(task),
+            )?;
             let reveal =
                 wallet.handle_maker_commit(remote_commit.clone(), runtime.swap_id.clone())?;
             runtime.log_debug("Wallet handled maker commit and produced reveal");
@@ -1054,15 +1052,13 @@ fn try_bob_funded_to_bob_refund_procedure_signature(
             {
                 let (spend, view) = aggregate_xmr_spend_view(alice_params, bob_params);
                 let txlabel = TxLabel::AccLock;
-                if !runtime.syncer_state.is_watched_addr(&txlabel) {
-                    let task = runtime
-                        .syncer_state
-                        .watch_addr_xmr(spend, view, txlabel, None);
-                    event.send_sync_service(
-                        runtime.syncer_state.monero_syncer(),
-                        SyncMsg::Task(task),
-                    )?
-                }
+                let task = runtime
+                    .syncer_state
+                    .watch_addr_xmr(spend, view, txlabel, None);
+                event.send_sync_service(
+                    runtime.syncer_state.monero_syncer(),
+                    SyncMsg::Task(task),
+                )?
             } else {
                 runtime
                     .log_error("On Bob state, but local params not Bob or remote params not Alice");
@@ -1558,18 +1554,16 @@ fn try_alice_core_arbitrating_setup_to_alice_arbitrating_lock_final(
                     amount,
                 };
                 let txlabel = TxLabel::AccLock;
-                if !runtime.syncer_state.is_watched_addr(&txlabel) {
-                    let watch_addr_task = runtime.syncer_state.watch_addr_xmr(
-                        spend,
-                        view,
-                        txlabel,
-                        runtime.monero_address_creation_height,
-                    );
-                    event.send_sync_service(
-                        runtime.syncer_state.monero_syncer(),
-                        SyncMsg::Task(watch_addr_task),
-                    )?;
-                }
+                let watch_addr_task = runtime.syncer_state.watch_addr_xmr(
+                    spend,
+                    view,
+                    txlabel,
+                    runtime.monero_address_creation_height,
+                );
+                event.send_sync_service(
+                    runtime.syncer_state.monero_syncer(),
+                    SyncMsg::Task(watch_addr_task),
+                )?;
                 Ok(Some(SwapStateMachine::AliceArbitratingLockFinal(
                     AliceArbitratingLockFinal {
                         wallet,
@@ -2175,15 +2169,13 @@ fn attempt_transition_to_bob_reveal(
                     funding_address.clone(),
                     event.endpoints,
                 )?;
-                if !runtime.syncer_state.is_watched_addr(&TxLabel::Funding) {
-                    let watch_addr_task = runtime
-                        .syncer_state
-                        .watch_addr_btc(funding_address.clone(), TxLabel::Funding);
-                    event.send_sync_service(
-                        runtime.syncer_state.bitcoin_syncer(),
-                        SyncMsg::Task(watch_addr_task),
-                    )?;
-                }
+                let watch_addr_task = runtime
+                    .syncer_state
+                    .watch_addr_btc(funding_address.clone(), TxLabel::Funding);
+                event.send_sync_service(
+                    runtime.syncer_state.bitcoin_syncer(),
+                    SyncMsg::Task(watch_addr_task),
+                )?;
                 Ok(Some(SwapStateMachine::BobReveal(BobReveal {
                     local_params,
                     required_funding_amount,
@@ -2241,15 +2233,13 @@ fn attempt_transition_to_bob_reveal(
                     funding_address.clone(),
                     event.endpoints,
                 )?;
-                if !runtime.syncer_state.is_watched_addr(&TxLabel::Funding) {
-                    let watch_addr_task = runtime
-                        .syncer_state
-                        .watch_addr_btc(funding_address.clone(), TxLabel::Funding);
-                    event.complete_sync_service(
-                        runtime.syncer_state.bitcoin_syncer(),
-                        SyncMsg::Task(watch_addr_task),
-                    )?;
-                }
+                let watch_addr_task = runtime
+                    .syncer_state
+                    .watch_addr_btc(funding_address.clone(), TxLabel::Funding);
+                event.complete_sync_service(
+                    runtime.syncer_state.bitcoin_syncer(),
+                    SyncMsg::Task(watch_addr_task),
+                )?;
                 Ok(Some(SwapStateMachine::BobReveal(BobReveal {
                     local_params,
                     required_funding_amount,
