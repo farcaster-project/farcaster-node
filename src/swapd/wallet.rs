@@ -858,15 +858,12 @@ impl Wallet {
             // swapd, thus I'm Bob on this swap: Bob can proceed
             Reveal::Alice { parameters, proof } => {
                 if let Wallet::Bob(BobState {
-                    bob,
                     local_params,
                     key_manager,
                     pub_offer,
-                    funding_tx,
                     remote_commit: Some(remote_commit),
                     remote_params,  // None
                     remote_proof,   // None
-                    core_arb_setup, // None
                     ..
                 }) = self
                 {
@@ -907,41 +904,56 @@ impl Wallet {
                         None
                     };
 
-                    // set wallet core_arb_txs
-                    if core_arb_setup.is_some() {
-                        error!("{} | Core Arb Txs already set", swap_id.swap_id(),);
-                        return Err(Error::Farcaster("Core arb txs already set".to_string()));
-                    }
-                    if !funding_tx.was_seen() {
-                        error!("{} | Funding not yet seen", swap_id.swap_id());
-                        return Err(Error::Farcaster("Funding not seen yet".to_string()));
-                    }
-                    let core_arbitrating_txs = bob.core_arbitrating_transactions(
-                        &remote_params.clone().expect("alice_params set above"),
-                        local_params,
-                        funding_tx.clone(),
-                        pub_offer.to_arbitrating_params(),
-                    )?;
-                    let cosign_arbitrating_cancel =
-                        bob.cosign_arbitrating_cancel(key_manager, &core_arbitrating_txs)?;
-                    *core_arb_setup = Some(
-                        core_arbitrating_txs
-                            .into_arbitrating_setup(swap_id, cosign_arbitrating_cancel),
-                    );
-                    Ok((
-                        reveal,
-                        core_arb_setup
-                            .clone()
-                            .expect("This is safe, since we just set it to some"),
-                    ))
+                    Ok((reveal, self.create_core_arb(swap_id)?))
                 } else {
                     error!("{} | only Some(Wallet::Bob)", swap_id.swap_id());
-                    Err(Error::Farcaster("Only wallet::Bob is allows".to_string()))
+                    Err(Error::Farcaster("Only wallet::Bob is allowed".to_string()))
                 }
             }
             _ => Err(Error::Farcaster(
                 "handle_alice_reveals can only handle an Alice Reveal".to_string(),
             )),
+        }
+    }
+
+    pub fn create_core_arb(&mut self, swap_id: SwapId) -> Result<CoreArbitratingSetup, Error> {
+        if let Wallet::Bob(BobState {
+            bob,
+            local_params,
+            key_manager,
+            pub_offer,
+            funding_tx,
+            remote_params,  // None
+            core_arb_setup, // None
+            ..
+        }) = self
+        {
+            // set wallet core_arb_txs
+            if core_arb_setup.is_some() {
+                error!("{} | Core Arb Txs already set", swap_id.swap_id(),);
+                return Err(Error::Farcaster("Core arb txs already set".to_string()));
+            }
+            if !funding_tx.was_seen() {
+                error!("{} | Funding not yet seen", swap_id.swap_id());
+                return Err(Error::Farcaster("Funding not seen yet".to_string()));
+            }
+            let core_arbitrating_txs = bob.core_arbitrating_transactions(
+                &remote_params.clone().expect("alice_params set above"),
+                local_params,
+                funding_tx.clone(),
+                pub_offer.to_arbitrating_params(),
+            )?;
+            let cosign_arbitrating_cancel =
+                bob.cosign_arbitrating_cancel(key_manager, &core_arbitrating_txs)?;
+            *core_arb_setup = Some(
+                core_arbitrating_txs.into_arbitrating_setup(swap_id, cosign_arbitrating_cancel),
+            );
+            Ok(core_arb_setup
+                .clone()
+                .expect("This is safe, since we just set it to some"))
+        } else {
+            error!("{} | only Some(Wallet::Bob)", swap_id.swap_id());
+            Err(Error::Farcaster("Only wallet::Bob is allowed".to_string()))
         }
     }
 
