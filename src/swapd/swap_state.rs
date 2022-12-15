@@ -84,7 +84,11 @@ use super::{
 ///                               |                                   |
 ///                               |                                   |
 ///                               V                                   V
-///                           BobFunded                   AliceCoreArbitratingSetup
+///                        BobFeeEstimated                AliceCoreArbitratingSetup
+///                               |                                   |
+///                               |                                   |
+///                               V                                   |
+///                           BobFunded                               |
 ///                               |                                   |_____________________
 ///                               |                                   |                     |
 ///                               V                                   V                     |
@@ -175,7 +179,7 @@ pub enum SwapStateMachine {
     /*
         Bob Happy Path States
     */
-    // BobReveal state - transitions to BobAwaitFunding on event FeeEstimation,
+    // BobReveal state - transitions to BobFeeEstimated on event FeeEstimation,
     // or Bob AwaitingBitcoinSweep on request AbortSwap or in case of incorrect
     // funding amount. Sends FundingCompleted to Farcasterd, Reveal to
     // counterparty peer, watches Lock, Cancel and Refund, checkpoints the Bob
@@ -183,9 +187,9 @@ pub enum SwapStateMachine {
     // peer.
     #[display("Bob Reveal")]
     BobReveal(BobReveal),
-    // BobAwaitFunding state - transitions to BobFunded on event AddressTransaction.
+    // BobFeeEstimated state - transitions to BobFunded on event AddressTransaction.
     #[display("Bob Await Funding")]
-    BobAwaitFunding(BobAwaitFunding),
+    BobFeeEstimated(BobFeeEstimated),
     // BobFunded state - transitions to BobRefundProcedureSignatures on request
     // RefundProcedureSignatures or BobAbortAwaitingSweep on request AbortSwap.
     // Broadcasts Lock, watches AccLock, watches Buy, checkpoints the Bob pre
@@ -359,7 +363,7 @@ pub struct AliceReveal {
 }
 
 #[derive(Clone, Debug, StrictEncode, StrictDecode)]
-pub struct BobAwaitFunding {
+pub struct BobFeeEstimated {
     local_params: Params,
     required_funding_amount: Option<bitcoin::Amount>,
     funding_address: bitcoin::Address,
@@ -466,7 +470,7 @@ impl StateMachine<Runtime, Error> for SwapStateMachine {
             SwapStateMachine::BobReveal(bob_reveal) => {
                 try_bob_reveal_to_bob_await_funding(event, runtime, bob_reveal)
             }
-            SwapStateMachine::BobAwaitFunding(bob_await_funding) => {
+            SwapStateMachine::BobFeeEstimated(bob_await_funding) => {
                 try_bob_await_funding_to_bob_funded(event, runtime, bob_await_funding)
             }
             SwapStateMachine::BobFunded(bob_funded) => {
@@ -932,7 +936,7 @@ fn try_bob_reveal_to_bob_await_funding(
         BusMsg::Sync(SyncMsg::Event(SyncEvent::FeeEstimation(_)))
             if required_funding_amount.is_none() =>
         {
-            Ok(Some(SwapStateMachine::BobAwaitFunding(BobAwaitFunding {
+            Ok(Some(SwapStateMachine::BobFeeEstimated(BobFeeEstimated {
                 local_params,
                 remote_params,
                 wallet,
@@ -954,9 +958,9 @@ fn try_bob_reveal_to_bob_await_funding(
 fn try_bob_await_funding_to_bob_funded(
     mut event: Event,
     runtime: &mut Runtime,
-    bob_reveal: BobAwaitFunding,
+    bob_reveal: BobFeeEstimated,
 ) -> Result<Option<SwapStateMachine>, Error> {
-    let BobAwaitFunding {
+    let BobFeeEstimated {
         local_params,
         remote_params,
         mut wallet,
