@@ -735,7 +735,7 @@ fn attempt_transition_to_init_maker(
                 }
                 _ => {
                     runtime.log_error(format!(
-                        "Invalid swap role {} for wallet {:?}",
+                        "Invalid swap role {} for wallet {}",
                         swap_role, wallet
                     ));
                     Ok(None)

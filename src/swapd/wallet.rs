@@ -69,9 +69,11 @@ pub struct HandleBuyProcedureSignatureRes {
     pub buy_tx: bitcoin::Transaction,
 }
 
-#[derive(Clone, Debug, StrictEncode, StrictDecode)]
+#[derive(Clone, Display, Debug, StrictEncode, StrictDecode)]
 pub enum Wallet {
+    #[display("Wallet::Alice")]
     Alice(AliceState),
+    #[display("Wallet::Bob")]
     Bob(BobState),
 }
 
@@ -752,7 +754,7 @@ impl Wallet {
                     }
                 } else {
                     error!(
-                        "{} | Not correct wallet, should be Bob: {:?}",
+                        "{} | Not correct wallet, should be Wallet::Bob: {}",
                         swap_id.swap_id(),
                         self
                     );
