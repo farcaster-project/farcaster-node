@@ -23,14 +23,14 @@ service Farcaster {
 
 message HealthCheckRequest {
     uint32 id = 1;
-    HealthCheckSelector selector = 2;
+    NetworkSelector selector = 2;
 }
 
-enum HealthCheckSelector {
-    CHECK_ALL = 0;
-    CHECK_MAINNET = 1;
-    CHECK_TESTNET = 2;
-    CHECK_LOCAL = 3;
+enum NetworkSelector {
+    ALL_NETWORKS = 0;
+    MAINNET_NETWORKS = 1;
+    TESTNET_NETWORKS = 2;
+    LOCAL_NETWORKS = 3;
 }
 
 message HealthCheckResponse {
@@ -124,7 +124,8 @@ message PeersResponse {
 
 message ListOffersRequest {
     uint32 id = 1;
-    OfferSelector selector = 2;
+    OfferSelector offer_selector = 2;
+    NetworkSelector network_selector = 3;
 }
 
 enum OfferSelector {
@@ -141,7 +142,8 @@ message ListOffersResponse {
 
 message CheckpointsRequest {
     uint32 id = 1;
-    CheckpointSelector selector = 2;
+    CheckpointSelector checkpoint_selector = 2;
+    NetworkSelector network_selector = 3;
 }
 
 message CheckpointsResponse {
@@ -178,6 +180,7 @@ message RestoreCheckpointResponse {
 message FundingAddressesRequest {
     uint32 id = 1;
     Blockchain blockchain = 2;
+    NetworkSelector network_selector = 3;
 }
 
 message FundingAddressesResponse {
@@ -320,6 +323,7 @@ message ConnectSwapResponse {
 message NeedsFundingRequest {
     uint32 id = 1;
     Blockchain blockchain = 2;
+    NetworkSelector network_selector = 3;
 }
 
 message NeedsFundingResponse {
