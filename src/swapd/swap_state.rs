@@ -175,14 +175,17 @@ pub enum SwapStateMachine {
     /*
         Bob Happy Path States
     */
-    // BobReveal state - transitions to BobFunded on event AddressTransaction,
+    // BobReveal state - transitions to BobAwaitFunding on event FeeEstimation,
     // or Bob AwaitingBitcoinSweep on request AbortSwap or in case of incorrect
-    // funding amount.  Sends FundingCompleted to Farcasterd, Reveal to
+    // funding amount. Sends FundingCompleted to Farcasterd, Reveal to
     // counterparty peer, watches Lock, Cancel and Refund, checkpoints the Bob
     // pre Lock state, and sends the CoreArbitratingSetup to the counterparty
     // peer.
     #[display("Bob Reveal")]
     BobReveal(BobReveal),
+    // BobAwaitFunding state - transitions to BobFunded on event AddressTransaction.
+    #[display("Bob Await Funding")]
+    BobAwaitFunding(BobAwaitFunding),
     // BobFunded state - transitions to BobRefundProcedureSignatures on request
     // RefundProcedureSignatures or BobAbortAwaitingSweep on request AbortSwap.
     // Broadcasts Lock, watches AccLock, watches Buy, checkpoints the Bob pre
@@ -356,6 +359,15 @@ pub struct AliceReveal {
 }
 
 #[derive(Clone, Debug, StrictEncode, StrictDecode)]
+pub struct BobAwaitFunding {
+    local_params: Params,
+    required_funding_amount: Option<bitcoin::Amount>,
+    funding_address: bitcoin::Address,
+    remote_params: Params,
+    wallet: Wallet,
+}
+
+#[derive(Clone, Debug, StrictEncode, StrictDecode)]
 pub struct BobFunded {
     local_params: Params,
     funding_address: bitcoin::Address,
@@ -452,7 +464,10 @@ impl StateMachine<Runtime, Error> for SwapStateMachine {
             }
 
             SwapStateMachine::BobReveal(bob_reveal) => {
-                try_bob_reveal_to_bob_funded(event, runtime, bob_reveal)
+                try_bob_reveal_to_bob_await_funding(event, runtime, bob_reveal)
+            }
+            SwapStateMachine::BobAwaitFunding(bob_await_funding) => {
+                try_bob_await_funding_to_bob_funded(event, runtime, bob_await_funding)
             }
             SwapStateMachine::BobFunded(bob_funded) => {
                 try_bob_funded_to_bob_refund_procedure_signature(event, runtime, bob_funded)
@@ -901,23 +916,23 @@ fn try_alice_init_maker_to_alice_reveal(
     attempt_transition_to_alice_reveal(event, runtime, local_params, remote_commit, wallet)
 }
 
-fn try_bob_reveal_to_bob_funded(
-    mut event: Event,
+fn try_bob_reveal_to_bob_await_funding(
+    event: Event,
     runtime: &mut Runtime,
     bob_reveal: BobReveal,
 ) -> Result<Option<SwapStateMachine>, Error> {
     let BobReveal {
         local_params,
         remote_params,
-        mut wallet,
         required_funding_amount,
         funding_address,
+        wallet,
     } = bob_reveal;
     match &event.request {
         BusMsg::Sync(SyncMsg::Event(SyncEvent::FeeEstimation(_)))
             if required_funding_amount.is_none() =>
         {
-            Ok(Some(SwapStateMachine::BobReveal(BobReveal {
+            Ok(Some(SwapStateMachine::BobAwaitFunding(BobAwaitFunding {
                 local_params,
                 remote_params,
                 wallet,
@@ -929,6 +944,26 @@ fn try_bob_reveal_to_bob_funded(
                 funding_address,
             })))
         }
+        BusMsg::Ctl(CtlMsg::AbortSwap) => {
+            handle_bob_abort_swap(event, runtime, wallet, funding_address)
+        }
+        _ => Ok(None),
+    }
+}
+
+fn try_bob_await_funding_to_bob_funded(
+    mut event: Event,
+    runtime: &mut Runtime,
+    bob_reveal: BobAwaitFunding,
+) -> Result<Option<SwapStateMachine>, Error> {
+    let BobAwaitFunding {
+        local_params,
+        remote_params,
+        mut wallet,
+        required_funding_amount,
+        funding_address,
+    } = bob_reveal;
+    match &event.request {
         BusMsg::Sync(SyncMsg::Event(SyncEvent::AddressTransaction(AddressTransaction {
             id,
             amount,
