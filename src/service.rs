@@ -356,18 +356,19 @@ impl TryToServiceId for Option<ServiceId> {
     }
 }
 
-pub trait CtlServer
+pub trait Reporter
 where
     Self: esb::Handler<ServiceBus>,
     esb::Error<ServiceId>: From<Self::Error>,
 {
-    fn report_success_to(
+    fn report_to(&self) -> Option<ServiceId>;
+
+    fn report_success_message(
         &mut self,
         senders: &mut Endpoints,
-        dest: impl TryToServiceId,
         msg: Option<impl ToString>,
     ) -> Result<(), Error> {
-        if let Some(dest) = dest.try_to_service_id() {
+        if let Some(dest) = self.report_to() {
             senders.send_to(
                 ServiceBus::Ctl,
                 self.identity(),
@@ -378,13 +379,28 @@ where
         Ok(())
     }
 
-    fn report_progress_message_to(
+    fn report_progress(
         &mut self,
         senders: &mut Endpoints,
-        dest: impl TryToServiceId,
+        progress: Progress,
+    ) -> Result<(), Error> {
+        if let Some(dest) = self.report_to() {
+            senders.send_to(
+                ServiceBus::Ctl,
+                self.identity(),
+                dest,
+                BusMsg::Ctl(CtlMsg::Progress(progress)),
+            )?;
+        }
+        Ok(())
+    }
+
+    fn report_progress_message(
+        &mut self,
+        senders: &mut Endpoints,
         msg: impl ToString,
     ) -> Result<(), Error> {
-        if let Some(dest) = dest.try_to_service_id() {
+        if let Some(dest) = self.report_to() {
             senders.send_to(
                 ServiceBus::Ctl,
                 self.identity(),
@@ -395,13 +411,8 @@ where
         Ok(())
     }
 
-    fn report_failure_to(
-        &mut self,
-        senders: &mut Endpoints,
-        dest: impl TryToServiceId,
-        failure: Failure,
-    ) -> Error {
-        if let Some(dest) = dest.try_to_service_id() {
+    fn report_failure(&mut self, senders: &mut Endpoints, failure: Failure) -> Error {
+        if let Some(dest) = self.report_to() {
             // Even if we fail, we still have to terminate :)
             let _ = senders.send_to(
                 ServiceBus::Ctl,
@@ -412,7 +423,13 @@ where
         }
         Error::Terminate(failure.to_string())
     }
+}
 
+pub trait CtlServer
+where
+    Self: esb::Handler<ServiceBus>,
+    esb::Error<ServiceId>: From<Self::Error>,
+{
     fn send_ctl(
         &mut self,
         senders: &mut Endpoints,
