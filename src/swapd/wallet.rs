@@ -934,7 +934,7 @@ impl Wallet {
             key_manager,
             deal,
             funding_tx,
-            remote_params,  // None
+            remote_params,
             core_arb_setup, // None
             ..
         }) = self
