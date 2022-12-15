@@ -1,7 +1,7 @@
 use std::time;
 use utils::fc::*;
 
-use farcaster_node::bus::info::MadeOffer;
+use farcaster_node::bus::info::MadeDeal;
 
 #[macro_use]
 extern crate log;
@@ -10,7 +10,7 @@ mod utils;
 
 #[tokio::test]
 #[ignore]
-async fn cli_make_offer() {
+async fn cli_make_deal() {
     let (_, data_dir_maker, _, _) = launch_farcasterd_pair().await;
 
     // Allow some time for the microservices to start and register each other
@@ -43,7 +43,7 @@ async fn cli_make_offer() {
     ];
     args.append(&mut data_dir_maker.iter().map(std::ops::Deref::deref).collect());
 
-    let res: MadeOffer = cli(args).unwrap();
+    let res: MadeDeal = cli(args).unwrap();
     println!("{:?}", res);
 
     // clean up processes

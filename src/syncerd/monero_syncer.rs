@@ -71,11 +71,21 @@ pub struct Transaction {
     block_hash: Option<Vec<u8>>,
 }
 
+fn create_rpc_client(rpc_url: String, proxy_url: Option<String>) -> monero_rpc::RpcClient {
+    let mut client_builder = monero_rpc::RpcClientBuilder::new();
+    if let Some(proxy_url) = proxy_url {
+        client_builder = client_builder.proxy_address(proxy_url);
+    }
+    client_builder
+        .build(rpc_url)
+        .expect("client builder failed, cannot recover from bad configuration")
+}
+
 impl MoneroRpc {
-    fn new(node_rpc_url: String) -> Self {
+    fn new(node_rpc_url: String, proxy_url: Option<String>) -> Self {
         MoneroRpc {
-            daemon_json_rpc: monero_rpc::RpcClient::new(node_rpc_url.clone()).daemon(),
-            daemon_rpc: monero_rpc::RpcClient::new(node_rpc_url).daemon_rpc(),
+            daemon_json_rpc: create_rpc_client(node_rpc_url.clone(), proxy_url.clone()).daemon(),
+            daemon_rpc: create_rpc_client(node_rpc_url, proxy_url).daemon_rpc(),
             height: 0,
             block_hash: vec![0],
         }
@@ -396,6 +406,7 @@ async fn run_syncerd_task_receiver(
     state: Arc<Mutex<SyncerState>>,
     balance_get_tx: TokioSender<(GetAddressBalance, ServiceId)>,
     tx_event: TokioSender<BridgeEvent>,
+    proxy_address: Option<String>,
 ) {
     tokio::spawn(async move {
         loop {
@@ -480,8 +491,9 @@ async fn run_syncerd_task_receiver(
                         }
                         Task::HealthCheck(HealthCheck { id }) => {
                             debug!("performing health check");
-                            let mut health = match monero_rpc::RpcClient::new(
+                            let mut health = match create_rpc_client(
                                 syncer_servers.monero_daemon.clone(),
+                                proxy_address.clone(),
                             )
                             .daemon()
                             .get_block_count()
@@ -491,8 +503,9 @@ async fn run_syncerd_task_receiver(
                                 Err(err) => Health::FaultyMoneroDaemon(err.to_string()),
                             };
 
-                            health = match monero_rpc::RpcClient::new(
-                                syncer_servers.monero_rpc_wallet.clone(),
+                            health = match create_rpc_client(
+                                syncer_servers.monero_daemon.clone(),
+                                proxy_address.clone(),
                             )
                             .wallet()
                             .get_version()
@@ -554,9 +567,10 @@ fn address_polling(
     syncer_servers: MoneroSyncerServers,
     network: monero::Network,
     wallet_mutex: Arc<Mutex<monero_rpc::WalletClient>>,
+    proxy_address: Option<String>,
 ) -> tokio::task::JoinHandle<()> {
     tokio::task::spawn(async move {
-        let mut rpc = MoneroRpc::new(syncer_servers.monero_daemon);
+        let mut rpc = MoneroRpc::new(syncer_servers.monero_daemon, proxy_address);
         loop {
             let state_guard = state.lock().await;
             let mut addresses = state_guard.addresses.clone();
@@ -653,9 +667,10 @@ fn address_polling(
 fn height_polling(
     state: Arc<Mutex<SyncerState>>,
     syncer_servers: MoneroSyncerServers,
+    proxy_address: Option<String>,
 ) -> tokio::task::JoinHandle<()> {
     tokio::task::spawn(async move {
-        let mut rpc = MoneroRpc::new(syncer_servers.monero_daemon);
+        let mut rpc = MoneroRpc::new(syncer_servers.monero_daemon, proxy_address);
         loop {
             let block_notif = match rpc.check_block().await {
                 Ok(notif) => Some(notif),
@@ -747,9 +762,10 @@ fn sweep_polling(
 fn unseen_transaction_polling(
     state: Arc<Mutex<SyncerState>>,
     syncer_servers: MoneroSyncerServers,
+    proxy_address: Option<String>,
 ) -> tokio::task::JoinHandle<()> {
     tokio::task::spawn(async move {
-        let mut rpc = MoneroRpc::new(syncer_servers.monero_daemon);
+        let mut rpc = MoneroRpc::new(syncer_servers.monero_daemon, proxy_address);
         loop {
             let state_guard = state.lock().await;
             let unseen_transactions = state_guard.unseen_transactions.clone();
@@ -812,6 +828,7 @@ async fn fetch_balance(
     wallet_dir_path: Option<PathBuf>,
     address: monero::Address,
     viewkey: PrivateKey,
+    creation_height: Option<u64>,
 ) -> Result<monero::Amount, Error> {
     let wallet_filename = format!("balance:{}", address);
     let password = s!(" ");
@@ -829,7 +846,7 @@ async fn fetch_balance(
         );
         wallet
             .generate_from_keys(GenerateFromKeysArgs {
-                restore_height: Some(0), // fixme
+                restore_height: creation_height,
                 filename: wallet_filename.clone(),
                 address,
                 spendkey: None,
@@ -841,7 +858,7 @@ async fn fetch_balance(
     }
 
     let (account, addrs) = (0, None);
-    wallet.refresh(Some(0)).await?; // fixme
+    wallet.refresh(creation_height).await?;
     let balance = wallet.get_balance(account, addrs).await?;
 
     if let Some(path) = wallet_dir_path {
@@ -877,6 +894,7 @@ fn balance_fetcher(
                         wallet_dir_path.clone(),
                         address,
                         secret_key_info.view,
+                        secret_key_info.creation_height,
                     )
                     .await
                     {
@@ -967,6 +985,9 @@ impl Synclet for MoneroSyncer {
                 debug!("monero syncer servers: {:?}", syncer_servers);
                 let wallet_dir = opts.monero_wallet_dir_path.clone().map(PathBuf::from);
 
+                let proxy_address = opts.shared.tor_proxy.map(|address| address.to_string());
+                debug!("monero synclet using proxy: {:?}", proxy_address);
+
                 let _handle = std::thread::spawn(move || {
                     use tokio::runtime::Builder;
                     let rt = Builder::new_multi_thread()
@@ -976,8 +997,11 @@ impl Synclet for MoneroSyncer {
                         .unwrap();
                     rt.block_on(async {
                         let wallet_mutex = Arc::new(Mutex::new(
-                            monero_rpc::RpcClient::new(syncer_servers.monero_rpc_wallet.clone())
-                                .wallet(),
+                            create_rpc_client(
+                                syncer_servers.monero_rpc_wallet.clone(),
+                                proxy_address.clone(),
+                            )
+                            .wallet(),
                         ));
                         let (balance_get_tx, balance_get_rx): (
                             TokioSender<(GetAddressBalance, ServiceId)>,
@@ -999,6 +1023,7 @@ impl Synclet for MoneroSyncer {
                             Arc::clone(&state),
                             balance_get_tx,
                             event_tx.clone(),
+                            proxy_address.clone(),
                         )
                         .await;
                         run_syncerd_bridge_event_sender(tx, event_rx, syncer_address).await;
@@ -1008,14 +1033,21 @@ impl Synclet for MoneroSyncer {
                             syncer_servers.clone(),
                             network,
                             Arc::clone(&wallet_mutex),
+                            proxy_address.clone(),
                         );
 
                         // transaction polling is done in the same loop
-                        let height_handle =
-                            height_polling(Arc::clone(&state), syncer_servers.clone());
+                        let height_handle = height_polling(
+                            Arc::clone(&state),
+                            syncer_servers.clone(),
+                            proxy_address.clone(),
+                        );
 
-                        let unseen_transaction_handle =
-                            unseen_transaction_polling(Arc::clone(&state), syncer_servers.clone());
+                        let unseen_transaction_handle = unseen_transaction_polling(
+                            Arc::clone(&state),
+                            syncer_servers.clone(),
+                            proxy_address.clone(),
+                        );
 
                         let sweep_handle = sweep_polling(
                             Arc::clone(&state),

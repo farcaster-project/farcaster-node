@@ -4,23 +4,20 @@
 // license that can be found in the LICENSE file or at
 // https://opensource.org/licenses/MIT.
 
-use crate::bus::{
-    info::{BitcoinAddressSwapIdPair, MoneroAddressSwapIdPair},
-    BitcoinSecretKeyInfo, MoneroSecretKeyInfo, Outcome,
-};
 use farcaster_core::blockchain::Blockchain;
-use farcaster_core::swap::btcxmr::PublicOffer;
+use farcaster_core::swap::btcxmr::Deal;
 use farcaster_core::swap::SwapId;
 use lmdb::{Cursor, Transaction as LMDBTransaction};
-use std::convert::TryInto;
+use std::io::Cursor as IoCursor;
 use std::path::PathBuf;
 use strict_encoding::{StrictDecode, StrictEncode};
 
 use crate::bus::{
     ctl::{Checkpoint, CtlMsg},
-    info::{Address, InfoMsg, OfferStatusSelector},
-    AddressSecretKey, BusMsg, CheckpointEntry, Failure, FailureCode, List, OfferStatus,
-    OfferStatusPair, ServiceBus,
+    info::{Address, InfoMsg},
+    info::{BitcoinAddressSwapIdPair, DealStatusSelector, MoneroAddressSwapIdPair},
+    AddressSecretKey, BitcoinSecretKeyInfo, BusMsg, CheckpointEntry, DealStatus, DealStatusPair,
+    Failure, FailureCode, MoneroSecretKeyInfo, Outcome, ServiceBus,
 };
 use crate::{swapd::CheckpointSwapd, Endpoints};
 use crate::{CtlServer, Error, LogStyle, Service, ServiceConfig, ServiceId};
@@ -92,16 +89,14 @@ impl Runtime {
             CtlMsg::Checkpoint(Checkpoint { swap_id, state }) => {
                 let info = CheckpointEntry {
                     swap_id,
-                    public_offer: state.public_offer.clone(),
+                    deal: state.deal.clone(),
                     trade_role: state.local_trade_role.clone(),
                     expected_counterparty_node_id: state.connected_counterparty_node_id.clone(),
                 };
                 debug!("{} | setting checkpoint info entry", swap_id.swap_id());
-                let mut info_encoded = vec![];
-                let _info_size = info.strict_encode(&mut info_encoded);
-                self.database.set_checkpoint_info(&swap_id, &info_encoded)?;
+                self.database.set_checkpoint_info(&swap_id, &info)?;
 
-                debug!("setting swap checkpoint");
+                debug!("{} | setting swap checkpoint", swap_id.swap_id());
                 let key = CheckpointKey {
                     swap_id,
                     service_id: source,
@@ -118,7 +113,7 @@ impl Runtime {
                     service_id: ServiceId::Swap(swap_id),
                 }) {
                     Ok(raw_state) => {
-                        match CheckpointSwapd::strict_decode(std::io::Cursor::new(raw_state)) {
+                        match CheckpointSwapd::strict_decode(IoCursor::new(raw_state)) {
                             Ok(state) => {
                                 endpoints.send_to(
                                     ServiceBus::Ctl,
@@ -172,33 +167,30 @@ impl Runtime {
                     .set_monero_address(&address, &secret_key_info)?;
             }
 
-            CtlMsg::SetOfferStatus(OfferStatusPair { offer, status }) => {
-                self.database.set_offer_status(&offer, &status)?;
+            CtlMsg::SetDealStatus(DealStatusPair { deal, status }) => {
+                self.database.set_deal_status(&deal, &status)?;
             }
 
-            CtlMsg::CleanDanglingOffers => {
-                let checkpointed_pub_offers: Vec<PublicOffer> = self
+            CtlMsg::CleanDanglingDeals => {
+                let checkpointed_pub_deals: Vec<Deal> = self
                     .database
                     .get_all_checkpoint_info()?
-                    .iter()
-                    .filter_map(|(_, info)| {
-                        CheckpointEntry::strict_decode(std::io::Cursor::new(info)).ok()
-                    })
-                    .map(|c| c.public_offer)
+                    .drain(..)
+                    .map(|info| info.deal)
                     .collect();
                 self.database
-                    .get_offers(OfferStatusSelector::InProgress)?
+                    .get_deals(DealStatusSelector::InProgress)?
                     .drain(..)
                     .filter_map(|o| {
-                        if !checkpointed_pub_offers.contains(&o.offer) {
-                            Some(o.offer)
+                        if !checkpointed_pub_deals.contains(&o.deal) {
+                            Some(o.deal)
                         } else {
                             None
                         }
                     })
-                    .map(|offer| {
+                    .map(|deal| {
                         self.database
-                            .set_offer_status(&offer, &OfferStatus::Ended(Outcome::FailureAbort))
+                            .set_deal_status(&deal, &DealStatus::Ended(Outcome::FailureAbort))
                     })
                     .collect::<Result<_, _>>()?;
             }
@@ -218,51 +210,57 @@ impl Runtime {
         request: InfoMsg,
     ) -> Result<(), Error> {
         match request {
-            InfoMsg::ListOffers(selector) => {
-                let offer_status_pairs = self.database.get_offers(selector)?;
+            InfoMsg::ListDeals(selector) => {
+                let deal_status_pairs = self.database.get_deals(selector)?;
                 self.send_client_info(
                     endpoints,
                     source,
-                    InfoMsg::OfferStatusList(offer_status_pairs.into()),
+                    InfoMsg::DealStatusList(deal_status_pairs.into()),
                 )?;
             }
 
             InfoMsg::RetrieveAllCheckpointInfo => {
-                let pairs = self.database.get_all_checkpoint_info()?;
-                let checkpointed_pub_offers: List<CheckpointEntry> = pairs
-                    .iter()
-                    .filter_map(|(_, info)| {
-                        CheckpointEntry::strict_decode(std::io::Cursor::new(info)).ok()
-                    })
-                    .collect();
-                self.send_client_info(
-                    endpoints,
-                    source,
-                    InfoMsg::CheckpointList(checkpointed_pub_offers),
-                )?;
+                match self.database.get_all_checkpoint_info() {
+                    Ok(list) => {
+                        self.send_client_info(
+                            endpoints,
+                            source,
+                            InfoMsg::CheckpointList(list.into()),
+                        )?;
+                    }
+                    Err(err) => {
+                        error!("Failed to retrieve checkpoint info list: {}", err);
+                        self.send_client_ctl(
+                            endpoints,
+                            source,
+                            CtlMsg::Failure(Failure {
+                                code: FailureCode::Unknown,
+                                info: "Failed to retrieve checkpoint list".to_string(),
+                            }),
+                        )?;
+                    }
+                };
             }
 
             InfoMsg::GetCheckpointEntry(swap_id) => {
-                let entry = match self.database.get_checkpoint_info(&swap_id) {
-                    Ok(raw_state) => {
-                        match CheckpointEntry::strict_decode(std::io::Cursor::new(raw_state)) {
-                            Ok(info) => Some(info),
-                            _ => None,
-                        }
+                match self.database.get_checkpoint_info(&swap_id) {
+                    Ok(entry) => {
+                        self.send_client_info(endpoints, source, InfoMsg::CheckpointEntry(entry))?;
                     }
-                    _ => None,
-                };
-                if let Some(entry) = entry {
-                    self.send_client_info(endpoints, source, InfoMsg::CheckpointEntry(entry))?;
-                } else {
-                    self.send_client_ctl(
-                        endpoints,
-                        source,
-                        CtlMsg::Failure(Failure {
-                            code: FailureCode::Unknown,
-                            info: format!("Could not retrieve checkpoint entry for {}", swap_id),
-                        }),
-                    )?;
+                    Err(err) => {
+                        warn!("Failed to retrieve checkpoint entry: {}", err);
+                        self.send_client_ctl(
+                            endpoints,
+                            source,
+                            CtlMsg::Failure(Failure {
+                                code: FailureCode::Unknown,
+                                info: format!(
+                                    "Could not retrieve checkpoint entry for {}",
+                                    swap_id
+                                ),
+                            }),
+                        )?;
+                    }
                 }
             }
 
@@ -370,33 +368,10 @@ pub fn checkpoint_send(
     Ok(())
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, StrictEncode, StrictDecode)]
 struct CheckpointKey {
     swap_id: SwapId,
     service_id: ServiceId,
-}
-
-impl From<CheckpointKey> for Vec<u8> {
-    fn from(checkpoint_key: CheckpointKey) -> Self {
-        Into::<[u8; 32]>::into(checkpoint_key.swap_id)
-            .iter()
-            .cloned()
-            .chain(
-                Into::<Vec<u8>>::into(checkpoint_key.service_id)
-                    .iter()
-                    .cloned(),
-            )
-            .collect()
-    }
-}
-
-impl From<Vec<u8>> for CheckpointKey {
-    fn from(raw_key: Vec<u8>) -> Self {
-        CheckpointKey {
-            swap_id: SwapId(raw_key[0..32].try_into().unwrap()),
-            service_id: raw_key[32..].to_vec().into(),
-        }
-    }
 }
 
 struct Database(lmdb::Environment);
@@ -405,7 +380,7 @@ const LMDB_CHECKPOINTS: &str = "checkpoints";
 const LMDB_CHECKPOINT_INFOS: &str = "checkpoint_infos";
 const LMDB_BITCOIN_ADDRESSES: &str = "bitcoin_addresses";
 const LMDB_MONERO_ADDRESSES: &str = "monero_addresses";
-const LMDB_OFFER_HISTORY: &str = "offer_history";
+const LMDB_DEAL_HISTORY: &str = "deal_history";
 
 impl Database {
     fn new(path: PathBuf) -> Result<Database, lmdb::Error> {
@@ -416,16 +391,16 @@ impl Database {
         env.create_db(Some(LMDB_CHECKPOINTS), lmdb::DatabaseFlags::empty())?;
         env.create_db(Some(LMDB_CHECKPOINT_INFOS), lmdb::DatabaseFlags::empty())?;
         env.create_db(Some(LMDB_BITCOIN_ADDRESSES), lmdb::DatabaseFlags::empty())?;
-        env.create_db(Some(LMDB_OFFER_HISTORY), lmdb::DatabaseFlags::empty())?;
+        env.create_db(Some(LMDB_DEAL_HISTORY), lmdb::DatabaseFlags::empty())?;
         env.create_db(Some(LMDB_MONERO_ADDRESSES), lmdb::DatabaseFlags::empty())?;
         Ok(Database(env))
     }
 
-    fn set_offer_status(&mut self, offer: &PublicOffer, status: &OfferStatus) -> Result<(), Error> {
-        let db = self.0.open_db(Some(LMDB_OFFER_HISTORY))?;
+    fn set_deal_status(&mut self, deal: &Deal, status: &DealStatus) -> Result<(), Error> {
+        let db = self.0.open_db(Some(LMDB_DEAL_HISTORY))?;
         let mut tx = self.0.begin_rw_txn()?;
         let mut key = vec![];
-        offer.strict_encode(&mut key)?;
+        deal.strict_encode(&mut key)?;
         if tx.get(db, &key).is_ok() {
             tx.del(db, &key, None)?;
         }
@@ -436,34 +411,40 @@ impl Database {
         Ok(())
     }
 
-    fn get_offers(
-        &mut self,
-        selector: OfferStatusSelector,
-    ) -> Result<Vec<OfferStatusPair>, lmdb::Error> {
-        let db = self.0.open_db(Some(LMDB_OFFER_HISTORY))?;
+    fn get_deals(&mut self, selector: DealStatusSelector) -> Result<Vec<DealStatusPair>, Error> {
+        let db = self.0.open_db(Some(LMDB_DEAL_HISTORY))?;
         let tx = self.0.begin_ro_txn()?;
         let mut cursor = tx.open_ro_cursor(db)?;
-        let res = cursor
+        cursor
             .iter()
             .filter_map(|(key, val)| {
-                let status = OfferStatus::strict_decode(std::io::Cursor::new(val.to_vec())).ok()?;
+                let status = DealStatus::strict_decode(IoCursor::new(val.to_vec()));
                 let filtered_status = match status {
-                    OfferStatus::Open if selector == OfferStatusSelector::Open => Some(status),
-                    OfferStatus::InProgress if selector == OfferStatusSelector::InProgress => {
-                        Some(status)
+                    Err(err) => {
+                        return Some(Err(Error::from(err)));
                     }
-                    OfferStatus::Ended(_) if selector == OfferStatusSelector::Ended => Some(status),
-                    _ if selector == OfferStatusSelector::All => Some(status),
+                    Ok(DealStatus::Open) if selector == DealStatusSelector::Open => {
+                        Some(status.unwrap())
+                    }
+                    Ok(DealStatus::InProgress) if selector == DealStatusSelector::InProgress => {
+                        Some(status.unwrap())
+                    }
+                    Ok(DealStatus::Ended(_)) if selector == DealStatusSelector::Ended => {
+                        Some(status.unwrap())
+                    }
+                    _ if selector == DealStatusSelector::All => Some(status.unwrap()),
                     _ => None,
                 }?;
-                let offer = PublicOffer::strict_decode(std::io::Cursor::new(key.to_vec())).ok()?;
-                Some(OfferStatusPair {
-                    offer,
-                    status: filtered_status,
-                })
+                Some(
+                    Deal::strict_decode(IoCursor::new(key.to_vec()))
+                        .map(|deal| DealStatusPair {
+                            deal,
+                            status: filtered_status,
+                        })
+                        .map_err(|err| Error::from(err)),
+                )
             })
-            .collect();
-        Ok(res)
+            .collect()
     }
 
     fn set_bitcoin_address(
@@ -504,29 +485,22 @@ impl Database {
 
     fn get_all_bitcoin_addresses(
         &mut self,
-    ) -> Result<Vec<(bitcoin::Address, Option<SwapId>)>, lmdb::Error> {
+    ) -> Result<Vec<(bitcoin::Address, Option<SwapId>)>, Error> {
         let db = self.0.open_db(Some(LMDB_BITCOIN_ADDRESSES))?;
         let tx = self.0.begin_ro_txn()?;
         let mut cursor = tx.open_ro_cursor(db)?;
         let res = cursor
             .iter()
-            .filter_map(|(key, val)| {
-                bitcoin::Address::strict_decode(std::io::Cursor::new(key.to_vec()))
-                    .ok()
-                    .map(|a| {
-                        (
-                            a,
-                            BitcoinSecretKeyInfo::strict_decode(std::io::Cursor::new(val.to_vec()))
-                                .ok()
-                                .map(|s| s.swap_id)
-                                .flatten(),
-                        )
-                    })
+            .map(|(key, val)| {
+                Ok((
+                    bitcoin::Address::strict_decode(IoCursor::new(key.to_vec()))?,
+                    BitcoinSecretKeyInfo::strict_decode(IoCursor::new(val.to_vec()))?.swap_id,
+                ))
             })
             .collect();
         drop(cursor);
         tx.abort();
-        Ok(res)
+        res
     }
 
     fn set_monero_address(
@@ -534,7 +508,7 @@ impl Database {
         address: &monero::Address,
         secret_key_info: &MoneroSecretKeyInfo,
     ) -> Result<(), Error> {
-        let db = self.0.open_db(Some(LMDB_BITCOIN_ADDRESSES))?;
+        let db = self.0.open_db(Some(LMDB_MONERO_ADDRESSES))?;
         let mut tx = self.0.begin_rw_txn()?;
         let key = address.as_bytes();
         let mut val = vec![];
@@ -555,7 +529,7 @@ impl Database {
         &mut self,
         address: &monero::Address,
     ) -> Result<MoneroSecretKeyInfo, Error> {
-        let db = self.0.open_db(Some(LMDB_BITCOIN_ADDRESSES))?;
+        let db = self.0.open_db(Some(LMDB_MONERO_ADDRESSES))?;
         let tx = self.0.begin_ro_txn()?;
         let key = address.as_bytes();
         let val = MoneroSecretKeyInfo::strict_decode(tx.get(db, &key)?)?;
@@ -565,92 +539,113 @@ impl Database {
 
     fn get_all_monero_addresses(
         &mut self,
-    ) -> Result<Vec<(monero::Address, Option<SwapId>)>, lmdb::Error> {
-        let db = self.0.open_db(Some(LMDB_BITCOIN_ADDRESSES))?;
+    ) -> Result<Vec<(monero::Address, Option<SwapId>)>, Error> {
+        let db = self.0.open_db(Some(LMDB_MONERO_ADDRESSES))?;
         let tx = self.0.begin_ro_txn()?;
         let mut cursor = tx.open_ro_cursor(db)?;
         let res = cursor
             .iter()
-            .filter_map(|(key, val)| {
-                monero::Address::from_bytes(key).ok().map(|a| {
-                    (
-                        a,
-                        MoneroSecretKeyInfo::strict_decode(std::io::Cursor::new(val.to_vec()))
-                            .ok()
-                            .map(|s| s.swap_id)
-                            .flatten(),
-                    )
-                })
+            .map(|(key, val)| {
+                Ok((
+                    monero::Address::from_bytes(key)?,
+                    MoneroSecretKeyInfo::strict_decode(IoCursor::new(val.to_vec()))?.swap_id,
+                ))
             })
             .collect();
         drop(cursor);
         tx.abort();
-        Ok(res)
+        res
     }
 
-    fn set_checkpoint_state(&mut self, key: &CheckpointKey, val: &[u8]) -> Result<(), lmdb::Error> {
+    fn set_checkpoint_state(
+        &mut self,
+        checkpoint_key: &CheckpointKey,
+        val: &[u8],
+    ) -> Result<(), Error> {
         let db = self.0.open_db(Some(LMDB_CHECKPOINTS))?;
         let mut tx = self.0.begin_rw_txn()?;
-        if tx.get(db, &Vec::from(key.clone())).is_ok() {
-            tx.del(db, &Vec::from(key.clone()), None)?;
+        let mut key = vec![];
+        checkpoint_key.strict_encode(&mut key)?;
+        if tx.get(db, &key).is_ok() {
+            tx.del(db, &key, None)?;
         }
         tx.put(db, &Vec::from(key.clone()), &val, lmdb::WriteFlags::empty())?;
         tx.commit()?;
         Ok(())
     }
 
-    fn set_checkpoint_info(&mut self, key: &SwapId, val: &[u8]) -> Result<(), lmdb::Error> {
+    fn set_checkpoint_info(
+        &mut self,
+        swap_key: &SwapId,
+        checkpoint_entry: &CheckpointEntry,
+    ) -> Result<(), Error> {
         let db = self.0.open_db(Some(LMDB_CHECKPOINT_INFOS))?;
         let mut tx = self.0.begin_rw_txn()?;
-        if tx.get(db, &key.as_bytes()).is_ok() {
-            tx.del(db, &key.as_bytes(), None)?;
+        let mut key = vec![];
+        swap_key.strict_encode(&mut key)?;
+        if tx.get(db, &key).is_ok() {
+            tx.del(db, &key, None)?;
         }
-        tx.put(db, &key.as_bytes(), &val, lmdb::WriteFlags::empty())?;
+        let mut val = vec![];
+        checkpoint_entry.strict_encode(&mut val)?;
+        tx.put(db, &key, &val, lmdb::WriteFlags::empty())?;
         tx.commit()?;
         Ok(())
     }
 
-    fn get_checkpoint_info(&mut self, key: &SwapId) -> Result<Vec<u8>, lmdb::Error> {
+    fn get_checkpoint_info(&mut self, swap_key: &SwapId) -> Result<CheckpointEntry, Error> {
         let db = self.0.open_db(Some(LMDB_CHECKPOINT_INFOS))?;
         let tx = self.0.begin_ro_txn()?;
-        let val: Vec<u8> = tx.get(db, &key.as_bytes())?.into();
+        let mut key = vec![];
+        swap_key.strict_encode(&mut key)?;
+        let val = tx.get(db, &key)?.to_vec();
         tx.abort();
-        Ok(val)
+        Ok(CheckpointEntry::strict_decode(IoCursor::new(val))?)
     }
 
-    fn get_all_checkpoint_info(&mut self) -> Result<Vec<(SwapId, Vec<u8>)>, lmdb::Error> {
+    fn get_all_checkpoint_info(&mut self) -> Result<Vec<CheckpointEntry>, Error> {
         let db = self.0.open_db(Some(LMDB_CHECKPOINT_INFOS))?;
         let tx = self.0.begin_ro_txn()?;
         let mut cursor = tx.open_ro_cursor(db)?;
         let res = cursor
             .iter()
-            .map(|(key, value)| (SwapId::from_slice(key), value.to_vec()))
+            .map(|(_, value)| {
+                Ok(CheckpointEntry::strict_decode(IoCursor::new(
+                    value.to_vec(),
+                ))?)
+            })
             .collect();
         drop(cursor);
         tx.abort();
-        Ok(res)
+        res
     }
 
-    fn get_checkpoint_state(&mut self, key: &CheckpointKey) -> Result<Vec<u8>, lmdb::Error> {
+    fn get_checkpoint_state(&mut self, checkpoint_key: &CheckpointKey) -> Result<Vec<u8>, Error> {
         let db = self.0.open_db(Some(LMDB_CHECKPOINTS))?;
         let tx = self.0.begin_ro_txn()?;
-        let val: Vec<u8> = tx.get(db, &Vec::from(key.clone()))?.into();
+        let mut key = vec![];
+        checkpoint_key.strict_encode(&mut key)?;
+        let val: Vec<u8> = tx.get(db, &key)?.into();
         tx.abort();
         Ok(val)
     }
 
-    fn delete_checkpoint_state(&mut self, key: CheckpointKey) -> Result<(), lmdb::Error> {
+    fn delete_checkpoint_state(&mut self, checkpoint_key: CheckpointKey) -> Result<(), Error> {
         let db = self.0.open_db(Some(LMDB_CHECKPOINTS))?;
         let mut tx = self.0.begin_rw_txn()?;
-        tx.del(db, &Vec::from(key), None)?;
+        let mut key = vec![];
+        checkpoint_key.strict_encode(&mut key)?;
+        tx.del(db, &key, None)?;
         tx.commit()?;
         Ok(())
     }
 
-    fn delete_checkpoint_info(&mut self, key: SwapId) -> Result<(), lmdb::Error> {
+    fn delete_checkpoint_info(&mut self, swap_key: SwapId) -> Result<(), Error> {
         let db = self.0.open_db(Some(LMDB_CHECKPOINT_INFOS))?;
         let mut tx = self.0.begin_rw_txn()?;
-        tx.del(db, &key.as_bytes(), None)?;
+        let mut key = vec![];
+        swap_key.strict_encode(&mut key)?;
+        tx.del(db, &key, None)?;
         tx.commit()?;
         Ok(())
     }
@@ -660,16 +655,21 @@ impl Database {
 fn test_lmdb_state() {
     use crate::bus::Outcome;
     use bitcoin::secp256k1::SecretKey;
+    use farcaster_core::role::TradeRole;
+    use farcaster_core::Uuid;
     use std::str::FromStr;
+
+    let env = env_logger::Env::new().default_filter_or("info,farcaster_node=debug");
+    let _ = env_logger::from_env(env).is_test(false).try_init();
 
     let val1 = vec![0, 1];
     let val2 = vec![2, 3, 4, 5];
     let key1 = CheckpointKey {
-        swap_id: SwapId::random(),
-        service_id: ServiceId::Swap(SwapId::random()),
+        swap_id: Uuid::new().into(),
+        service_id: ServiceId::Swap(Uuid::new().into()),
     };
     let key2 = CheckpointKey {
-        swap_id: SwapId::random(),
+        swap_id: Uuid::new().into(),
         service_id: ServiceId::Database,
     };
     let path = std::env::current_dir().unwrap();
@@ -687,8 +687,13 @@ fn test_lmdb_state() {
     let res = database.get_checkpoint_state(&key2);
     assert!(res.is_err());
 
-    let key_info = SwapId::random();
-    let val_info = vec![0, 1, 2];
+    let key_info = SwapId(Uuid::new());
+    let val_info = CheckpointEntry {
+        swap_id: key_info.clone(),
+        trade_role: TradeRole::Maker,
+        deal: Deal::from_str("Deal:Cke4ftrP5A781Vq85dgBQJNwYgBS4nuUV1LQM2fvVdFMNR4h5TrWhRR11111uMFuZTAsNgpdK8DiK11111TB9zym113GTvtvqfD1111114A4TTfFfmZoWyvpcjDBtTZCdWFSUWcRKYfEC3Y17hqaXZ3dWz11111111111111111111111111111111111111111AfZ113SEBTEspU3a").unwrap(),
+        expected_counterparty_node_id: None,
+    };
     database.set_checkpoint_info(&key_info, &val_info).unwrap();
     let res = database.get_checkpoint_info(&key_info).unwrap();
     assert_eq!(val_info, res);
@@ -732,45 +737,43 @@ fn test_lmdb_state() {
     let addrs = database.get_all_monero_addresses().unwrap();
     assert!(addrs.iter().find(|(a, _)| *a == addr).is_some());
 
-    let offer_1 = PublicOffer::from_str("Offer:Cke4ftrP5A7MgLMaQZLZUMTC6TfkqUKBu1LQM2fvVdFMNR4gmBqNCsR11111uMFuZTAsNgpdK8DiK11111TB9zym113GTvtvqfD1111114A4TTF4h53Tv4MR6eS9sdDxV5JCH9xZcKejCqKShnphqndeeD11111111111111111111111111111111111111111AfZ113XRBtrLeA3t").unwrap();
-    let offer_2 = PublicOffer::from_str("Offer:Cke4ftrP5A7Km9Kmc2UDBePio1p7wM56P1LQM2fvVdFMNR4gmBqNCsR11111uMFuZTAsNgpdK8DiK11111TB9zym113GTvtvqfD1111114A4TTF4h53Tv4MR6eS9sdDxV5JCH9xZcKejCqKShnphqndeeD11111111111111111111111111111111111111111AfZ113XRBuLWyw3M").unwrap();
+    let deal_1 = Deal::from_str("Deal:Cke4ftrP5A7MgLMaQZLZUMTC6TfkqUKBu1LQM2fvVdFMNR4gmBqNCsR11111uMFuZTAsNgpdK8DiK11111TB9zym113GTvtvqfD1111114A4TTF4h53Tv4MR6eS9sdDxV5JCH9xZcKejCqKShnphqndeeD11111111111111111111111111111111111111111AfZ113XRBtrLeA3t").unwrap();
+    let deal_2 = Deal::from_str("Deal:Cke4ftrP5A7Km9Kmc2UDBePio1p7wM56P1LQM2fvVdFMNR4gmBqNCsR11111uMFuZTAsNgpdK8DiK11111TB9zym113GTvtvqfD1111114A4TTF4h53Tv4MR6eS9sdDxV5JCH9xZcKejCqKShnphqndeeD11111111111111111111111111111111111111111AfZ113XRBuLWyw3M").unwrap();
 
     database
-        .set_offer_status(&offer_1, &OfferStatus::Open)
+        .set_deal_status(&deal_1, &DealStatus::Open)
         .unwrap();
-    let offers_retrieved = database.get_offers(OfferStatusSelector::All).unwrap();
-    assert_eq!(offer_1, offers_retrieved[0].offer);
+    let deals_retrieved = database.get_deals(DealStatusSelector::All).unwrap();
+    assert_eq!(deal_1, deals_retrieved[0].deal);
 
-    let offers_retrieved = database.get_offers(OfferStatusSelector::Open).unwrap();
-    assert_eq!(offer_1, offers_retrieved[0].offer);
-
-    database
-        .set_offer_status(&offer_1, &OfferStatus::InProgress)
-        .unwrap();
-    let offers_retrieved = database
-        .get_offers(OfferStatusSelector::InProgress)
-        .unwrap();
-    assert_eq!(offer_1, offers_retrieved[0].offer);
+    let deals_retrieved = database.get_deals(DealStatusSelector::Open).unwrap();
+    assert_eq!(deal_1, deals_retrieved[0].deal);
 
     database
-        .set_offer_status(&offer_1, &OfferStatus::Ended(Outcome::SuccessSwap))
+        .set_deal_status(&deal_1, &DealStatus::InProgress)
         .unwrap();
-    let offers_retrieved = database.get_offers(OfferStatusSelector::Ended).unwrap();
-    assert_eq!(offer_1, offers_retrieved[0].offer);
+    let deals_retrieved = database.get_deals(DealStatusSelector::InProgress).unwrap();
+    assert_eq!(deal_1, deals_retrieved[0].deal);
 
     database
-        .set_offer_status(&offer_2, &OfferStatus::Open)
+        .set_deal_status(&deal_1, &DealStatus::Ended(Outcome::SuccessSwap))
         .unwrap();
-    let offers_retrieved = database.get_offers(OfferStatusSelector::All).unwrap();
-    let status_1 = OfferStatusPair {
-        offer: offer_1,
-        status: OfferStatus::Ended(Outcome::SuccessSwap),
+    let deals_retrieved = database.get_deals(DealStatusSelector::Ended).unwrap();
+    assert_eq!(deal_1, deals_retrieved[0].deal);
+
+    database
+        .set_deal_status(&deal_2, &DealStatus::Open)
+        .unwrap();
+    let deals_retrieved = database.get_deals(DealStatusSelector::All).unwrap();
+    let status_1 = DealStatusPair {
+        deal: deal_1,
+        status: DealStatus::Ended(Outcome::SuccessSwap),
     };
-    let status_2 = OfferStatusPair {
-        offer: offer_2,
-        status: OfferStatus::Open,
+    let status_2 = DealStatusPair {
+        deal: deal_2,
+        status: DealStatus::Open,
     };
-    assert!(offers_retrieved.len() == 2);
-    assert!(offers_retrieved.contains(&status_1));
-    assert!(offers_retrieved.contains(&status_2));
+    assert!(deals_retrieved.len() == 2);
+    assert!(deals_retrieved.contains(&status_1));
+    assert!(deals_retrieved.contains(&status_2));
 }

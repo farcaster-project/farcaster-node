@@ -67,7 +67,7 @@ config = "0.11"
 dotenv = { version = "0.15", optional = true }
 electrum-client = "0.11.0"
 env_logger = "0.7"
-farcaster_core = "0.5.1"
+farcaster_core = "0.6"
 hex = { version = "^0.4.3", features = ["serde"] }
 internet2 = "0.8.3"
 lazy_static = "1.4"
@@ -76,7 +76,7 @@ log = { version = "0.4", features = ["max_level_trace", "release_max_level_debug
 microservices = { version = "0.8.0", default-features = false, features = ['peer'] }
 monero = "0.17"
 monero-lws = "0.1"
-monero-rpc = "0.2"
+monero-rpc = "0.3"
 nix = { version = "0.19", optional = true }
 paste = "1.0"
 prost = "0.10.3"

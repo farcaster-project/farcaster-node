@@ -35,7 +35,7 @@ use farcaster_core::{
     crypto::{CommitmentEngine, SharedKeyId},
     monero::SHARED_VIEW_KEY_ID,
     role::{SwapRole, TradeRole},
-    swap::btcxmr::{Offer, Parameters, PublicOffer},
+    swap::btcxmr::{Deal, DealParameters, Parameters},
     swap::SwapId,
     transaction::TxLabel,
 };
@@ -47,7 +47,7 @@ use strict_encoding::{StrictDecode, StrictEncode};
 pub fn run(config: ServiceConfig, opts: Opts) -> Result<(), Error> {
     let Opts {
         swap_id,
-        public_offer,
+        deal,
         trade_role: local_trade_role,
         arbitrating_finality,
         arbitrating_safety,
@@ -55,15 +55,13 @@ pub fn run(config: ServiceConfig, opts: Opts) -> Result<(), Error> {
         ..
     } = opts;
 
-    let Offer {
+    let DealParameters {
         cancel_timelock,
         punish_timelock,
         maker_role, // SwapRole of maker (Alice or Bob)
         network,
-        accordant_amount: monero_amount,
-        arbitrating_amount: bitcoin_amount,
         ..
-    } = public_offer.offer;
+    } = deal.parameters;
 
     // alice or bob
     let local_swap_role = match local_trade_role {
@@ -80,7 +78,7 @@ pub fn run(config: ServiceConfig, opts: Opts) -> Result<(), Error> {
     info!(
         "{}: {}",
         "Starting swap".to_string().bright_green_bold(),
-        format!("{:#x}", swap_id).swap_id()
+        swap_id.swap_id()
     );
 
     let temporal_safety = TemporalSafety {
@@ -116,8 +114,6 @@ pub fn run(config: ServiceConfig, opts: Opts) -> Result<(), Error> {
         network,
         bitcoin_syncer: ServiceId::Syncer(Blockchain::Bitcoin, network),
         monero_syncer: ServiceId::Syncer(Blockchain::Monero, network),
-        monero_amount,
-        bitcoin_amount,
         awaiting_funding: false,
         xmr_addr_addendum: None,
         btc_fee_estimate_sat_per_kvb: None,
@@ -130,8 +126,8 @@ pub fn run(config: ServiceConfig, opts: Opts) -> Result<(), Error> {
         swap_id,
         identity: ServiceId::Swap(swap_id),
         peer_service: ServiceId::dummy_peer_service_id(NodeAddr {
-            id: NodeId::from(public_offer.node_id.clone()), // node_id is bitcoin::Pubkey
-            addr: public_offer.peer_address,                // peer_address is InetSocketAddr
+            id: NodeId::from(deal.node_id.clone()), // node_id is bitcoin::Pubkey
+            addr: deal.peer_address,                // peer_address is InetSocketAddr
         }),
         connected: false,
         started: SystemTime::now(),
@@ -140,7 +136,7 @@ pub fn run(config: ServiceConfig, opts: Opts) -> Result<(), Error> {
         enquirer: None,
         pending_peer_request: none!(),
         txs: none!(),
-        public_offer,
+        deal,
         local_trade_role,
         local_swap_role,
         latest_state_report: state_report,
@@ -165,7 +161,7 @@ pub struct Runtime {
     pub temporal_safety: TemporalSafety,
     pub pending_peer_request: Vec<PeerMsg>, // Peer requests that failed and are waiting for reconnection
     pub txs: HashMap<TxLabel, bitcoin::Transaction>,
-    pub public_offer: PublicOffer,
+    pub deal: Deal,
     pub local_trade_role: TradeRole,
     pub local_swap_role: SwapRole,
     pub latest_state_report: StateReport,
@@ -187,7 +183,7 @@ pub struct CheckpointSwapd {
     pub pending_broadcasts: Vec<bitcoin::Transaction>,
     pub local_trade_role: TradeRole,
     pub connected_counterparty_node_id: Option<NodeId>,
-    pub public_offer: PublicOffer,
+    pub deal: Deal,
     pub monero_address_creation_height: Option<u64>,
 }
 
@@ -498,14 +494,9 @@ impl Runtime {
     ) -> Result<(), Error> {
         match request {
             InfoMsg::GetInfo => {
-                let swap_id = if self.swap_id() == zero!() {
-                    None
-                } else {
-                    Some(self.swap_id())
-                };
                 let connection = self.peer_service.node_addr();
                 let info = SwapInfo {
-                    swap_id,
+                    swap_id: self.swap_id,
                     connection,
                     connected: self.connected,
                     state: self.latest_state_report.clone(),
@@ -517,9 +508,9 @@ impl Runtime {
                         .duration_since(SystemTime::UNIX_EPOCH)
                         .unwrap_or_else(|_| Duration::from_secs(0))
                         .as_secs(),
-                    public_offer: self.public_offer.clone(),
+                    deal: self.deal.clone(),
                     local_trade_role: self.local_trade_role,
-                    local_swap_role: self.public_offer.swap_role(&self.local_trade_role),
+                    local_swap_role: self.deal.swap_role(&self.local_trade_role),
                     connected_counterparty_node_id: get_node_id(&self.peer_service),
                 };
                 self.send_client_info(endpoints, source, InfoMsg::SwapInfo(info))?;
@@ -785,7 +776,7 @@ impl Runtime {
         let nr_inputs = 1;
         let total_fees =
             bitcoin::Amount::from_sat(p2wpkh_signed_tx_fee(sat_per_kvb, vsize, nr_inputs));
-        let amount = self.syncer_state.bitcoin_amount + total_fees;
+        let amount = self.deal.parameters.arbitrating_amount + total_fees;
         self.log_info(format!(
             "Send {} to {}, this includes {} for the Lock transaction network fees",
             amount.bright_green_bold(),
@@ -902,7 +893,7 @@ impl Runtime {
                     xmr_addr_addendum: self.syncer_state.xmr_addr_addendum.clone(),
                     local_trade_role: self.local_trade_role,
                     connected_counterparty_node_id: get_node_id(&self.peer_service),
-                    public_offer: self.public_offer.clone(),
+                    deal: self.deal.clone(),
                     monero_address_creation_height: self.monero_address_creation_height.clone(),
                 },
             })),

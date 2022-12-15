@@ -10,7 +10,7 @@ use farcaster_core::{
         BuyProcedureSignature, CommitAliceParameters, CommitBobParameters, CoreArbitratingSetup,
         RefundProcedureSignatures, RevealAliceParameters, RevealBobParameters, RevealProof,
     },
-    swap::btcxmr::PublicOffer,
+    swap::btcxmr::Deal,
     swap::SwapId,
 };
 use internet2::Api;
@@ -30,8 +30,8 @@ pub enum PeerMsg {
     TakerCommit(TakerCommit),
 
     #[api(type = 33703)]
-    #[display("{0} offer not found")]
-    OfferNotFound(SwapId),
+    #[display("{0} deal not found")]
+    DealNotFound(SwapId),
 
     #[api(type = 33704)]
     #[display("reveal {0}")]
@@ -83,7 +83,7 @@ impl PeerMsg {
         match self {
             PeerMsg::MakerCommit(c) => c.swap_id(),
             PeerMsg::TakerCommit(c) => c.swap_id(),
-            PeerMsg::OfferNotFound(swap_id) => *swap_id,
+            PeerMsg::DealNotFound(swap_id) => *swap_id,
             PeerMsg::Reveal(r) => r.swap_id(),
             PeerMsg::RefundProcedureSignatures(RefundProcedureSignatures { swap_id, .. }) => {
                 *swap_id
@@ -116,7 +116,7 @@ impl PeerMsg {
                 | PeerMsg::Ping(_)
                 | PeerMsg::Pong(_)
                 | PeerMsg::MsgReceipt(_)
-                | PeerMsg::OfferNotFound(_)
+                | PeerMsg::DealNotFound(_)
         )
     }
 
@@ -129,7 +129,7 @@ impl PeerMsg {
                 | PeerMsg::RefundProcedureSignatures(_)
                 | PeerMsg::CoreArbitratingSetup(_)
                 | PeerMsg::BuyProcedureSignature(_)
-                | PeerMsg::OfferNotFound(_)
+                | PeerMsg::DealNotFound(_)
         )
     }
 }
@@ -169,7 +169,7 @@ impl Reveal {
 #[display("{commit}")]
 pub struct TakerCommit {
     pub commit: Commit,
-    pub public_offer: PublicOffer, // TODO: replace by public offer id
+    pub deal: Deal,
 }
 
 impl TakerCommit {

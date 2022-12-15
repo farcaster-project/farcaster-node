@@ -3,9 +3,9 @@ extern crate log;
 
 use crate::farcaster::{
     farcaster_client::FarcasterClient, AbortSwapRequest, CheckpointSelector, CheckpointsRequest,
-    InfoResponse, ListOffersRequest, MakeRequest, NeedsFundingRequest, OfferInfoRequest,
-    OfferSelector, PeersRequest, ProgressRequest, RestoreCheckpointRequest, RevokeOfferRequest,
-    SwapInfoRequest, SweepAddressRequest, TakeRequest,
+    DealInfoRequest, DealSelector, InfoResponse, ListDealsRequest, MakeRequest,
+    NeedsFundingRequest, NetworkSelector, PeersRequest, ProgressRequest, RestoreCheckpointRequest,
+    RevokeDealRequest, SwapInfoRequest, SweepAddressRequest, TakeRequest,
 };
 use bitcoincore_rpc::RpcApi;
 use farcaster::{InfoRequest, MakeResponse, NeedsFundingResponse};
@@ -58,7 +58,8 @@ async fn grpc_server_functional_test() {
     // Test list checkpoints
     let request = tonic::Request::new(CheckpointsRequest {
         id: 2,
-        selector: CheckpointSelector::AllCheckpoints.into(),
+        checkpoint_selector: CheckpointSelector::AllCheckpoints.into(),
+        network_selector: NetworkSelector::AllNetworks.into(),
     });
     let response = farcaster_client_1.checkpoints(request).await;
     assert_eq!(response.unwrap().into_inner().id, 2);
@@ -70,7 +71,7 @@ async fn grpc_server_functional_test() {
         monero_new_dest_address(Arc::clone(&monero_wallet)).await;
     let btc_address = bitcoin_rpc.get_new_address(None, None).unwrap();
 
-    // Test make offer
+    // Test make deal
     let make_request = MakeRequest {
         id: 3,
         network: farcaster::Network::Local.into(),
@@ -89,47 +90,48 @@ async fn grpc_server_functional_test() {
     };
     let request = tonic::Request::new(make_request.clone());
     let response = farcaster_client_1.make(request).await;
-    let MakeResponse { id, offer } = response.unwrap().into_inner();
+    let MakeResponse { id, deal } = response.unwrap().into_inner();
     assert_eq!(id, 3);
 
-    // Test revoke offer
-    let request = tonic::Request::new(RevokeOfferRequest {
+    // Test revoke deal
+    let request = tonic::Request::new(RevokeDealRequest {
         id: 4,
-        public_offer: offer.to_string(),
+        deal: deal.unwrap().encoded_deal,
     });
-    let response = farcaster_client_1.revoke_offer(request).await;
+    let response = farcaster_client_1.revoke_deal(request).await;
     assert_eq!(response.unwrap().into_inner().id, 4);
 
-    // Test make another offer
+    // Test make another deal
     let request = tonic::Request::new(make_request.clone());
     let response = farcaster_client_1.make(request).await;
-    let MakeResponse { id, offer } = response.unwrap().into_inner();
+    let MakeResponse { id, deal } = response.unwrap().into_inner();
     assert_eq!(id, 3);
 
     let (xmr_address, _xmr_address_wallet_name) =
         monero_new_dest_address(Arc::clone(&monero_wallet)).await;
     let btc_address = bitcoin_rpc.get_new_address(None, None).unwrap();
 
-    // Test Offer info
-    let offer_info_request = tonic::Request::new(OfferInfoRequest {
+    // Test Deal info
+    let deal_info_request = tonic::Request::new(DealInfoRequest {
         id: 21,
-        public_offer: offer.clone().to_string(),
+        deal: deal.clone().unwrap().encoded_deal,
     });
-    let response = farcaster_client_2.offer_info(offer_info_request).await;
+    let response = farcaster_client_2.deal_info(deal_info_request).await;
     assert_eq!(response.unwrap().into_inner().id, 21);
 
-    // Test List offers
-    let list_offers_request = tonic::Request::new(ListOffersRequest {
+    // Test List deals
+    let list_deals_request = tonic::Request::new(ListDealsRequest {
         id: 22,
-        selector: OfferSelector::All.into(),
+        deal_selector: DealSelector::All.into(),
+        network_selector: NetworkSelector::AllNetworks.into(),
     });
-    let response = farcaster_client_1.list_offers(list_offers_request).await;
+    let response = farcaster_client_1.list_deals(list_deals_request).await;
     assert_eq!(response.unwrap().into_inner().id, 22);
 
-    // Test take offer
+    // Test take deal
     let take_request = TakeRequest {
         id: 5,
-        public_offer: offer.to_string(),
+        deal: deal.unwrap().encoded_deal,
         bitcoin_address: btc_address.to_string(),
         monero_address: xmr_address.to_string(),
     };
@@ -179,13 +181,13 @@ async fn grpc_server_functional_test() {
     // Test restore checkpoint
     let request = tonic::Request::new(make_request.clone());
     let response = farcaster_client_1.make(request).await;
-    let MakeResponse { offer, .. } = response.unwrap().into_inner();
+    let MakeResponse { deal, .. } = response.unwrap().into_inner();
     let (xmr_address, _xmr_address_wallet_name) =
         monero_new_dest_address(Arc::clone(&monero_wallet)).await;
     let btc_address = bitcoin_rpc.get_new_address(None, None).unwrap();
     let take_request = TakeRequest {
         id: 5,
-        public_offer: offer.to_string(),
+        deal: deal.unwrap().encoded_deal,
         bitcoin_address: btc_address.to_string(),
         monero_address: xmr_address.to_string(),
     };
@@ -247,6 +249,7 @@ async fn retry_until_bitcoin_funding_info(
         let request = tonic::Request::new(NeedsFundingRequest {
             id: 11,
             blockchain: farcaster::Blockchain::Bitcoin.into(),
+            network_selector: NetworkSelector::LocalNetworks.into(),
         });
         let response = client.needs_funding(request).await;
         let NeedsFundingResponse { funding_infos, .. } = response.unwrap().into_inner();

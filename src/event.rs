@@ -34,13 +34,13 @@ pub trait StateMachineExecutor<
             if new_sm_display == sm_display {
                 debug!(
                     "{} state self transition {}",
-                    sm_name,
+                    new_sm.name(),
                     new_sm.bright_green_bold()
                 );
             } else {
                 info!(
                     "{} state transition {} -> {}",
-                    sm_name,
+                    new_sm.name(),
                     sm_display.red_bold(),
                     new_sm.bright_green_bold()
                 );

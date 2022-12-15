@@ -6,16 +6,17 @@
 
 use crate::bus::bridge::BridgeMsg;
 use crate::bus::ctl::FundingInfo;
-use crate::bus::ctl::ProtoPublicOffer;
-use crate::bus::ctl::PubOffer;
+use crate::bus::ctl::ProtoDeal;
+use crate::bus::ctl::PubDeal;
 use crate::bus::info::Address;
-use crate::bus::info::OfferStatusSelector;
+use crate::bus::info::DealStatusSelector;
 use crate::bus::info::ProgressEvent;
 use crate::bus::AddressSecretKey;
 use crate::bus::Failure;
 use crate::bus::HealthCheckSelector;
 use crate::bus::OptionDetails;
 use crate::bus::Outcome;
+use crate::grpcd::runtime::farcaster::NetworkSelector;
 use crate::service::Endpoints;
 use crate::swapd::StateReport;
 use crate::syncerd::SweepAddressAddendum;
@@ -28,8 +29,10 @@ use farcaster_core::blockchain::FeeStrategy;
 use farcaster_core::blockchain::Network;
 use farcaster_core::role::SwapRole;
 use farcaster_core::role::TradeRole;
-use farcaster_core::swap::btcxmr::Offer;
-use farcaster_core::swap::{btcxmr::PublicOffer, SwapId};
+use farcaster_core::swap::{
+    btcxmr::{Deal, DealParameters},
+    SwapId,
+};
 use internet2::addr::InetSocketAddr;
 use internet2::session::LocalSession;
 use internet2::SendRecvMessage;
@@ -97,6 +100,17 @@ impl From<farcaster::Network> for Network {
     }
 }
 
+impl From<NetworkSelector> for Option<Network> {
+    fn from(t: NetworkSelector) -> Option<Network> {
+        match t {
+            NetworkSelector::AllNetworks => None,
+            NetworkSelector::MainnetNetworks => Some(Network::Mainnet),
+            NetworkSelector::TestnetNetworks => Some(Network::Testnet),
+            NetworkSelector::LocalNetworks => Some(Network::Local),
+        }
+    }
+}
+
 impl From<Network> for farcaster::Network {
     fn from(t: Network) -> farcaster::Network {
         match t {
@@ -125,13 +139,30 @@ impl From<Blockchain> for farcaster::Blockchain {
     }
 }
 
-impl From<farcaster::OfferSelector> for OfferStatusSelector {
-    fn from(t: farcaster::OfferSelector) -> OfferStatusSelector {
+impl From<farcaster::DealSelector> for DealStatusSelector {
+    fn from(t: farcaster::DealSelector) -> DealStatusSelector {
         match t {
-            farcaster::OfferSelector::All => OfferStatusSelector::All,
-            farcaster::OfferSelector::Open => OfferStatusSelector::Open,
-            farcaster::OfferSelector::InProgress => OfferStatusSelector::InProgress,
-            farcaster::OfferSelector::Ended => OfferStatusSelector::Ended,
+            farcaster::DealSelector::All => DealStatusSelector::All,
+            farcaster::DealSelector::Open => DealStatusSelector::Open,
+            farcaster::DealSelector::InProgress => DealStatusSelector::InProgress,
+            farcaster::DealSelector::Ended => DealStatusSelector::Ended,
+        }
+    }
+}
+
+impl From<FundingInfo> for farcaster::FundingInfo {
+    fn from(t: FundingInfo) -> farcaster::FundingInfo {
+        match t {
+            FundingInfo::Bitcoin(b_info) => farcaster::FundingInfo {
+                swap_id: b_info.swap_id.to_string(),
+                address: b_info.address.to_string(),
+                amount: b_info.amount.as_sat(),
+            },
+            FundingInfo::Monero(m_info) => farcaster::FundingInfo {
+                swap_id: m_info.swap_id.to_string(),
+                address: m_info.address.to_string(),
+                amount: m_info.amount.as_pico(),
+            },
         }
     }
 }
@@ -143,6 +174,30 @@ impl From<Outcome> for farcaster::Outcome {
             Outcome::FailureRefund => farcaster::Outcome::FailureRefund,
             Outcome::FailurePunish => farcaster::Outcome::FailurePunish,
             Outcome::FailureAbort => farcaster::Outcome::FailureAbort,
+        }
+    }
+}
+
+impl From<Deal> for DealInfo {
+    fn from(deal: Deal) -> DealInfo {
+        DealInfo {
+            arbitrating_amount: deal.parameters.arbitrating_amount.as_sat(),
+            accordant_amount: deal.parameters.accordant_amount.as_pico(),
+            cancel_timelock: deal.parameters.cancel_timelock.as_u32(),
+            punish_timelock: deal.parameters.punish_timelock.as_u32(),
+            fee_strategy: deal.parameters.fee_strategy.to_string(),
+            maker_role: farcaster::SwapRole::from(deal.parameters.maker_role).into(),
+            uuid: deal.parameters.uuid.to_string(),
+            network: farcaster::Network::from(deal.parameters.network).into(),
+            arbitrating_blockchain: farcaster::Blockchain::from(
+                deal.parameters.arbitrating_blockchain,
+            )
+            .into(),
+            accordant_blockchain: farcaster::Blockchain::from(deal.parameters.accordant_blockchain)
+                .into(),
+            node_id: deal.node_id.to_string(),
+            peer_address: deal.peer_address.to_string(),
+            encoded_deal: deal.to_string(),
         }
     }
 }
@@ -182,159 +237,20 @@ impl From<StateReport> for farcaster::State {
                 .map(|b| farcaster::state::BlocksUntilSafeMoneroBuySweep::BuyMoneroBlocks(b)),
         };
         state
-        // match state_report.clone() {
-        //     StateReport::StartA => farcaster::State {
-        //         state: Some(farcaster::state::State::StartA(StartA {})),
-        //     },
-        //     StateReport::CommitA => farcaster::State {
-        //         state: Some(farcaster::state::State::CommitA(CommitA {})),
-        //     },
-        //     StateReport::RevealA => farcaster::State {
-        //         state: Some(farcaster::state::State::RevealA(RevealA {})),
-        //     },
-        //     StateReport::RefundSigA {
-        //         arb_block_height,
-        //         acc_block_height,
-        //         arb_locked,
-        //         acc_locked,
-        //         buy_published,
-        //         cancel_seen,
-        //         refund_seen,
-        //         overfunded,
-        //         arb_lock_confirmations,
-        //         acc_lock_confirmations,
-        //         blocks_until_cancel_possible,
-        //         cancel_confirmations,
-        //         blocks_until_punish_possible,
-        //         blocks_until_safe_buy,
-        //     } => farcaster::State {
-        //         state: Some(farcaster::state::State::RefundSigA(RefundSigA {
-        //             arb_block_height,
-        //             acc_block_height,
-        //             arb_locked,
-        //             acc_locked,
-        //             buy_published,
-        //             cancel_seen,
-        //             refund_seen,
-        //             overfunded,
-        //             arb_lock_confirmations: arb_lock_confirmations
-        //                 .map(|c| farcaster::refund_sig_a::ArbLockConfirmations::ArbConfs(c)),
-        //             acc_lock_confirmations: acc_lock_confirmations
-        //                 .map(|c| farcaster::refund_sig_a::AccLockConfirmations::AccConfs(c)),
-        //             blocks_until_cancel_possible: blocks_until_cancel_possible.map(|b| {
-        //                 farcaster::refund_sig_a::BlocksUntilCancelPossible::CancelBlocks(b)
-        //             }),
-        //             cancel_confirmations: cancel_confirmations
-        //                 .map(|c| farcaster::refund_sig_a::CancelConfirmations::CancelConfs(c)),
-        //             blocks_until_punish_possible: blocks_until_punish_possible.map(|b| {
-        //                 farcaster::refund_sig_a::BlocksUntilPunishPossible::PunishBlocks(b)
-        //             }),
-        //             blocks_until_safe_buy: blocks_until_safe_buy
-        //                 .map(|b| farcaster::refund_sig_a::BlocksUntilSafeBuy::BuyBlocks(b)),
-        //         })),
-        //     },
-        //     StateReport::FinishA(outcome) => farcaster::State {
-        //         state: Some(farcaster::state::State::FinishA(FinishA {
-        //             outcome: farcaster::Outcome::from(outcome).into(),
-        //         })),
-        //     },
-        //     StateReport::StartB => farcaster::State {
-        //         state: Some(farcaster::state::State::StartB(StartB {})),
-        //     },
-        //     StateReport::CommitB => farcaster::State {
-        //         state: Some(farcaster::state::State::CommitB(CommitB {})),
-        //     },
-        //     StateReport::RevealB => farcaster::State {
-        //         state: Some(farcaster::state::State::RevealB(RevealB {})),
-        //     },
-        //     StateReport::CoreArbB {
-        //         arb_block_height,
-        //         acc_block_height,
-        //         arb_locked,
-        //         acc_locked,
-        //         buy_published,
-        //         refund_seen,
-        //         arb_lock_confirmations,
-        //         acc_lock_confirmations,
-        //         blocks_until_cancel_possible,
-        //         cancel_confirmations,
-        //         blocks_until_refund,
-        //         blocks_until_punish_possible,
-        //     } => farcaster::State {
-        //         state: Some(farcaster::state::State::CoreArbB(CoreArbB {
-        //             arb_block_height,
-        //             acc_block_height,
-        //             arb_locked,
-        //             acc_locked,
-        //             buy_published,
-        //             refund_seen,
-        //             arb_lock_confirmations: arb_lock_confirmations
-        //                 .map(|c| farcaster::core_arb_b::ArbLockConfirmations::ArbConfs(c)),
-        //             acc_lock_confirmations: acc_lock_confirmations
-        //                 .map(|c| farcaster::core_arb_b::AccLockConfirmations::AccConfs(c)),
-        //             blocks_until_cancel_possible: blocks_until_cancel_possible
-        //                 .map(|b| farcaster::core_arb_b::BlocksUntilCancelPossible::CancelBlocks(b)),
-        //             cancel_confirmations: cancel_confirmations
-        //                 .map(|c| farcaster::core_arb_b::CancelConfirmations::CancelConfs(c)),
-        //             blocks_until_refund: blocks_until_refund
-        //                 .map(|b| farcaster::core_arb_b::BlocksUntilRefund::RefundBlocks(b)),
-        //             blocks_until_punish_possible: blocks_until_punish_possible
-        //                 .map(|b| farcaster::core_arb_b::BlocksUntilPunishPossible::PunishBlocks(b)),
-        //         })),
-        //     },
-        //     StateReport::BuySigB {
-        //         arb_block_height,
-        //         acc_block_height,
-        //         buy_tx_seen,
-        //         arb_lock_confirmations,
-        //         acc_lock_confirmations,
-        //         blocks_until_cancel_possible,
-        //         cancel_confirmations,
-        //         blocks_until_refund,
-        //         blocks_until_punish_possible,
-        //         blocks_until_safe_monero_buy_sweep,
-        //     } => farcaster::State {
-        //         state: Some(farcaster::state::State::BuySigB(BuySigB {
-        //             arb_block_height,
-        //             acc_block_height,
-        //             buy_tx_seen,
-        //             arb_lock_confirmations: arb_lock_confirmations
-        //                 .map(|c| farcaster::buy_sig_b::ArbLockConfirmations::ArbConfs(c)),
-        //             acc_lock_confirmations: acc_lock_confirmations
-        //                 .map(|c| farcaster::buy_sig_b::AccLockConfirmations::AccConfs(c)),
-        //             blocks_until_cancel_possible: blocks_until_cancel_possible
-        //                 .map(|b| farcaster::buy_sig_b::BlocksUntilCancelPossible::CancelBlocks(b)),
-        //             cancel_confirmations: cancel_confirmations
-        //                 .map(|c| farcaster::buy_sig_b::CancelConfirmations::CancelConfs(c)),
-        //             blocks_until_refund: blocks_until_refund
-        //                 .map(|b| farcaster::buy_sig_b::BlocksUntilRefund::RefundBlocks(b)),
-        //             blocks_until_punish_possible: blocks_until_punish_possible
-        //                 .map(|b| farcaster::buy_sig_b::BlocksUntilPunishPossible::PunishBlocks(b)),
-        //             blocks_until_safe_monero_buy_sweep: blocks_until_safe_monero_buy_sweep.map(
-        //                 |b| farcaster::buy_sig_b::BlocksUntilSafeMoneroBuySweep::BuyMoneroBlocks(b),
-        //             ),
-        //         })),
-        //     },
-        //     StateReport::FinishB(outcome) => farcaster::State {
-        //         state: Some(farcaster::state::State::FinishB(FinishB {
-        //             outcome: farcaster::Outcome::from(outcome).into(),
-        //         })),
-        //     },
-        // }
     }
 }
 
-impl From<farcaster::HealthCheckSelector> for HealthCheckSelector {
-    fn from(s: farcaster::HealthCheckSelector) -> Self {
+impl From<farcaster::NetworkSelector> for HealthCheckSelector {
+    fn from(s: farcaster::NetworkSelector) -> Self {
         match s {
-            farcaster::HealthCheckSelector::CheckAll => HealthCheckSelector::All,
-            farcaster::HealthCheckSelector::CheckLocal => {
+            farcaster::NetworkSelector::AllNetworks => HealthCheckSelector::All,
+            farcaster::NetworkSelector::LocalNetworks => {
                 HealthCheckSelector::Network(Network::Local)
             }
-            farcaster::HealthCheckSelector::CheckMainnet => {
+            farcaster::NetworkSelector::MainnetNetworks => {
                 HealthCheckSelector::Network(Network::Mainnet)
             }
-            farcaster::HealthCheckSelector::CheckTestnet => {
+            farcaster::NetworkSelector::TestnetNetworks => {
                 HealthCheckSelector::Network(Network::Testnet)
             }
         }
@@ -412,17 +328,9 @@ impl Farcaster for FarcasterService {
                         .collect(),
                     uptime: info.uptime.as_secs(),
                     since: info.since,
-                    peers: info.peers.iter().map(|peer| format!("{}", peer)).collect(),
-                    swaps: info
-                        .swaps
-                        .iter()
-                        .map(|swap| format!("{:#x}", swap))
-                        .collect(),
-                    offers: info
-                        .offers
-                        .iter()
-                        .map(|offer| format!("{}", offer))
-                        .collect(),
+                    peers: info.peers.iter().map(|peer| peer.to_string()).collect(),
+                    swaps: info.swaps.iter().map(|swap| swap.to_string()).collect(),
+                    deals: info.deals.iter().map(|deal| deal.to_string()).collect(),
                 };
                 Ok(GrpcResponse::new(reply))
             }
@@ -478,7 +386,7 @@ impl Farcaster for FarcasterService {
                 state,
                 uptime,
                 since,
-                public_offer,
+                deal,
                 local_trade_role,
                 local_swap_role,
                 connected_counterparty_node_id,
@@ -489,7 +397,7 @@ impl Farcaster for FarcasterService {
                     connected,
                     uptime: uptime.as_secs(),
                     since: since,
-                    public_offer: public_offer.to_string(),
+                    deal: Some(deal.into()),
                     trade_role: farcaster::TradeRole::from(local_trade_role).into(),
                     swap_role: farcaster::SwapRole::from(local_swap_role).into(),
                     connected_counterparty_node_id: connected_counterparty_node_id
@@ -503,36 +411,47 @@ impl Farcaster for FarcasterService {
         }
     }
 
-    async fn list_offers(
+    async fn list_deals(
         &self,
-        request: GrpcRequest<ListOffersRequest>,
-    ) -> Result<GrpcResponse<ListOffersResponse>, Status> {
+        request: GrpcRequest<ListDealsRequest>,
+    ) -> Result<GrpcResponse<ListDealsResponse>, Status> {
         debug!("Received a grpc request: {:?}", request);
-        let ListOffersRequest {
+        let ListDealsRequest {
             id,
-            selector: grpc_offer_selector,
+            deal_selector: grpc_deal_selector,
+            network_selector: grpc_network_selector,
         } = request.into_inner();
-        let selector = farcaster::OfferSelector::from_i32(grpc_offer_selector)
-            .ok_or(Status::invalid_argument("selector"))?
+        let deal_selector = farcaster::DealSelector::from_i32(grpc_deal_selector)
+            .ok_or(Status::invalid_argument("offer_selector"))?
             .into();
+        let network_selector: NetworkSelector =
+            farcaster::NetworkSelector::from_i32(grpc_network_selector)
+                .ok_or(Status::invalid_argument("network_selector"))?;
         let oneshot_rx = self
             .process_request(BusMsg::Bridge(BridgeMsg::Info {
-                request: InfoMsg::ListOffers(selector),
+                request: InfoMsg::ListDeals(deal_selector),
                 service_id: ServiceId::Farcasterd,
             }))
             .await?;
         match oneshot_rx.await {
-            Ok(BusMsg::Info(InfoMsg::OfferList(mut offers))) => {
-                let reply = ListOffersResponse {
+            Ok(BusMsg::Info(InfoMsg::DealList(mut deals))) => {
+                let reply = ListDealsResponse {
                     id,
-                    public_offers: offers.drain(..).map(|o| o.offer).collect(),
+                    deals: deals
+                        .drain(..)
+                        .filter(|d| {
+                            network_selector == NetworkSelector::AllNetworks
+                                || Some(d.details.parameters.network) == network_selector.into()
+                        })
+                        .map(|d| DealInfo::from(d.details))
+                        .collect(),
                 };
                 Ok(GrpcResponse::new(reply))
             }
-            Ok(BusMsg::Info(InfoMsg::OfferStatusList(mut offers))) => {
-                let reply = ListOffersResponse {
+            Ok(BusMsg::Info(InfoMsg::DealStatusList(mut deals))) => {
+                let reply = ListDealsResponse {
                     id,
-                    public_offers: offers.drain(..).map(|o| o.offer.to_string()).collect(),
+                    deals: deals.drain(..).map(|d| DealInfo::from(d.deal)).collect(),
                 };
                 Ok(GrpcResponse::new(reply))
             }
@@ -542,38 +461,21 @@ impl Farcaster for FarcasterService {
         }
     }
 
-    async fn offer_info(
+    async fn deal_info(
         &self,
-        request: GrpcRequest<OfferInfoRequest>,
-    ) -> Result<GrpcResponse<OfferInfoResponse>, Status> {
-        debug!("Received a grpc offer info request: {:?}", request);
-        let OfferInfoRequest {
+        request: GrpcRequest<DealInfoRequest>,
+    ) -> Result<GrpcResponse<DealInfoResponse>, Status> {
+        debug!("Received a grpc deal info request: {:?}", request);
+        let DealInfoRequest {
             id,
-            public_offer: string_public_offer,
+            deal: string_deal,
         } = request.into_inner();
-        let public_offer = PublicOffer::from_str(&string_public_offer)
-            .map_err(|_| Status::invalid_argument("public offer malformed"))?;
+        let deal =
+            Deal::from_str(&string_deal).map_err(|_| Status::invalid_argument("deal malformed"))?;
 
-        let reply = OfferInfoResponse {
+        let reply = DealInfoResponse {
             id,
-            arbitrating_amount: public_offer.offer.arbitrating_amount.as_sat(),
-            accordant_amount: public_offer.offer.accordant_amount.as_pico(),
-            cancel_timelock: public_offer.offer.cancel_timelock.as_u32(),
-            punish_timelock: public_offer.offer.punish_timelock.as_u32(),
-            fee_strategy: public_offer.offer.fee_strategy.to_string(),
-            maker_role: farcaster::SwapRole::from(public_offer.offer.maker_role).into(),
-            uuid: public_offer.offer.uuid.to_string(),
-            network: farcaster::Network::from(public_offer.offer.network).into(),
-            arbitrating_blockchain: farcaster::Blockchain::from(
-                public_offer.offer.arbitrating_blockchain,
-            )
-            .into(),
-            accordant_blockchain: farcaster::Blockchain::from(
-                public_offer.offer.accordant_blockchain,
-            )
-            .into(),
-            node_id: public_offer.node_id.to_string(),
-            peer_address: public_offer.peer_address.to_string(),
+            deal_info: Some(deal.into()),
         };
         Ok(GrpcResponse::new(reply))
     }
@@ -583,13 +485,21 @@ impl Farcaster for FarcasterService {
         request: GrpcRequest<CheckpointsRequest>,
     ) -> Result<GrpcResponse<CheckpointsResponse>, Status> {
         debug!("Received a grpc checkpoints request: {:?}", request);
-        let CheckpointsRequest { id, selector } = request.into_inner();
+        let CheckpointsRequest {
+            id,
+            checkpoint_selector: grpc_checkpoint_selector,
+            network_selector: grpc_network_selector,
+        } = request.into_inner();
 
-        let selector = farcaster::CheckpointSelector::from_i32(selector)
-            .ok_or(Status::invalid_argument("selector"))?
+        let checkpoint_selector = farcaster::CheckpointSelector::from_i32(grpc_checkpoint_selector)
+            .ok_or(Status::invalid_argument("checkpoint_selector"))?
             .into();
 
-        let oneshot_rx = match selector {
+        let network_selector: NetworkSelector =
+            farcaster::NetworkSelector::from_i32(grpc_network_selector)
+                .ok_or(Status::invalid_argument("network_selector"))?;
+
+        let oneshot_rx = match checkpoint_selector {
             farcaster::CheckpointSelector::AllCheckpoints => {
                 self.process_request(BusMsg::Bridge(BridgeMsg::Info {
                     request: InfoMsg::RetrieveAllCheckpointInfo,
@@ -631,9 +541,13 @@ impl Farcaster for FarcasterService {
                     id,
                     checkpoint_entries: checkpoint_entries
                         .iter()
+                        .filter(|entry| {
+                            network_selector == NetworkSelector::AllNetworks
+                                || Some(entry.deal.parameters.network) == network_selector.into()
+                        })
                         .map(|entry| farcaster::CheckpointEntry {
-                            swap_id: format!("{:#x}", entry.swap_id),
-                            public_offer: format!("{}", entry.public_offer),
+                            swap_id: entry.swap_id.to_string(),
+                            deal: Some(entry.deal.clone().into()),
                             trade_role: farcaster::TradeRole::from(entry.trade_role) as i32,
                         })
                         .collect(),
@@ -695,11 +609,16 @@ impl Farcaster for FarcasterService {
         let FundingAddressesRequest {
             id,
             blockchain: grpc_blockchain,
+            network_selector: grpc_network_selector,
         } = request.into_inner();
 
         let blockchain: Blockchain = farcaster::Blockchain::from_i32(grpc_blockchain)
             .ok_or(Status::invalid_argument("arbitrating blockchain"))?
             .into();
+
+        let network_selector: NetworkSelector =
+            farcaster::NetworkSelector::from_i32(grpc_network_selector)
+                .ok_or(Status::invalid_argument("network_selector"))?;
 
         let oneshot_rx = self
             .process_request(BusMsg::Bridge(BridgeMsg::Info {
@@ -713,6 +632,10 @@ impl Farcaster for FarcasterService {
                     id,
                     addresses: addresses
                         .iter()
+                        .filter(|a| {
+                            network_selector == NetworkSelector::AllNetworks
+                                || Some(Network::from(a.address.network)) == network_selector.into()
+                        })
                         .map(|a| AddressSwapIdPair {
                             address: a.address.to_string(),
                             address_swap_id: a.swap_id.map(|c| {
@@ -813,8 +736,8 @@ impl Farcaster for FarcasterService {
                 accordant_amount
             )));
         }
-        let offer = Offer {
-            uuid: Uuid::new_v4(),
+        let deal_parameters = DealParameters {
+            uuid: Uuid::new_v4().into(),
             network,
             arbitrating_blockchain,
             accordant_blockchain,
@@ -826,8 +749,8 @@ impl Farcaster for FarcasterService {
             maker_role,
         };
         let public_addr = InetSocketAddr::socket(public_ip_addr, public_port as u16);
-        let proto_offer = ProtoPublicOffer {
-            offer,
+        let proto_deal = ProtoDeal {
+            deal_parameters,
             public_addr,
             arbitrating_addr,
             accordant_addr,
@@ -835,15 +758,15 @@ impl Farcaster for FarcasterService {
 
         let oneshot_rx = self
             .process_request(BusMsg::Bridge(BridgeMsg::Ctl {
-                request: CtlMsg::MakeOffer(proto_offer),
+                request: CtlMsg::MakeDeal(proto_deal),
                 service_id: ServiceId::Farcasterd,
             }))
             .await?;
         match oneshot_rx.await {
-            Ok(BusMsg::Info(InfoMsg::MadeOffer(made_offer))) => {
+            Ok(BusMsg::Info(InfoMsg::MadeDeal(made_deal))) => {
                 let reply = farcaster::MakeResponse {
                     id,
-                    offer: made_offer.offer_info.offer,
+                    deal: Some(made_deal.deal_info.details.into()),
                 };
                 Ok(GrpcResponse::new(reply))
             }
@@ -851,28 +774,24 @@ impl Farcaster for FarcasterService {
         }
     }
 
-    async fn revoke_offer(
+    async fn revoke_deal(
         &self,
-        request: GrpcRequest<RevokeOfferRequest>,
-    ) -> Result<GrpcResponse<RevokeOfferResponse>, Status> {
-        debug!("Received a grpc revoke offer request: {:?}", request);
-        let RevokeOfferRequest {
-            id,
-            public_offer: str_public_offer,
-        } = request.into_inner();
+        request: GrpcRequest<RevokeDealRequest>,
+    ) -> Result<GrpcResponse<RevokeDealResponse>, Status> {
+        debug!("Received a grpc revoke deal request: {:?}", request);
+        let RevokeDealRequest { id, deal: str_deal } = request.into_inner();
 
-        let public_offer = PublicOffer::from_str(&str_public_offer)
-            .map_err(|_| Status::invalid_argument("public offer"))?;
+        let deal = Deal::from_str(&str_deal).map_err(|_| Status::invalid_argument("deal"))?;
 
         let oneshot_rx = self
             .process_request(BusMsg::Bridge(BridgeMsg::Ctl {
-                request: CtlMsg::RevokeOffer(public_offer),
+                request: CtlMsg::RevokeDeal(deal),
                 service_id: ServiceId::Farcasterd,
             }))
             .await?;
         match oneshot_rx.await {
             Ok(BusMsg::Info(InfoMsg::String(_))) => {
-                let reply = farcaster::RevokeOfferResponse { id };
+                let reply = farcaster::RevokeDealResponse { id };
                 Ok(GrpcResponse::new(reply))
             }
             res => process_error_response(res),
@@ -1010,11 +929,16 @@ impl Farcaster for FarcasterService {
         let NeedsFundingRequest {
             id,
             blockchain: int_blockchain,
+            network_selector: grpc_network_selector,
         } = request.into_inner();
 
         let blockchain: Blockchain = farcaster::Blockchain::from_i32(int_blockchain)
             .ok_or(Status::invalid_argument("blockchain"))?
             .into();
+
+        let network_selector: NetworkSelector =
+            farcaster::NetworkSelector::from_i32(grpc_network_selector)
+                .ok_or(Status::invalid_argument("network_selector"))?;
 
         let oneshot_rx = self
             .process_request(BusMsg::Bridge(BridgeMsg::Info {
@@ -1024,24 +948,26 @@ impl Farcaster for FarcasterService {
             .await?;
 
         match oneshot_rx.await {
-            Ok(BusMsg::Info(InfoMsg::FundingInfos(infos))) => {
+            Ok(BusMsg::Info(InfoMsg::FundingInfos(mut infos))) => {
                 let reply = NeedsFundingResponse {
                     id,
                     funding_infos: infos
                         .swaps_need_funding
-                        .iter()
-                        .map(|info| match info {
-                            FundingInfo::Bitcoin(b_info) => farcaster::FundingInfo {
-                                swap_id: b_info.swap_id.to_string(),
-                                address: b_info.address.to_string(),
-                                amount: b_info.amount.as_sat(),
-                            },
-                            FundingInfo::Monero(m_info) => farcaster::FundingInfo {
-                                swap_id: m_info.swap_id.to_string(),
-                                address: m_info.address.to_string(),
-                                amount: m_info.amount.as_pico(),
-                            },
+                        .drain(..)
+                        .filter(|info| {
+                            network_selector == NetworkSelector::AllNetworks
+                                || match info {
+                                    FundingInfo::Bitcoin(b_info) => {
+                                        Some(Network::from(b_info.address.network))
+                                            == network_selector.into()
+                                    }
+                                    FundingInfo::Monero(m_info) => {
+                                        Some(Network::from(m_info.address.network))
+                                            == network_selector.into()
+                                    }
+                                }
                         })
+                        .map(farcaster::FundingInfo::from)
                         .collect(),
                 };
                 Ok(GrpcResponse::new(reply))
@@ -1059,7 +985,7 @@ impl Farcaster for FarcasterService {
             selector: grpc_selector,
         } = request.into_inner();
 
-        let selector: HealthCheckSelector = farcaster::HealthCheckSelector::from_i32(grpc_selector)
+        let selector: HealthCheckSelector = farcaster::NetworkSelector::from_i32(grpc_selector)
             .ok_or(Status::invalid_argument("selector"))?
             .into();
 
@@ -1307,7 +1233,7 @@ impl Farcaster for FarcasterService {
         debug!("Received a grpc take request: {:?}", request);
         let TakeRequest {
             id,
-            public_offer: str_public_offer,
+            deal: str_deal,
             bitcoin_address: str_bitcoin_address,
             monero_address: str_monero_address,
         } = request.into_inner();
@@ -1316,14 +1242,16 @@ impl Farcaster for FarcasterService {
             .map_err(|_| Status::invalid_argument("arbitrating address"))?;
         let monero_address = monero::Address::from_str(&str_monero_address)
             .map_err(|_| Status::invalid_argument("accordant_address"))?;
-        let public_offer = PublicOffer::from_str(&str_public_offer)
-            .map_err(|_| Status::invalid_argument("public offer"))?;
+        let deal = Deal::from_str(&str_deal).map_err(|_| Status::invalid_argument("deal"))?;
 
-        let PublicOffer { offer, .. } = public_offer.clone();
+        let Deal {
+            parameters: deal_parameters,
+            ..
+        } = deal.clone();
 
-        let network = offer.network;
-        let arbitrating_amount = offer.arbitrating_amount;
-        let accordant_amount = offer.accordant_amount;
+        let network = deal_parameters.network;
+        let arbitrating_amount = deal_parameters.arbitrating_amount;
+        let accordant_amount = deal_parameters.accordant_amount;
 
         if network != bitcoin_address.network.into() {
             return Err(Status::invalid_argument(format!(
@@ -1364,8 +1292,8 @@ impl Farcaster for FarcasterService {
 
         let oneshot_rx = self
             .process_request(BusMsg::Bridge(BridgeMsg::Ctl {
-                request: CtlMsg::TakeOffer(PubOffer {
-                    public_offer,
+                request: CtlMsg::TakeDeal(PubDeal {
+                    deal,
                     bitcoin_address: bitcoin_address,
                     monero_address: monero_address,
                 }),
@@ -1374,7 +1302,7 @@ impl Farcaster for FarcasterService {
             .await?;
 
         match oneshot_rx.await {
-            Ok(BusMsg::Info(InfoMsg::TookOffer(_))) => {
+            Ok(BusMsg::Info(InfoMsg::TookDeal(_))) => {
                 let reply = farcaster::TakeResponse { id };
                 Ok(GrpcResponse::new(reply))
             }

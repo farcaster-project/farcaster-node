@@ -12,7 +12,7 @@ use std::{
 use farcaster_core::{
     blockchain::Network,
     role::TradeRole,
-    swap::{btcxmr::PublicOffer, SwapId},
+    swap::{btcxmr::Deal, SwapId},
 };
 
 use amplify::{ToYamlString, Wrapper};
@@ -25,7 +25,7 @@ use crate::swapd::StateReport;
 use crate::syncerd::Health;
 
 #[derive(Clone, PartialEq, Eq, Debug, Display, NetworkEncode, NetworkDecode)]
-#[display("{swap_id}, {public_offer}")]
+#[display("{swap_id}, {deal}")]
 #[cfg_attr(
     feature = "serde",
     derive(Serialize, Deserialize),
@@ -34,7 +34,7 @@ use crate::syncerd::Health;
 #[display(CheckpointEntry::to_yaml_string)]
 pub struct CheckpointEntry {
     pub swap_id: SwapId,
-    pub public_offer: PublicOffer,
+    pub deal: Deal,
     pub trade_role: TradeRole,
     pub expected_counterparty_node_id: Option<NodeId>,
 }
@@ -93,7 +93,7 @@ pub struct MoneroSecretKeyInfo {
     derive(Serialize, Deserialize),
     serde(crate = "serde_crate")
 )]
-pub enum OfferStatus {
+pub enum DealStatus {
     #[display("Open")]
     Open,
     #[display("In Progress")]
@@ -103,20 +103,20 @@ pub enum OfferStatus {
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Display, NetworkEncode, NetworkDecode)]
-#[display("{offer}, {status}")]
+#[display("{deal}, {status}")]
 #[cfg_attr(
     feature = "serde",
     derive(Serialize, Deserialize),
     serde(crate = "serde_crate")
 )]
-#[display(OfferStatusPair::to_yaml_string)]
-pub struct OfferStatusPair {
-    pub offer: PublicOffer,
-    pub status: OfferStatus,
+#[display(DealStatusPair::to_yaml_string)]
+pub struct DealStatusPair {
+    pub deal: Deal,
+    pub status: DealStatus,
 }
 
 #[cfg(feature = "serde")]
-impl ToYamlString for OfferStatusPair {}
+impl ToYamlString for DealStatusPair {}
 
 #[derive(Clone, Debug, Eq, PartialEq, Hash, Display, NetworkEncode, NetworkDecode)]
 #[cfg_attr(
