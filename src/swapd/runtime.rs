@@ -349,8 +349,8 @@ impl Runtime {
     ) -> Result<(), Error> {
         match request {
             CtlMsg::Hello => {
-                self.log_info(format!(
-                    "Service {} daemon is now connected",
+                self.log_debug(format!(
+                    "Received Hello from {}",
                     source.bright_green_bold(),
                 ));
             }
