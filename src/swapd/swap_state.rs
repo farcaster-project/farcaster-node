@@ -1124,9 +1124,11 @@ fn try_bob_refund_procedure_signatures_to_bob_accordant_lock(
             amount,
             block: _,
             tx: _,
+            incoming,
         }))) if runtime.syncer_state.tasks.watched_addrs.contains_key(&id)
             && runtime.syncer_state.is_watched_addr(&TxLabel::AccLock)
-            && runtime.syncer_state.tasks.watched_addrs.get(&id) == Some(&TxLabel::AccLock) =>
+            && runtime.syncer_state.tasks.watched_addrs.get(&id) == Some(&TxLabel::AccLock)
+            && *incoming =>
         {
             let amount = monero::Amount::from_pico(amount.clone());
             if amount < runtime.deal.parameters.accordant_amount {
@@ -1649,7 +1651,10 @@ fn try_alice_arbitrating_lock_final_to_alice_accordant_lock(
             amount,
             ref block,
             ref tx,
-        }))) if runtime.syncer_state.tasks.watched_addrs.get(&id) == Some(&TxLabel::AccLock) => {
+            incoming,
+        }))) if runtime.syncer_state.tasks.watched_addrs.get(&id) == Some(&TxLabel::AccLock)
+            && incoming =>
+        {
             runtime.log_debug(format!(
                 "Event details: {} {:?} {} {:?} {:?}",
                 id, hash, amount, block, tx

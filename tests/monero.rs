@@ -8,11 +8,11 @@ use farcaster_node::syncerd::types::{
     Abort, AddressAddendum, Boolean, BroadcastTransaction, Task, WatchAddress, WatchHeight,
     WatchTransaction,
 };
-use farcaster_node::syncerd::GetAddressBalance;
 use farcaster_node::syncerd::{
     runtime::Synclet, SweepAddress, SweepAddressAddendum, SweepMoneroAddress, TaskId, TaskTarget,
     XmrAddressAddendum,
 };
+use farcaster_node::syncerd::{GetAddressBalance, TxFilter};
 use farcaster_node::ServiceId;
 use microservices::ZMQ_CONTEXT;
 use monero_rpc::GetBlockHeaderSelector;
@@ -334,6 +334,7 @@ async fn monero_syncer_address_test() {
                 lifetime: blocks + 1,
                 addendum: addendum_1.clone(),
                 include_tx: Boolean::True,
+                filter: TxFilter::Incoming,
             }),
             source: SOURCE1.clone(),
         };
@@ -376,6 +377,7 @@ async fn monero_syncer_address_test() {
                 lifetime: blocks + 1,
                 addendum: addendum_2,
                 include_tx: Boolean::True,
+                filter: TxFilter::Incoming,
             }),
             source: SOURCE1.clone(),
         };
@@ -404,6 +406,7 @@ async fn monero_syncer_address_test() {
                 lifetime: blocks + 1,
                 addendum: addendum_3,
                 include_tx: Boolean::True,
+                filter: TxFilter::Incoming,
             }),
             source: SOURCE1.clone(),
         };
@@ -445,6 +448,7 @@ async fn monero_syncer_address_test() {
                     lifetime: blocks + 5,
                     addendum: addendum_4.clone(),
                     include_tx: Boolean::True,
+                    filter: TxFilter::Incoming,
                 }),
                 source: SOURCE2.clone(),
             })
@@ -484,6 +488,7 @@ async fn monero_syncer_address_test() {
                 lifetime: blocks + 5,
                 addendum: addendum_5.clone(),
                 include_tx: Boolean::True,
+                filter: TxFilter::Incoming,
             }),
             source: SOURCE2.clone(),
         })
@@ -525,6 +530,7 @@ async fn monero_syncer_address_test() {
                 lifetime: blocks + 2,
                 addendum: addendum_6.clone(),
                 include_tx: Boolean::True,
+                filter: TxFilter::Incoming,
             }),
             source: SOURCE1.clone(),
         };
@@ -549,6 +555,7 @@ async fn monero_syncer_address_test() {
                 lifetime: blocks + 2,
                 addendum: addendum_6,
                 include_tx: Boolean::True,
+                filter: TxFilter::Incoming,
             }),
             source: SOURCE1.clone(),
         };

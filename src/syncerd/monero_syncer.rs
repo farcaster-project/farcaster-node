@@ -16,10 +16,10 @@ use crate::syncerd::syncer_state::create_set;
 use crate::syncerd::syncer_state::AddressTx;
 use crate::syncerd::syncer_state::SyncerState;
 use crate::syncerd::types::{AddressAddendum, Boolean, SweepAddressAddendum, Task};
-use crate::syncerd::AddressBalance;
 use crate::syncerd::TaskTarget;
 use crate::syncerd::TransactionBroadcasted;
 use crate::syncerd::XmrAddressAddendum;
+use crate::syncerd::{AddressBalance, TxFilter};
 use crate::syncerd::{Event, Health};
 use crate::ServiceId;
 use farcaster_core::blockchain::{Blockchain, Network};
@@ -174,10 +174,19 @@ impl MoneroRpc {
         let address_txs: Vec<AddressTx> = txs
             .transactions
             .drain(..)
-            .map(|tx| AddressTx {
-                our_amount: tx.total_received.parse::<u64>().unwrap(),
-                tx_id: tx.hash.0.to_bytes().into(),
-                tx: vec![],
+            .map(|tx| {
+                let incoming = tx.spent_outputs.is_empty();
+                let amount = if incoming {
+                    tx.total_received.parse::<u64>().unwrap()
+                } else {
+                    tx.total_sent.parse::<u64>().unwrap()
+                };
+                AddressTx {
+                    amount,
+                    tx_id: tx.hash.0.to_bytes().into(),
+                    tx: vec![],
+                    incoming,
+                }
             })
             .collect();
         Ok(AddressNotif { txs: address_txs })
@@ -189,6 +198,7 @@ impl MoneroRpc {
         network: monero::Network,
         wallet_mutex: Arc<Mutex<monero_rpc::WalletClient>>,
         initial_check_done: bool,
+        filter: TxFilter,
     ) -> Result<AddressNotif, Error> {
         let keypair = monero::ViewPair {
             spend: address_addendum.spend_key,
@@ -232,10 +242,24 @@ impl MoneroRpc {
         }
 
         let mut category_selector: HashMap<GetTransfersCategory, bool> = HashMap::new();
-        category_selector.insert(GetTransfersCategory::In, true);
-        category_selector.insert(GetTransfersCategory::Out, true);
-        category_selector.insert(GetTransfersCategory::Pending, true);
-        category_selector.insert(GetTransfersCategory::Pool, true);
+        match filter {
+            TxFilter::All => {
+                category_selector.insert(GetTransfersCategory::In, true);
+                category_selector.insert(GetTransfersCategory::Out, true);
+                category_selector.insert(GetTransfersCategory::Pending, true);
+                category_selector.insert(GetTransfersCategory::Pool, true);
+                category_selector.insert(GetTransfersCategory::Block, true);
+            }
+            TxFilter::Incoming => {
+                category_selector.insert(GetTransfersCategory::In, true);
+                category_selector.insert(GetTransfersCategory::Pool, true);
+                category_selector.insert(GetTransfersCategory::Block, true);
+            }
+            TxFilter::Outgoing => {
+                category_selector.insert(GetTransfersCategory::Out, true);
+                category_selector.insert(GetTransfersCategory::Pending, true);
+            }
+        }
 
         let selector = GetTransfersSelector {
             category_selector,
@@ -252,13 +276,21 @@ impl MoneroRpc {
         drop(wallet);
 
         let mut address_txs: Vec<AddressTx> = vec![];
-        for (_category, mut txs) in transfers.drain() {
+        for (category, mut txs) in transfers.drain() {
+            let incoming = match category {
+                GetTransfersCategory::In
+                | GetTransfersCategory::Block
+                | GetTransfersCategory::Pool => true,
+                GetTransfersCategory::Out | GetTransfersCategory::Pending => false,
+                _ => continue,
+            };
             for tx in txs.drain(..) {
                 // FIXME: tx set to vec![0]
                 address_txs.push(AddressTx {
-                    our_amount: tx.amount.as_pico(),
+                    amount: tx.amount.as_pico(),
                     tx_id: tx.txid.0,
                     tx: vec![0],
+                    incoming,
                 });
             }
         }
@@ -639,6 +671,7 @@ fn address_polling(
                                 network,
                                 Arc::clone(&wallet_mutex),
                                 watched_address.initial_check_done,
+                                watched_address.task.filter,
                             )
                             .await
                         {
