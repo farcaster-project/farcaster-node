@@ -61,7 +61,6 @@ pub struct SyncerState {
     pub xmr_addr_addendum: Option<XmrAddressAddendum>,
     pub confirmations: HashMap<TxLabel, Option<u32>>,
     pub awaiting_funding: bool,
-    pub btc_fee_estimate_sat_per_kvb: Option<u64>,
 }
 impl SyncerState {
     pub fn task_lifetime(&self, blockchain: Blockchain) -> u64 {

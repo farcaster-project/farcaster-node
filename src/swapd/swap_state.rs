@@ -23,7 +23,7 @@ use crate::{
         BusMsg, Failure, FailureCode,
     },
     event::{Event, StateMachine},
-    syncerd::{SweepAddress, TaskAborted},
+    syncerd::{FeeEstimation, FeeEstimations, SweepAddress, TaskAborted},
     CtlServer, ServiceId,
 };
 use crate::{
@@ -930,13 +930,31 @@ fn try_bob_reveal_to_bob_fee_estimated(
         funding_address,
         wallet,
     } = bob_reveal;
-    match &event.request {
-        BusMsg::Sync(SyncMsg::Event(SyncEvent::FeeEstimation(_))) => {
+    match &event.request.clone() {
+        BusMsg::Sync(SyncMsg::Event(SyncEvent::FeeEstimation(
+            // FeeEstimation::Bitcoin({high_priority_sats_per_kvbyte: fee_estimate, ..}),
+            FeeEstimation {
+                fee_estimations:
+                    FeeEstimations::BitcoinFeeEstimation {
+                        high_priority_sats_per_kvbyte,
+                        ..
+                    },
+                ..
+            },
+        ))) => {
+            // FIXME handle low priority as well
+            runtime.log_info(format!("Fee: {} sat/kvB", high_priority_sats_per_kvbyte));
+            let required_funding_amount = request_funding(
+                event,
+                runtime,
+                *high_priority_sats_per_kvbyte,
+                funding_address.clone(),
+            )?;
             Ok(Some(SwapStateMachine::BobFeeEstimated(BobFeeEstimated {
                 local_params,
                 remote_params,
                 wallet,
-                required_funding_amount: request_funding(event, runtime, funding_address.clone())?,
+                required_funding_amount,
                 funding_address,
             })))
         }
@@ -2178,17 +2196,12 @@ fn try_bob_buy_sweeping_to_swap_end(
 fn request_funding(
     mut event: Event,
     runtime: &mut Runtime,
+    fee_estimate: u64,
     funding_address: bitcoin::Address,
 ) -> Result<bitcoin::Amount, Error> {
     runtime.log_debug("Sending funding info to farcasterd");
-    let required_funding_amount = runtime.ask_bob_to_fund(
-        runtime
-            .syncer_state
-            .btc_fee_estimate_sat_per_kvb
-            .expect("Can't fail since triggered by FeeEstimate event"),
-        funding_address.clone(),
-        event.endpoints,
-    )?;
+    let required_funding_amount =
+        runtime.ask_bob_to_fund(fee_estimate, funding_address.clone(), event.endpoints)?;
     let watch_addr_task = runtime
         .syncer_state
         .watch_addr_btc(funding_address, TxLabel::Funding);

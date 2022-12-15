@@ -14,7 +14,6 @@ use crate::service::Endpoints;
 use crate::swapd::Opts;
 use crate::syncerd::bitcoin_syncer::p2wpkh_signed_tx_fee;
 use crate::syncerd::types::{Event, TransactionConfirmations};
-use crate::syncerd::{FeeEstimation, FeeEstimations};
 use crate::{
     bus::ctl::{BitcoinFundingInfo, Checkpoint, CtlMsg, FundingInfo, Params},
     bus::info::{InfoMsg, SwapInfo},
@@ -116,7 +115,6 @@ pub fn run(config: ServiceConfig, opts: Opts) -> Result<(), Error> {
         monero_syncer: ServiceId::Syncer(Blockchain::Monero, network),
         awaiting_funding: false,
         xmr_addr_addendum: None,
-        btc_fee_estimate_sat_per_kvb: None,
         confirmations: none!(),
     };
 
@@ -643,18 +641,8 @@ impl Runtime {
                         self.log_debug(event);
                     }
 
-                    Event::FeeEstimation(FeeEstimation {
-                        fee_estimations:
-                            FeeEstimations::BitcoinFeeEstimation {
-                                high_priority_sats_per_kvbyte,
-                                low_priority_sats_per_kvbyte: _,
-                            },
-                        id: _,
-                    }) => {
-                        // FIXME handle low priority as well
-                        self.log_info(format!("Fee: {} sat/kvB", high_priority_sats_per_kvbyte));
-                        self.syncer_state.btc_fee_estimate_sat_per_kvb =
-                            Some(*high_priority_sats_per_kvbyte);
+                    Event::FeeEstimation(event) => {
+                        self.log_debug(event);
                     }
                     Event::Empty(_) => self.log_debug("empty event not handled for Bitcoin"),
 
