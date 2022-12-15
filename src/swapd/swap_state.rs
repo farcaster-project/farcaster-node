@@ -2160,30 +2160,23 @@ fn attempt_transition_to_bob_reveal(
     reveal: Option<Reveal>,
 ) -> Result<Option<SwapStateMachine>, Error> {
     match event.request.clone() {
-        BusMsg::P2p(PeerMsg::Reveal(reveal)) => {
-            let remote_params =
-                if let Ok(validated_params) = validate_reveal(&reveal, remote_commit.clone()) {
-                    runtime.log_debug("remote params successfully validated");
-                    validated_params
-                } else {
-                    let msg = "remote params validation failed".to_string();
-                    runtime.log_error(&msg);
-                    return Err(Error::Farcaster(msg));
-                };
+        BusMsg::P2p(PeerMsg::Reveal(alice_reveal)) => {
+            let remote_params = if let Ok(validated_params) =
+                validate_reveal(&alice_reveal, remote_commit.clone())
+            {
+                runtime.log_debug("remote params successfully validated");
+                validated_params
+            } else {
+                let msg = "remote params validation failed".to_string();
+                runtime.log_error(&msg);
+                return Err(Error::Farcaster(msg));
+            };
+            runtime.log_info("Handling reveal with wallet");
+            let bob_reveal = wallet.handle_alice_reveals(alice_reveal.clone(), runtime.swap_id)?;
 
-            match wallet.handle_alice_reveals(reveal.clone(), runtime.swap_id) {
-                Ok(Some(bob_reveal)) => {
-                    runtime.log_info("Sending Bob reveal to Alice");
-                    runtime.send_peer(event.endpoints, PeerMsg::Reveal(bob_reveal.clone()))?;
-                }
-                Ok(None) => {
-                    runtime.log_debug("Bob is taker: reveal already sent to Alice");
-                }
-                Err(e) => {
-                    let msg = format!("wallet failed to handle reveal: {}", e);
-                    runtime.log_error(&msg);
-                    return Err(Error::Farcaster(msg));
-                }
+            // The wallet only returns reveal if we are Bob Maker
+            if let Some(bob_reveal) = bob_reveal {
+                runtime.send_peer(event.endpoints, PeerMsg::Reveal(bob_reveal))?;
             }
 
             if let Some(sat_per_kvb) = runtime.syncer_state.btc_fee_estimate_sat_per_kvb {
@@ -2217,7 +2210,7 @@ fn attempt_transition_to_bob_reveal(
                         funding_address,
                         remote_commit,
                         wallet,
-                        reveal: Some(reveal),
+                        reveal: Some(alice_reveal),
                     }))),
                     TradeRole::Taker => Ok(Some(SwapStateMachine::BobTakerMakerCommit(
                         BobTakerMakerCommit {
@@ -2226,7 +2219,7 @@ fn attempt_transition_to_bob_reveal(
                             funding_address,
                             remote_commit,
                             wallet,
-                            reveal: Some(reveal),
+                            reveal: Some(alice_reveal),
                         },
                     ))),
                 }
@@ -2285,9 +2278,9 @@ fn attempt_transition_to_alice_reveal(
     mut wallet: Wallet,
 ) -> Result<Option<SwapStateMachine>, Error> {
     match event.request {
-        BusMsg::P2p(PeerMsg::Reveal(reveal)) => {
+        BusMsg::P2p(PeerMsg::Reveal(bob_reveal)) => {
             let remote_params =
-                if let Ok(validated_params) = validate_reveal(&reveal, remote_commit.clone()) {
+                if let Ok(validated_params) = validate_reveal(&bob_reveal, remote_commit.clone()) {
                     runtime.log_debug("Remote params successfully validated");
                     validated_params
                 } else {
@@ -2296,11 +2289,11 @@ fn attempt_transition_to_alice_reveal(
                     return Err(Error::Farcaster(msg));
                 };
             runtime.log_info("Handling reveal with wallet");
-            let reveal = wallet.handle_bob_reveals(reveal, runtime.swap_id.clone())?;
+            let alice_reveal = wallet.handle_bob_reveals(bob_reveal, runtime.swap_id.clone())?;
 
             // The wallet only returns reveal if we are Alice Maker
-            if let Some(reveal) = reveal {
-                runtime.send_peer(event.endpoints, PeerMsg::Reveal(reveal))?;
+            if let Some(alice_reveal) = alice_reveal {
+                runtime.send_peer(event.endpoints, PeerMsg::Reveal(alice_reveal))?;
             }
             Ok(Some(SwapStateMachine::AliceReveal(AliceReveal {
                 local_params,
