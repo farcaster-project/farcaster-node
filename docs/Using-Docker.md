@@ -11,7 +11,7 @@ cd compose
 docker compose up -d
 ```
 
-:mag_right: If you plan to make deals with the Docker stack make sure you understand what ports need to be open and reachable on your host and exposed from the container (port `7067` is exposed in the provided compose file). You might need to additionally configure your firewall to enable takers to connect.
+:mag_right: If you plan to make offer with the Docker stack make sure you understand what ports need to be open and reachable on your host and exposed from the container (port `9735` is exposed in the provided compose file). You might need to additionally configure your firewall to enable takers to connect.
 
 To follow live `farcaster`'s logs run in another terminal (in the `compose/` folder):
 
@@ -31,7 +31,7 @@ To stop and remove the containers simply run:
 docker compose down
 ```
 
-Daemons used by the services are public testnet servers, you can change them by modifying `compose/farcaster.toml` file. After launching the containers you will see a new folder `compose/.farcaster` appears, this folder contains all node's data (nodeid key, databases, etc) and is stored on your machine so restarting the containers doesn't reset your node identity nor erase check-pointed data (deals, swaps checkpoints, etc.)
+Daemons used by the services are public testnet servers, you can change them by modifying `compose/farcaster.toml` file. After launching the containers you will see a new folder `compose/.farcaster` appears, this folder contains all node's data (nodeid key, database) and is stored on your machine so restarting the containers doesn't reset your node identity nor erase check-pointed data (public offers, swaps checkpoints, etc.)
 
 ### Images used
 
@@ -47,7 +47,7 @@ Images used in the docker compose are produced by the `farcaster-project` direct
 You can use the docker image directly with:
 
 ```
-docker run --rm --init -t -p 7067\
+docker run --rm --init -t -p 9735\
     --mount type=bind,source=<config folder>,destination=/etc/farcaster\
     --name farcaster_node\
     ghcr.io/farcaster-project/farcaster-node/farcasterd:latest\
@@ -62,7 +62,7 @@ or first build the node image locally and then start a container with `farcaster
 docker build --no-cache -t farcasterd:latest .
 ```
 
-The container will be removed after execution (`--rm`), allocate a pseudo-TTY (`-t`), and publish exposed port `7067` on the host in case you want to listens for incoming takers on the default port. If you only take deals you can remove `-p 7067`.
+The container will be removed after execution (`--rm`), allocate a pseudo-TTY (`-t`), and publish exposed port `9735` on the host in case you want to listens for incoming takers on the default port. If you only take public offers you can remove `-p 9735`.
 
 Stop the container with `ctrl+c` or `docker stop farcaster_node`.
 
