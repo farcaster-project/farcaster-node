@@ -878,16 +878,14 @@ fn try_bob_reveal_to_bob_fee_estimated(
         wallet,
     } = bob_reveal;
     match &event.request {
-        BusMsg::Sync(SyncMsg::Event(SyncEvent::FeeEstimation(
-            FeeEstimation {
-                fee_estimations:
-                    FeeEstimations::BitcoinFeeEstimation {
-                        high_priority_sats_per_kvbyte,
-                        ..
-                    },
-                ..
-            },
-        ))) => {
+        BusMsg::Sync(SyncMsg::Event(SyncEvent::FeeEstimation(FeeEstimation {
+            fee_estimations:
+                FeeEstimations::BitcoinFeeEstimation {
+                    high_priority_sats_per_kvbyte,
+                    ..
+                },
+            ..
+        }))) => {
             // FIXME handle low priority as well
             runtime.log_info(format!("Fee: {} sat/kvB", high_priority_sats_per_kvbyte));
             runtime.log_debug("Sending funding info to farcasterd");
