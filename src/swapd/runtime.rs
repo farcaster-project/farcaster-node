@@ -411,23 +411,8 @@ impl Runtime {
                 // We need to update the peerd for the pending requests in case of reconnect
                 self.local_trade_role = local_trade_role;
                 self.txs = txs.drain(..).collect();
-                self.log_trace("Watch height bitcoin");
-                let watch_height_bitcoin = self.syncer_state.watch_height(Blockchain::Bitcoin);
-                endpoints.send_to(
-                    ServiceBus::Sync,
-                    self.identity(),
-                    self.syncer_state.bitcoin_syncer(),
-                    BusMsg::Sync(SyncMsg::Task(watch_height_bitcoin)),
-                )?;
-
-                self.log_trace("Watch height monero");
-                let watch_height_monero = self.syncer_state.watch_height(Blockchain::Monero);
-                endpoints.send_to(
-                    ServiceBus::Sync,
-                    self.identity(),
-                    self.syncer_state.monero_syncer(),
-                    BusMsg::Sync(SyncMsg::Task(watch_height_monero)),
-                )?;
+                self.syncer_state.watch_height(endpoints, Blockchain::Bitcoin)?;
+                self.syncer_state.watch_height(endpoints, Blockchain::Monero)?;
 
                 self.log_trace("Watching transactions");
                 for (tx_label, txid) in txids.iter() {

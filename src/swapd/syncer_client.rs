@@ -279,15 +279,25 @@ impl SyncerState {
         task
     }
 
-    pub fn watch_height(&mut self, blockchain: Blockchain) -> Task {
-        let id = self.tasks.new_taskid();
+    pub fn watch_height(&mut self, endpoints: &mut Endpoints, blockchain: Blockchain) -> Result<(), Error> {
+        let swap_id = ServiceId::Swap(self.swap_id.clone());
+        let task_id = self.tasks.new_taskid();
         trace!("Watch height {}", blockchain);
         let task = Task::WatchHeight(WatchHeight {
-            id,
+            id: task_id,
             lifetime: self.task_lifetime(blockchain),
         });
-        self.tasks.tasks.insert(id, task.clone());
-        task
+        self.tasks.tasks.insert(task_id, task.clone());
+        endpoints.send_to(
+            ServiceBus::Sync,
+            swap_id.clone(),
+            match blockchain {
+                Blockchain::Bitcoin => self.bitcoin_syncer(),
+                Blockchain::Monero => self.monero_syncer(),
+            },
+            BusMsg::Sync(SyncMsg::Task(task)),
+        )?;
+        Ok(())
     }
 
     pub fn sweep_btc(&mut self, addendum: SweepBitcoinAddress, retry: bool) -> Task {
@@ -437,21 +447,9 @@ impl SyncerState {
             self.bitcoin_syncer(),
             BusMsg::Sync(SyncMsg::Task(task)),
         )?;
-        let watch_height_btc_task = self.watch_height(Blockchain::Bitcoin);
-        endpoints.send_to(
-            ServiceBus::Sync,
-            identity.clone(),
-            self.bitcoin_syncer(),
-            BusMsg::Sync(SyncMsg::Task(watch_height_btc_task)),
-        )?;
+        self.watch_height(endpoints, Blockchain::Bitcoin)?;
         // assumes xmr syncer will be up as well at this point
-        let watch_height_xmr_task = self.watch_height(Blockchain::Monero);
-        endpoints.send_to(
-            ServiceBus::Sync,
-            identity,
-            self.monero_syncer(),
-            BusMsg::Sync(SyncMsg::Task(watch_height_xmr_task)),
-        )?;
+        self.watch_height(endpoints, Blockchain::Monero)?;
         Ok(())
     }
 
