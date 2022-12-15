@@ -169,7 +169,7 @@ impl Reveal {
 #[display("{commit}")]
 pub struct TakerCommit {
     pub commit: Commit,
-    pub deal: Deal, // TODO: replace by public deal id
+    pub deal: Deal,
 }
 
 impl TakerCommit {
