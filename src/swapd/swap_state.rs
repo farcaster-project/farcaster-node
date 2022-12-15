@@ -41,10 +41,7 @@ use crate::{
     Endpoints, Error,
 };
 use crate::{
-    bus::{
-        ctl::{MoneroFundingInfo, Params},
-        p2p::Reveal,
-    },
+    bus::ctl::{MoneroFundingInfo, Params},
     syncerd::AddressTransaction,
 };
 use crate::{
@@ -308,7 +305,6 @@ pub struct BobInitMaker {
     funding_address: bitcoin::Address,
     remote_commit: Commit,
     wallet: Wallet,
-    reveal: Option<Reveal>,
 }
 
 #[derive(Clone, Debug, StrictEncode, StrictDecode)]
@@ -346,7 +342,6 @@ pub struct BobTakerMakerCommit {
     funding_address: bitcoin::Address,
     remote_commit: Commit,
     wallet: Wallet,
-    reveal: Option<Reveal>,
 }
 
 #[derive(Clone, Debug, StrictEncode, StrictDecode)]
@@ -721,7 +716,6 @@ fn attempt_transition_to_init_maker(
                     funding_address: funding_address.unwrap(),
                     remote_commit: commit,
                     wallet,
-                    reveal: None,
                 }))),
                 SwapRole::Alice => Ok(Some(SwapStateMachine::AliceInitMaker(AliceInitMaker {
                     local_params,
@@ -778,7 +772,6 @@ fn try_bob_init_taker_to_bob_taker_maker_commit(
                     funding_address,
                     wallet,
                     remote_commit,
-                    reveal: None,
                 },
             )))
         }
@@ -838,7 +831,6 @@ fn try_bob_taker_maker_commit_to_bob_reveal(
         funding_address,
         remote_commit,
         wallet,
-        reveal,
     } = bob_taker_maker_commit;
     attempt_transition_to_bob_reveal(
         event,
@@ -849,7 +841,6 @@ fn try_bob_taker_maker_commit_to_bob_reveal(
         remote_commit,
         TradeRole::Taker,
         wallet,
-        reveal,
     )
 }
 
@@ -877,7 +868,6 @@ fn try_bob_init_maker_to_bob_reveal(
         funding_address,
         remote_commit,
         wallet,
-        reveal,
     } = bob_init_maker;
     attempt_transition_to_bob_reveal(
         event,
@@ -888,7 +878,6 @@ fn try_bob_init_maker_to_bob_reveal(
         remote_commit,
         TradeRole::Maker,
         wallet,
-        reveal,
     )
 }
 
@@ -2193,7 +2182,6 @@ fn attempt_transition_to_bob_reveal(
     remote_commit: Commit,
     local_trade_role: TradeRole,
     mut wallet: Wallet,
-    reveal: Option<Reveal>,
 ) -> Result<Option<SwapStateMachine>, Error> {
     match event.request.clone() {
         BusMsg::P2p(PeerMsg::Reveal(alice_reveal)) => {
