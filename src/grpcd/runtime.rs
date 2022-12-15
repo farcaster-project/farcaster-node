@@ -609,8 +609,8 @@ impl Farcaster for FarcasterService {
             id,
             deal: string_deal,
         } = request.into_inner();
-        let deal = Deal::from_str(&string_deal)
-            .map_err(|_| Status::invalid_argument("public deal malformed"))?;
+        let deal =
+            Deal::from_str(&string_deal).map_err(|_| Status::invalid_argument("deal malformed"))?;
 
         let reply = DealInfoResponse {
             id,
@@ -920,8 +920,7 @@ impl Farcaster for FarcasterService {
         debug!("Received a grpc revoke deal request: {:?}", request);
         let RevokeDealRequest { id, deal: str_deal } = request.into_inner();
 
-        let deal =
-            Deal::from_str(&str_deal).map_err(|_| Status::invalid_argument("public deal"))?;
+        let deal = Deal::from_str(&str_deal).map_err(|_| Status::invalid_argument("deal"))?;
 
         let oneshot_rx = self
             .process_request(BusMsg::Bridge(BridgeMsg::Ctl {
@@ -1382,8 +1381,7 @@ impl Farcaster for FarcasterService {
             .map_err(|_| Status::invalid_argument("arbitrating address"))?;
         let monero_address = monero::Address::from_str(&str_monero_address)
             .map_err(|_| Status::invalid_argument("accordant_address"))?;
-        let deal =
-            Deal::from_str(&str_deal).map_err(|_| Status::invalid_argument("public deal"))?;
+        let deal = Deal::from_str(&str_deal).map_err(|_| Status::invalid_argument("deal"))?;
 
         let Deal {
             parameters: deal_parameters,

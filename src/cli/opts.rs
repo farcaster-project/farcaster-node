@@ -58,7 +58,7 @@ pub enum Command {
     #[clap(aliases = &["ls"])]
     ListSwaps,
 
-    /// Lists public deals created by daemon
+    /// Lists deals created by daemon
     #[clap(aliases = &["ld"])]
     ListDeals {
         #[clap(
@@ -129,7 +129,7 @@ pub enum Command {
     },
 
     /// Maker creates deal and start listening for incoming connections. Command used to to print
-    /// the resulting public deal that shall be shared with Taker. Additionally it spins up the
+    /// the resulting deal that shall be shared with Taker. Additionally it spins up the
     /// listener awaiting for connection related to this deal.
     ///
     /// Example usage:
@@ -197,12 +197,12 @@ pub enum Command {
         #[clap(long, default_value = "1 satoshi/vByte")]
         fee_strategy: FeeStrategy<SatPerVByte>,
 
-        /// Public IPv4 or IPv6 address to advertise in the public deal. This allows taker to
+        /// Public IPv4 or IPv6 address to advertise in the deal. This allows taker to
         /// connect; defaults to 127.0.0.1.
         #[clap(short = 'I', long, default_value = "127.0.0.1")]
         public_ip_addr: IpAddr,
 
-        /// Public port to advertise in the public deal; defaults to the FC port 7067.
+        /// Public port to advertise in the deal; defaults to the FC port 7067.
         ///
         /// This port should either be equal to 'farcasterd.bind_port' value in your config file or
         /// you should setup a proxy to forward trafic from {-I}:{-p} to
@@ -221,11 +221,11 @@ pub enum Command {
         #[clap(long = "xmr-addr")]
         monero_address: XmrAddress,
 
-        /// An encoded public deal.
+        /// An encoded deal.
         #[clap(short = 'd', long = "deal")]
         deal: Deal,
 
-        /// Accept the public deal without validation.
+        /// Accept the deal without validation.
         #[clap(short, long)]
         without_validation: bool,
     },
