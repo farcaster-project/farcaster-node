@@ -352,8 +352,9 @@ pub struct BobTakerMakerCommit {
 #[derive(Clone, Debug, StrictEncode, StrictDecode)]
 pub struct BobReveal {
     local_params: Params,
-    required_funding_amount: bitcoin::Amount,
+    required_funding_amount: Option<bitcoin::Amount>,
     funding_address: bitcoin::Address,
+    funding_requested: bool,
     remote_params: Params,
     wallet: Wallet,
 }
@@ -916,8 +917,32 @@ fn try_bob_reveal_to_bob_funded(
         mut wallet,
         required_funding_amount,
         funding_address,
+        funding_requested,
     } = bob_reveal;
     match &event.request {
+        BusMsg::Sync(SyncMsg::Event(SyncEvent::FeeEstimation(_))) if !funding_requested => {
+            runtime.log_debug("Sending funding info to farcasterd");
+            let required_funding_amount = Some(runtime.ask_bob_to_fund(
+                runtime.syncer_state.btc_fee_estimate_sat_per_kvb.expect("swapd runtime processed event first and set the fee estimate"),
+                funding_address.clone(),
+                event.endpoints,
+            )?);
+            let watch_addr_task = runtime
+                .syncer_state
+                .watch_addr_btc(funding_address.clone(), TxLabel::Funding);
+            event.send_sync_service(
+                runtime.syncer_state.bitcoin_syncer(),
+                SyncMsg::Task(watch_addr_task),
+            )?;
+            Ok(Some(SwapStateMachine::BobReveal(BobReveal {
+                local_params,
+                remote_params,
+                wallet,
+                required_funding_amount,
+                funding_address,
+                funding_requested: true,
+            })))
+        }
         BusMsg::Sync(SyncMsg::Event(SyncEvent::AddressTransaction(AddressTransaction {
             id,
             amount,
@@ -937,6 +962,7 @@ fn try_bob_reveal_to_bob_funded(
             runtime.syncer_state.awaiting_funding = false;
             // If the bitcoin amount does not match the expected funding amount, abort the swap
             let amount = bitcoin::Amount::from_sat(*amount);
+            let required_funding_amount = required_funding_amount.expect("Can't be funded if we never requested funding");
             // Abort the swap in case of bad funding amount
             if amount != required_funding_amount {
                 // incorrect funding, start aborting procedure
@@ -2179,94 +2205,40 @@ fn attempt_transition_to_bob_reveal(
                 runtime.send_peer(event.endpoints, PeerMsg::Reveal(bob_reveal))?;
             }
 
-            if let Some(sat_per_kvb) = runtime.syncer_state.btc_fee_estimate_sat_per_kvb {
-                runtime.log_debug("Sending funding info to farcasterd");
-                let required_funding_amount = runtime.ask_bob_to_fund(
-                    sat_per_kvb,
-                    funding_address.clone(),
-                    event.endpoints,
-                )?;
-                let watch_addr_task = runtime
-                    .syncer_state
-                    .watch_addr_btc(funding_address.clone(), TxLabel::Funding);
-                event.send_sync_service(
-                    runtime.syncer_state.bitcoin_syncer(),
-                    SyncMsg::Task(watch_addr_task),
-                )?;
-                Ok(Some(SwapStateMachine::BobReveal(BobReveal {
-                    local_params,
-                    required_funding_amount,
-                    funding_address,
-                    remote_params,
-                    wallet,
-                })))
-            } else {
-                // fee estimate not available yet, defer handling for later
-                runtime.log_debug("Deferring handling of Reveal for when fee available.");
-                match local_trade_role {
-                    TradeRole::Maker => Ok(Some(SwapStateMachine::BobInitMaker(BobInitMaker {
-                        local_commit,
-                        local_params,
-                        funding_address,
-                        remote_commit,
-                        wallet,
-                        reveal: Some(alice_reveal),
-                    }))),
-                    TradeRole::Taker => Ok(Some(SwapStateMachine::BobTakerMakerCommit(
-                        BobTakerMakerCommit {
-                            local_commit,
-                            local_params,
-                            funding_address,
-                            remote_commit,
-                            wallet,
-                            reveal: Some(alice_reveal),
-                        },
-                    ))),
-                }
-            }
+            let (funding_requested, required_funding_amount) = match runtime.syncer_state.btc_fee_estimate_sat_per_kvb {
+                Some(sat_per_kvb) => {
+                    runtime.log_debug("Sending funding info to farcasterd");
+                    let required_funding_amount = runtime.ask_bob_to_fund(
+                        sat_per_kvb,
+                        funding_address.clone(),
+                        event.endpoints,
+                    )?;
+                    let watch_addr_task = runtime
+                        .syncer_state
+                        .watch_addr_btc(funding_address.clone(), TxLabel::Funding);
+                    event.send_sync_service(
+                        runtime.syncer_state.bitcoin_syncer(),
+                        SyncMsg::Task(watch_addr_task),
+                    )?;
+                    (true, Some(required_funding_amount))
+                },
+                None => (false, None)
+            };
+
+            Ok(Some(SwapStateMachine::BobReveal(BobReveal {
+                local_params,
+                required_funding_amount,
+                funding_address,
+                funding_requested,
+                remote_params,
+                wallet,
+            })))
+
         }
         BusMsg::Ctl(CtlMsg::AbortSwap) => {
             handle_bob_abort_swap(event, runtime, wallet, funding_address)
         }
-        // catch-all for when fee estimate was not available when received reveal from Alice
-        // if fee estimate available now, transition to BobReveal
-        _ => {
-            if let (Some(reveal), Some(sat_per_kvb)) =
-                (reveal, runtime.syncer_state.btc_fee_estimate_sat_per_kvb)
-            {
-                let remote_params =
-                    if let Ok(validated_params) = validate_reveal(&reveal, remote_commit.clone()) {
-                        runtime.log_debug("Remote params successfully validated");
-                        validated_params
-                    } else {
-                        let msg = "Remote params validation failed".to_string();
-                        runtime.log_error(&msg);
-                        return Err(Error::Farcaster(msg));
-                    };
-                runtime.log_debug("Sending funding info to farcasterd");
-                let required_funding_amount = runtime.ask_bob_to_fund(
-                    sat_per_kvb,
-                    funding_address.clone(),
-                    event.endpoints,
-                )?;
-                let watch_addr_task = runtime
-                    .syncer_state
-                    .watch_addr_btc(funding_address.clone(), TxLabel::Funding);
-                event.complete_sync_service(
-                    runtime.syncer_state.bitcoin_syncer(),
-                    SyncMsg::Task(watch_addr_task),
-                )?;
-                Ok(Some(SwapStateMachine::BobReveal(BobReveal {
-                    local_params,
-                    required_funding_amount,
-                    funding_address,
-                    remote_params,
-                    wallet,
-                })))
-            } else {
-                Ok(None)
-            }
-        }
+        _ => Ok(None)
     }
 }
 
