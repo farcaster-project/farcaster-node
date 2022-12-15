@@ -349,7 +349,6 @@ pub struct BobTakerMakerCommit {
 #[derive(Clone, Debug, StrictEncode, StrictDecode)]
 pub struct BobReveal {
     local_params: Params,
-    required_funding_amount: Option<bitcoin::Amount>,
     funding_address: bitcoin::Address,
     remote_params: Params,
     wallet: Wallet,
@@ -365,7 +364,7 @@ pub struct AliceReveal {
 #[derive(Clone, Debug, StrictEncode, StrictDecode)]
 pub struct BobFeeEstimated {
     local_params: Params,
-    required_funding_amount: Option<bitcoin::Amount>,
+    required_funding_amount: bitcoin::Amount,
     funding_address: bitcoin::Address,
     remote_params: Params,
     wallet: Wallet,
@@ -928,23 +927,16 @@ fn try_bob_reveal_to_bob_fee_estimated(
     let BobReveal {
         local_params,
         remote_params,
-        required_funding_amount,
         funding_address,
         wallet,
     } = bob_reveal;
     match &event.request {
-        BusMsg::Sync(SyncMsg::Event(SyncEvent::FeeEstimation(_)))
-            if required_funding_amount.is_none() =>
-        {
+        BusMsg::Sync(SyncMsg::Event(SyncEvent::FeeEstimation(_))) => {
             Ok(Some(SwapStateMachine::BobFeeEstimated(BobFeeEstimated {
                 local_params,
                 remote_params,
                 wallet,
-                required_funding_amount: try_request_funding(
-                    event,
-                    runtime,
-                    funding_address.clone(),
-                )?,
+                required_funding_amount: request_funding(event, runtime, funding_address.clone())?,
                 funding_address,
             })))
         }
@@ -987,8 +979,6 @@ fn try_bob_fee_estimated_to_bob_funded(
             runtime.syncer_state.awaiting_funding = false;
             // If the bitcoin amount does not match the expected funding amount, abort the swap
             let amount = bitcoin::Amount::from_sat(*amount);
-            let required_funding_amount =
-                required_funding_amount.expect("Can't be funded if we never requested funding");
             // Abort the swap in case of bad funding amount
             if amount != required_funding_amount {
                 // incorrect funding, start aborting procedure
@@ -2185,27 +2175,28 @@ fn try_bob_buy_sweeping_to_swap_end(
     }
 }
 
-fn try_request_funding(
+fn request_funding(
     mut event: Event,
     runtime: &mut Runtime,
     funding_address: bitcoin::Address,
-) -> Result<Option<bitcoin::Amount>, Error> {
-    match runtime.syncer_state.btc_fee_estimate_sat_per_kvb {
-        Some(sat_per_kvb) => {
-            runtime.log_debug("Sending funding info to farcasterd");
-            let required_funding_amount =
-                runtime.ask_bob_to_fund(sat_per_kvb, funding_address.clone(), event.endpoints)?;
-            let watch_addr_task = runtime
-                .syncer_state
-                .watch_addr_btc(funding_address, TxLabel::Funding);
-            event.send_sync_service(
-                runtime.syncer_state.bitcoin_syncer(),
-                SyncMsg::Task(watch_addr_task),
-            )?;
-            Ok(Some(required_funding_amount))
-        }
-        None => Ok(None),
-    }
+) -> Result<bitcoin::Amount, Error> {
+    runtime.log_debug("Sending funding info to farcasterd");
+    let required_funding_amount = runtime.ask_bob_to_fund(
+        runtime
+            .syncer_state
+            .btc_fee_estimate_sat_per_kvb
+            .expect("Can't fail since triggered by FeeEstimate event"),
+        funding_address.clone(),
+        event.endpoints,
+    )?;
+    let watch_addr_task = runtime
+        .syncer_state
+        .watch_addr_btc(funding_address, TxLabel::Funding);
+    event.send_sync_service(
+        runtime.syncer_state.bitcoin_syncer(),
+        SyncMsg::Task(watch_addr_task),
+    )?;
+    Ok(required_funding_amount)
 }
 
 fn attempt_transition_to_bob_reveal(
@@ -2241,12 +2232,6 @@ fn attempt_transition_to_bob_reveal(
 
             Ok(Some(SwapStateMachine::BobReveal(BobReveal {
                 local_params,
-                required_funding_amount: try_request_funding(
-                    event,
-                    runtime,
-                    funding_address.clone(),
-                )
-                .unwrap(),
                 funding_address,
                 remote_params,
                 wallet,
