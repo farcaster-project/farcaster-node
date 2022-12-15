@@ -187,11 +187,13 @@ pub enum SwapStateMachine {
     // peer.
     #[display("Bob Reveal")]
     BobReveal(BobReveal),
-    // BobFeeEstimated state - transitions to BobFunded on event AddressTransaction.
+    // BobFeeEstimated state - transitions to BobFunded on event AddressTransaction
+    // or BobAbortAwaitingBitcoinSweep on request AbortSwap or in case of incorrect
+    // funding amount.
     #[display("Bob Fee Estimated")]
     BobFeeEstimated(BobFeeEstimated),
     // BobFunded state - transitions to BobRefundProcedureSignatures on request
-    // RefundProcedureSignatures or BobAbortAwaitingSweep on request AbortSwap.
+    // RefundProcedureSignatures or BobAbortAwaitingBitcoinSweep on request AbortSwap.
     // Broadcasts Lock, watches AccLock, watches Buy, checkpoints the Bob pre
     // Buy state.
     #[display("Bob Funded")]
@@ -877,7 +879,6 @@ fn try_bob_reveal_to_bob_fee_estimated(
     } = bob_reveal;
     match &event.request {
         BusMsg::Sync(SyncMsg::Event(SyncEvent::FeeEstimation(
-            // FeeEstimation::Bitcoin({high_priority_sats_per_kvbyte: fee_estimate, ..}),
             FeeEstimation {
                 fee_estimations:
                     FeeEstimations::BitcoinFeeEstimation {

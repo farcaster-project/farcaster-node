@@ -964,7 +964,7 @@ impl Wallet {
                 .expect("This is safe, since we just set it to some"))
         } else {
             error!("{} | only Some(Wallet::Bob)", swap_id.swap_id());
-            Err(Error::Farcaster("Only wallet::Bob is allowed".to_string()))
+            Err(Error::Farcaster("Only Wallet::Bob is allowed".to_string()))
         }
     }
 
@@ -1140,7 +1140,7 @@ impl Wallet {
         } else {
             error!("{} | only Wallet::Alice", swap_id.swap_id(),);
             Err(Error::Farcaster(
-                "Only wallet::Alice is allowed".to_string(),
+                "Only Wallet::Alice is allowed".to_string(),
             ))
         }
     }
