@@ -438,7 +438,7 @@ impl SyncerState {
             )
         }
     }
-    pub fn watch_fee_and_height(&mut self, endpoints: &mut Endpoints) -> Result<(), Error> {
+    pub fn watch_bitcoin_fee(&mut self, endpoints: &mut Endpoints) -> Result<(), Error> {
         let identity = ServiceId::Swap(self.swap_id.clone());
         let task = self.estimate_fee_btc();
         endpoints.send_to(
@@ -447,9 +447,6 @@ impl SyncerState {
             self.bitcoin_syncer(),
             BusMsg::Sync(SyncMsg::Task(task)),
         )?;
-        self.watch_height(endpoints, Blockchain::Bitcoin)?;
-        // assumes xmr syncer will be up as well at this point
-        self.watch_height(endpoints, Blockchain::Monero)?;
         Ok(())
     }
 

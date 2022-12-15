@@ -600,8 +600,9 @@ fn attempt_transition_to_init_taker(
                 ));
                 return Ok(None);
             };
-            // start fee estimation and block height changes
-            runtime.syncer_state.watch_fee_and_height(event.endpoints)?;
+            // start watching block height changes
+            runtime.syncer_state.watch_height(event.endpoints, Blockchain::Bitcoin)?;
+            runtime.syncer_state.watch_height(event.endpoints, Blockchain::Monero)?;
             runtime.peer_service = peerd.clone();
             if let ServiceId::Peer(0, _) = runtime.peer_service {
                 runtime.connected = false;
@@ -670,8 +671,9 @@ fn attempt_transition_to_init_maker(
             target_monero_address,
             commit,
         })) => {
-            // start fee estimation and block height changes
-            runtime.syncer_state.watch_fee_and_height(event.endpoints)?;
+            // start watching block height changes
+            runtime.syncer_state.watch_height(event.endpoints, Blockchain::Bitcoin)?;
+            runtime.syncer_state.watch_height(event.endpoints, Blockchain::Monero)?;
             let wallet = Wallet::new_maker(
                 event.endpoints,
                 runtime.deal.clone(),
@@ -2186,6 +2188,9 @@ fn attempt_transition_to_bob_reveal(
             if let Some(bob_reveal) = bob_reveal {
                 runtime.send_peer(event.endpoints, PeerMsg::Reveal(bob_reveal))?;
             }
+
+            // start watching bitcoin fee estimate
+            runtime.syncer_state.watch_bitcoin_fee(event.endpoints)?;
 
             Ok(Some(SwapStateMachine::BobReveal(BobReveal {
                 local_params,
