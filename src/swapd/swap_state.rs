@@ -2171,17 +2171,20 @@ fn attempt_transition_to_bob_reveal(
                     return Err(Error::Farcaster(msg));
                 };
 
-            if wallet
-                .handle_alice_reveals(reveal.clone(), runtime.swap_id)
-                .is_err()
-            {
-                let msg = "wallet failed to handle reveal".to_string();
-                runtime.log_error(&msg);
-                return Err(Error::Farcaster(msg));
-            };
-
-            runtime.log_info("Sending Bob reveal to Alice");
-            runtime.send_peer(event.endpoints, PeerMsg::Reveal(reveal.clone()))?;
+            match wallet.handle_alice_reveals(reveal.clone(), runtime.swap_id) {
+                Ok(Some(bob_reveal)) => {
+                    runtime.log_info("Sending Bob reveal to Alice");
+                    runtime.send_peer(event.endpoints, PeerMsg::Reveal(bob_reveal.clone()))?;
+                }
+                Ok(None) => {
+                    runtime.log_debug("Bob is taker: reveal already sent to Alice");
+                }
+                Err(e) => {
+                    let msg = format!("wallet failed to handle reveal: {}", e);
+                    runtime.log_error(&msg);
+                    return Err(Error::Farcaster(msg));
+                }
+            }
 
             if let Some(sat_per_kvb) = runtime.syncer_state.btc_fee_estimate_sat_per_kvb {
                 runtime.log_debug("Sending funding info to farcasterd");
