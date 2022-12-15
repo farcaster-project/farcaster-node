@@ -2066,8 +2066,16 @@ fn try_alice_punish_to_swap_end(
 ) -> Result<Option<SwapStateMachine>, Error> {
     match event.request {
         BusMsg::Sync(SyncMsg::Event(SyncEvent::TransactionConfirmations(
-            TransactionConfirmations { id, .. },
-        ))) if runtime.syncer_state.tasks.watched_txs.get(&id) == Some(&TxLabel::Punish) => {
+            TransactionConfirmations {
+                id,
+                confirmations: Some(confirmations),
+                ..
+            },
+        ))) if runtime.syncer_state.tasks.watched_txs.get(&id) == Some(&TxLabel::Punish)
+            && runtime
+                .temporal_safety
+                .final_tx(confirmations, Blockchain::Bitcoin) =>
+        {
             let abort_all = Task::Abort(Abort {
                 task_target: TaskTarget::AllTasks,
                 respond: Boolean::False,
