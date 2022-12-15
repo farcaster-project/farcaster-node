@@ -6,15 +6,16 @@
 
 use bitcoin::psbt::serialize::Deserialize;
 use farcaster_core::{
-    blockchain::Blockchain,
-    role::SwapRole,
-    swap::btcxmr::message::BuyProcedureSignature,
-    transaction::Fundable,
-    transaction::TxLabel,
+    blockchain::Blockchain, role::SwapRole, swap::btcxmr::message::BuyProcedureSignature,
+    transaction::Fundable, transaction::TxLabel,
 };
 use microservices::esb::Handler;
 use strict_encoding::{StrictDecode, StrictEncode};
 
+use crate::{
+    bus::ctl::{MoneroFundingInfo, Params},
+    syncerd::AddressTransaction,
+};
 use crate::{
     bus::{
         ctl::{CtlMsg, InitMakerSwap, InitTakerSwap},
@@ -40,10 +41,6 @@ use crate::{
         TransactionRetrieved,
     },
     Endpoints, Error,
-};
-use crate::{
-    bus::ctl::{MoneroFundingInfo, Params},
-    syncerd::AddressTransaction,
 };
 use crate::{
     bus::{sync::SyncMsg, Outcome},
@@ -907,12 +904,18 @@ fn try_bob_reveal_to_bob_funded(
         funding_address,
     } = bob_reveal;
     match &event.request {
-        BusMsg::Sync(SyncMsg::Event(SyncEvent::FeeEstimation(_))) if required_funding_amount.is_none() => {
+        BusMsg::Sync(SyncMsg::Event(SyncEvent::FeeEstimation(_)))
+            if required_funding_amount.is_none() =>
+        {
             Ok(Some(SwapStateMachine::BobReveal(BobReveal {
                 local_params,
                 remote_params,
                 wallet,
-                required_funding_amount: try_request_funding(event, runtime, funding_address.clone())?,
+                required_funding_amount: try_request_funding(
+                    event,
+                    runtime,
+                    funding_address.clone(),
+                )?,
                 funding_address,
             })))
         }
@@ -935,7 +938,8 @@ fn try_bob_reveal_to_bob_funded(
             runtime.syncer_state.awaiting_funding = false;
             // If the bitcoin amount does not match the expected funding amount, abort the swap
             let amount = bitcoin::Amount::from_sat(*amount);
-            let required_funding_amount = required_funding_amount.expect("Can't be funded if we never requested funding");
+            let required_funding_amount =
+                required_funding_amount.expect("Can't be funded if we never requested funding");
             // Abort the swap in case of bad funding amount
             if amount != required_funding_amount {
                 // incorrect funding, start aborting procedure
@@ -2140,11 +2144,8 @@ fn try_request_funding(
     match runtime.syncer_state.btc_fee_estimate_sat_per_kvb {
         Some(sat_per_kvb) => {
             runtime.log_debug("Sending funding info to farcasterd");
-            let required_funding_amount = runtime.ask_bob_to_fund(
-                sat_per_kvb,
-                funding_address.clone(),
-                event.endpoints,
-            )?;
+            let required_funding_amount =
+                runtime.ask_bob_to_fund(sat_per_kvb, funding_address.clone(), event.endpoints)?;
             let watch_addr_task = runtime
                 .syncer_state
                 .watch_addr_btc(funding_address, TxLabel::Funding);
@@ -2153,8 +2154,8 @@ fn try_request_funding(
                 SyncMsg::Task(watch_addr_task),
             )?;
             Ok(Some(required_funding_amount))
-        },
-        None => Ok(None)
+        }
+        None => Ok(None),
     }
 }
 
@@ -2188,17 +2189,21 @@ fn attempt_transition_to_bob_reveal(
 
             Ok(Some(SwapStateMachine::BobReveal(BobReveal {
                 local_params,
-                required_funding_amount: try_request_funding(event, runtime, funding_address.clone()).unwrap(),
+                required_funding_amount: try_request_funding(
+                    event,
+                    runtime,
+                    funding_address.clone(),
+                )
+                .unwrap(),
                 funding_address,
                 remote_params,
                 wallet,
             })))
-
         }
         BusMsg::Ctl(CtlMsg::AbortSwap) => {
             handle_bob_abort_swap(event, runtime, wallet, funding_address)
         }
-        _ => Ok(None)
+        _ => Ok(None),
     }
 }
 

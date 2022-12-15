@@ -879,7 +879,9 @@ impl Wallet {
                     // set wallet params
                     if remote_params.is_some() || remote_proof.is_some() {
                         error!("{} | Alice params or proof already set", swap_id.swap_id(),);
-                        return Err(Error::Farcaster("Alice params or proof already set".to_string()));
+                        return Err(Error::Farcaster(
+                            "Alice params or proof already set".to_string(),
+                        ));
                     }
 
                     trace!("Setting Alice params: {}", parameters);
