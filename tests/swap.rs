@@ -305,7 +305,7 @@ async fn swap_revoke_deal_bob_maker_normal() {
 
     let (_, data_dir_maker, _, data_dir_taker) = launch_farcasterd_pair().await;
 
-    // first make and revoke an deal
+    // first make and revoke a deal
     make_and_revoke_deal(
         data_dir_maker.clone(),
         "Bob".to_string(),

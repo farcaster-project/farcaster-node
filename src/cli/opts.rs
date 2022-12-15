@@ -230,7 +230,7 @@ pub enum Command {
         without_validation: bool,
     },
 
-    /// Revoke deal accepts an deal and revokes it within the runtime.
+    /// Revoke deal accepts a deal and revokes it within the runtime.
     #[display("revoke-deal<{deal}>")]
     RevokeDeal {
         /// The deal to be canceled.
@@ -339,7 +339,7 @@ impl FromStr for DealSelector {
 #[derive(Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Debug, Display, Error, From)]
 #[display(doc_comments)]
 pub enum DealSelectorParseError {
-    /// The provided value can't be parsed as an deal selector
+    /// The provided value can't be parsed as a deal selector
     Invalid,
 }
 
@@ -366,7 +366,7 @@ impl FromStr for CheckpointSelector {
 #[derive(Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Debug, Display, Error, From)]
 #[display(doc_comments)]
 pub enum CheckpointSelectorParseError {
-    /// The provided value can't be parsed as an deal selector
+    /// The provided value can't be parsed as a deal selector
     Invalid,
 }
 
