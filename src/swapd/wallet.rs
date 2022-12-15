@@ -71,9 +71,9 @@ pub struct HandleBuyProcedureSignatureRes {
 
 #[derive(Clone, Display, Debug, StrictEncode, StrictDecode)]
 pub enum Wallet {
-    #[display("Wallet::Alice")]
+    #[display("Alice's wallet")]
     Alice(AliceState),
-    #[display("Wallet::Bob")]
+    #[display("Bob's wallet")]
     Bob(BobState),
 }
 
@@ -754,7 +754,7 @@ impl Wallet {
                     }
                 } else {
                     error!(
-                        "{} | Not correct wallet, should be Wallet::Bob: {}",
+                        "{} | Not correct wallet, should be Bob's wallet: {}",
                         swap_id.swap_id(),
                         self
                     );
