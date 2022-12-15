@@ -920,7 +920,7 @@ fn try_alice_init_maker_to_alice_reveal(
 }
 
 fn try_bob_reveal_to_bob_fee_estimated(
-    event: Event,
+    mut event: Event,
     runtime: &mut Runtime,
     bob_reveal: BobReveal,
 ) -> Result<Option<SwapStateMachine>, Error> {
@@ -930,7 +930,7 @@ fn try_bob_reveal_to_bob_fee_estimated(
         funding_address,
         wallet,
     } = bob_reveal;
-    match &event.request.clone() {
+    match &event.request {
         BusMsg::Sync(SyncMsg::Event(SyncEvent::FeeEstimation(
             // FeeEstimation::Bitcoin({high_priority_sats_per_kvbyte: fee_estimate, ..}),
             FeeEstimation {
@@ -944,11 +944,15 @@ fn try_bob_reveal_to_bob_fee_estimated(
         ))) => {
             // FIXME handle low priority as well
             runtime.log_info(format!("Fee: {} sat/kvB", high_priority_sats_per_kvbyte));
-            let required_funding_amount = request_funding(
-                event,
-                runtime,
-                *high_priority_sats_per_kvbyte,
-                funding_address.clone(),
+            runtime.log_debug("Sending funding info to farcasterd");
+            let required_funding_amount =
+                runtime.ask_bob_to_fund(*high_priority_sats_per_kvbyte, funding_address.clone(), event.endpoints)?;
+            let watch_addr_task = runtime
+                .syncer_state
+                .watch_addr_btc(funding_address.clone(), TxLabel::Funding);
+            event.send_sync_service(
+                runtime.syncer_state.bitcoin_syncer(),
+                SyncMsg::Task(watch_addr_task),
             )?;
             Ok(Some(SwapStateMachine::BobFeeEstimated(BobFeeEstimated {
                 local_params,
@@ -2191,25 +2195,6 @@ fn try_bob_buy_sweeping_to_swap_end(
         }
         _ => Ok(None),
     }
-}
-
-fn request_funding(
-    mut event: Event,
-    runtime: &mut Runtime,
-    fee_estimate: u64,
-    funding_address: bitcoin::Address,
-) -> Result<bitcoin::Amount, Error> {
-    runtime.log_debug("Sending funding info to farcasterd");
-    let required_funding_amount =
-        runtime.ask_bob_to_fund(fee_estimate, funding_address.clone(), event.endpoints)?;
-    let watch_addr_task = runtime
-        .syncer_state
-        .watch_addr_btc(funding_address, TxLabel::Funding);
-    event.send_sync_service(
-        runtime.syncer_state.bitcoin_syncer(),
-        SyncMsg::Task(watch_addr_task),
-    )?;
-    Ok(required_funding_amount)
 }
 
 fn attempt_transition_to_bob_reveal(
