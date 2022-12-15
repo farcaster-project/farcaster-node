@@ -7,7 +7,7 @@
 use bitcoin::psbt::serialize::Deserialize;
 use farcaster_core::{
     blockchain::Blockchain,
-    role::{SwapRole, TradeRole},
+    role::SwapRole,
     swap::btcxmr::message::BuyProcedureSignature,
     transaction::TxLabel,
 };
@@ -830,7 +830,6 @@ fn try_bob_taker_maker_commit_to_bob_reveal(
         local_params,
         funding_address,
         remote_commit,
-        TradeRole::Taker,
         wallet,
     )
 }
@@ -865,7 +864,6 @@ fn try_bob_init_maker_to_bob_reveal(
         local_params,
         funding_address,
         remote_commit,
-        TradeRole::Maker,
         wallet,
     )
 }
@@ -2168,7 +2166,6 @@ fn attempt_transition_to_bob_reveal(
     local_params: Params,
     funding_address: bitcoin::Address,
     remote_commit: Commit,
-    local_trade_role: TradeRole,
     mut wallet: Wallet,
 ) -> Result<Option<SwapStateMachine>, Error> {
     match event.request.clone() {
