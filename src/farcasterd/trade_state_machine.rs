@@ -545,7 +545,7 @@ fn attempt_transition_to_taker_connect_or_take_deal(
                             CtlMsg::CreateSwapKeys(deal.clone(), runtime.wallet_token.clone()),
                         )?;
                         event.complete_client_info(InfoMsg::TookDeal(TookDeal {
-                            dealid: deal.id(),
+                            deal_id: deal.id(),
                             message: deal_registered,
                         }))?;
                         runtime.deals.insert(deal.clone());
@@ -852,7 +852,7 @@ fn attempt_transition_to_take_deal(
             event.send_client_info(
                 source,
                 InfoMsg::TookDeal(TookDeal {
-                    dealid: deal.id(),
+                    deal_id: deal.id(),
                     message: deal_registered,
                 }),
             )?;

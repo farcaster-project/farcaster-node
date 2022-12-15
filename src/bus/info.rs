@@ -227,7 +227,7 @@ pub struct MadeDeal {
 )]
 #[display(TookDeal::to_yaml_string)]
 pub struct TookDeal {
-    pub dealid: DealId,
+    pub deal_id: DealId,
     pub message: String,
 }
 
