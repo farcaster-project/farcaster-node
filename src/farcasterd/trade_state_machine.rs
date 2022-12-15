@@ -36,7 +36,7 @@ use std::str::FromStr;
 ///       |            |         ____|____
 ///       |            |        |         |
 ///       |            V        |         V
-///       |        MakeDeal    |   TakerConnect
+///       |        MakeDeal     |   TakerConnect
 ///       |            |        |         |
 ///       |            V        V         V
 ///       |        TakerCommit   TakeDeal
