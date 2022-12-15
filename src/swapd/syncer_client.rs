@@ -279,7 +279,11 @@ impl SyncerState {
         task
     }
 
-    pub fn watch_height(&mut self, endpoints: &mut Endpoints, blockchain: Blockchain) -> Result<(), Error> {
+    pub fn watch_height(
+        &mut self,
+        endpoints: &mut Endpoints,
+        blockchain: Blockchain,
+    ) -> Result<(), Error> {
         let swap_id = ServiceId::Swap(self.swap_id.clone());
         let task_id = self.tasks.new_taskid();
         trace!("Watch height {}", blockchain);

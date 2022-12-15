@@ -601,8 +601,12 @@ fn attempt_transition_to_init_taker(
                 return Ok(None);
             };
             // start watching block height changes
-            runtime.syncer_state.watch_height(event.endpoints, Blockchain::Bitcoin)?;
-            runtime.syncer_state.watch_height(event.endpoints, Blockchain::Monero)?;
+            runtime
+                .syncer_state
+                .watch_height(event.endpoints, Blockchain::Bitcoin)?;
+            runtime
+                .syncer_state
+                .watch_height(event.endpoints, Blockchain::Monero)?;
             runtime.peer_service = peerd.clone();
             if let ServiceId::Peer(0, _) = runtime.peer_service {
                 runtime.connected = false;
@@ -672,8 +676,12 @@ fn attempt_transition_to_init_maker(
             commit,
         })) => {
             // start watching block height changes
-            runtime.syncer_state.watch_height(event.endpoints, Blockchain::Bitcoin)?;
-            runtime.syncer_state.watch_height(event.endpoints, Blockchain::Monero)?;
+            runtime
+                .syncer_state
+                .watch_height(event.endpoints, Blockchain::Bitcoin)?;
+            runtime
+                .syncer_state
+                .watch_height(event.endpoints, Blockchain::Monero)?;
             let wallet = Wallet::new_maker(
                 event.endpoints,
                 runtime.deal.clone(),
