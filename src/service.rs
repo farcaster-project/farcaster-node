@@ -365,11 +365,11 @@ where
 
     fn report_success_message(
         &mut self,
-        senders: &mut Endpoints,
+        endpoints: &mut Endpoints,
         msg: Option<impl ToString>,
     ) -> Result<(), Error> {
         if let Some(dest) = self.report_to() {
-            senders.send_to(
+            endpoints.send_to(
                 ServiceBus::Ctl,
                 self.identity(),
                 dest,
@@ -381,11 +381,11 @@ where
 
     fn report_progress(
         &mut self,
-        senders: &mut Endpoints,
+        endpoints: &mut Endpoints,
         progress: Progress,
     ) -> Result<(), Error> {
         if let Some(dest) = self.report_to() {
-            senders.send_to(
+            endpoints.send_to(
                 ServiceBus::Ctl,
                 self.identity(),
                 dest,
@@ -397,11 +397,11 @@ where
 
     fn report_progress_message(
         &mut self,
-        senders: &mut Endpoints,
+        endpoints: &mut Endpoints,
         msg: impl ToString,
     ) -> Result<(), Error> {
         if let Some(dest) = self.report_to() {
-            senders.send_to(
+            endpoints.send_to(
                 ServiceBus::Ctl,
                 self.identity(),
                 dest,
@@ -411,10 +411,10 @@ where
         Ok(())
     }
 
-    fn report_failure(&mut self, senders: &mut Endpoints, failure: Failure) -> Error {
+    fn report_failure(&mut self, endpoints: &mut Endpoints, failure: Failure) -> Error {
         if let Some(dest) = self.report_to() {
             // Even if we fail, we still have to terminate :)
-            let _ = senders.send_to(
+            let _ = endpoints.send_to(
                 ServiceBus::Ctl,
                 self.identity(),
                 dest,
@@ -432,42 +432,42 @@ where
 {
     fn send_ctl(
         &mut self,
-        senders: &mut Endpoints,
+        endpoints: &mut Endpoints,
         dest: impl TryToServiceId,
         request: BusMsg,
     ) -> Result<(), Error> {
         if let Some(dest) = dest.try_to_service_id() {
-            senders.send_to(ServiceBus::Ctl, self.identity(), dest, request)?;
+            endpoints.send_to(ServiceBus::Ctl, self.identity(), dest, request)?;
         }
         Ok(())
     }
 
     fn send_client_ctl(
         &mut self,
-        senders: &mut Endpoints,
+        endpoints: &mut Endpoints,
         dest: ServiceId,
         request: CtlMsg,
     ) -> Result<(), Error> {
         let bus = ServiceBus::Ctl;
         if let ServiceId::GrpcdClient(_) = dest {
-            senders.send_to(bus, dest, ServiceId::Grpcd, BusMsg::Ctl(request))?;
+            endpoints.send_to(bus, dest, ServiceId::Grpcd, BusMsg::Ctl(request))?;
         } else {
-            senders.send_to(bus, self.identity(), dest, BusMsg::Ctl(request))?;
+            endpoints.send_to(bus, self.identity(), dest, BusMsg::Ctl(request))?;
         }
         Ok(())
     }
 
     fn send_client_info(
         &mut self,
-        senders: &mut Endpoints,
+        endpoints: &mut Endpoints,
         dest: ServiceId,
         request: InfoMsg,
     ) -> Result<(), Error> {
         let bus = ServiceBus::Info;
         if let ServiceId::GrpcdClient(_) = dest {
-            senders.send_to(bus, dest, ServiceId::Grpcd, BusMsg::Info(request))?;
+            endpoints.send_to(bus, dest, ServiceId::Grpcd, BusMsg::Info(request))?;
         } else {
-            senders.send_to(bus, self.identity(), dest, BusMsg::Info(request))?;
+            endpoints.send_to(bus, self.identity(), dest, BusMsg::Info(request))?;
         }
         Ok(())
     }
