@@ -114,6 +114,13 @@ impl SyncerState {
     }
 
     pub fn watch_tx_btc(&mut self, txid: Txid, tx_label: TxLabel) -> Task {
+        if self.is_watched_tx(&tx_label) {
+            warn!(
+                "{} | Already watching for tx with label {} - notifications will be repeated",
+                self.swap_id.swap_id(),
+                tx_label.label()
+            );
+        }
         let id = self.tasks.new_taskid();
         self.tasks.watched_txs.insert(id, tx_label);
         self.tasks.txids.insert(tx_label, txid);
@@ -136,6 +143,13 @@ impl SyncerState {
         self.tasks.watched_txs.values().any(|tx| tx == tx_label)
     }
     pub fn watch_tx_xmr(&mut self, hash: Vec<u8>, tx_label: TxLabel) -> Task {
+        if self.is_watched_tx(&tx_label) {
+            warn!(
+                "{} | Already watching for tx with label {} - notifications will be repeated",
+                self.swap_id.swap_id(),
+                tx_label.label()
+            );
+        }
         let id = self.tasks.new_taskid();
         self.tasks.watched_txs.insert(id, tx_label);
         info!(

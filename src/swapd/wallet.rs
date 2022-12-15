@@ -69,9 +69,11 @@ pub struct HandleBuyProcedureSignatureRes {
     pub buy_tx: bitcoin::Transaction,
 }
 
-#[derive(Clone, Debug, StrictEncode, StrictDecode)]
+#[derive(Clone, Display, Debug, StrictEncode, StrictDecode)]
 pub enum Wallet {
+    #[display("Alice's wallet")]
     Alice(AliceState),
+    #[display("Bob's wallet")]
     Bob(BobState),
 }
 
@@ -758,8 +760,9 @@ impl Wallet {
                     }
                 } else {
                     error!(
-                        "{} | Wallet not found or not on correct state",
+                        "{} | Not correct wallet, should be Bob's wallet: {}",
                         swap_id.swap_id(),
+                        self
                     );
                     return Err(Error::Farcaster(
                         "Needs to be a Bob wallet to process Alice Commit".to_string(),
