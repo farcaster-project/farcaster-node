@@ -96,6 +96,10 @@ pub enum Error {
     /// StrictEncoding
     #[from(strict_encoding::Error)]
     StrictEncoding(strict_encoding::Error),
+
+    /// Uuid
+    #[from(uuid::Error)]
+    Uuid(uuid::Error),
 }
 
 #[derive(Debug, Display)]

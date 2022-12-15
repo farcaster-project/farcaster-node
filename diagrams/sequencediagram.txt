@@ -30,9 +30,9 @@ m_farcasterd <- m_database : Ctl Hello
 m_farcasterd <- m_wallet : Ctl Keys
 
 ==Setup and Commit-Reveal: Bob and Alice can be on both sides==
-m_cli -> m_farcasterd : MakeOffer
+m_cli -> m_farcasterd : MakeDeal
 m_farcasterd -> m_farcasterd : launch\npeerd listen
-t_farcasterd <- t_cli : TakeOffer
+t_farcasterd <- t_cli : TakeDeal
 t_farcasterd -> t_farcasterd : launch\npeerd connect
 peerd -> t_farcasterd: Ctl ConnectSuccess
 peerd -> m_farcasterd: Ctl Hello

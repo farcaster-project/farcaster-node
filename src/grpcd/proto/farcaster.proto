@@ -5,19 +5,19 @@ service Farcaster {
     rpc Info(InfoRequest) returns (InfoResponse){}
     rpc Peers(PeersRequest) returns (PeersResponse){}
     rpc SwapInfo(SwapInfoRequest) returns (SwapInfoResponse){}
-    rpc OfferInfo(OfferInfoRequest) returns (OfferInfoResponse){}
+    rpc DealInfo(DealInfoRequest) returns (DealInfoResponse){}
     rpc Checkpoints(CheckpointsRequest) returns (CheckpointsResponse){}
     rpc RestoreCheckpoint(RestoreCheckpointRequest) returns (RestoreCheckpointResponse){}
     rpc FundingAddresses(FundingAddressesRequest) returns (FundingAddressesResponse){}
     rpc Make(MakeRequest) returns (MakeResponse){}
     rpc Take(TakeRequest) returns (TakeResponse){}
-    rpc RevokeOffer(RevokeOfferRequest) returns (RevokeOfferResponse){}
+    rpc RevokeDeal(RevokeDealRequest) returns (RevokeDealResponse){}
     rpc AbortSwap(AbortSwapRequest) returns (AbortSwapResponse){}
     rpc Progress(ProgressRequest) returns (ProgressResponse){}
     rpc NeedsFunding(NeedsFundingRequest) returns (NeedsFundingResponse){}
     rpc SweepAddress(SweepAddressRequest) returns (SweepAddressResponse){}
     rpc ConnectSwap(ConnectSwapRequest) returns (ConnectSwapResponse){}
-    rpc ListOffers(ListOffersRequest) returns (ListOffersResponse){}
+    rpc ListDeals(ListDealsRequest) returns (ListDealsResponse){}
     rpc HealthCheck(HealthCheckRequest) returns (HealthCheckResponse){}
 }
 
@@ -66,7 +66,7 @@ message InfoResponse {
     uint64 since = 5;
     repeated string peers = 6;
     repeated string swaps = 7;
-    repeated string offers = 8;
+    repeated string deals = 8;
 }
 
 message SwapInfoRequest {
@@ -79,7 +79,7 @@ message SwapInfoResponse {
     string connection = 2;
     uint64 uptime = 3;
     uint64 since= 4;
-    OfferInfo offer = 5;
+    DealInfo deal = 5;
     bool connected = 6;
     TradeRole trade_role = 7;
     SwapRole swap_role = 8;
@@ -87,17 +87,17 @@ message SwapInfoResponse {
     string state = 10;
 }
 
-message OfferInfoRequest {
+message DealInfoRequest {
     uint32 id = 1;
-    string public_offer = 2;
+    string deal = 2;
 }
 
-message OfferInfoResponse {
+message DealInfoResponse {
     uint32 id = 1;
-    OfferInfo offer_info = 2;
+    DealInfo deal_info = 2;
 }
 
-message OfferInfo {
+message DealInfo {
     uint64 arbitrating_amount = 1;
     uint64 accordant_amount = 2;
     uint32 cancel_timelock = 3;
@@ -110,7 +110,7 @@ message OfferInfo {
     Blockchain accordant_blockchain = 10;
     string node_id = 11;
     string peer_address = 12;
-    string encoded_offer = 13;
+    string encoded_deal = 13;
 }
 
 message PeersRequest {
@@ -122,22 +122,22 @@ message PeersResponse {
     repeated string peers = 2;
 }
 
-message ListOffersRequest {
+message ListDealsRequest {
     uint32 id = 1;
-    OfferSelector offer_selector = 2;
+    DealSelector deal_selector = 2;
     NetworkSelector network_selector = 3;
 }
 
-enum OfferSelector {
+enum DealSelector {
     OPEN = 0;
     IN_PROGRESS = 1;
     ENDED = 2;
     ALL = 3;
 }
 
-message ListOffersResponse {
+message ListDealsResponse {
     uint32 id = 1;
-    repeated OfferInfo offers = 2;
+    repeated DealInfo deals = 2;
 }
 
 message CheckpointsRequest {
@@ -158,7 +158,7 @@ enum CheckpointSelector {
 
 message CheckpointEntry {
     string swap_id = 1;
-    OfferInfo offer = 2;
+    DealInfo deal = 2;
     TradeRole trade_role = 3;
 }
 
@@ -214,12 +214,12 @@ message MakeRequest {
  
 message MakeResponse {
     uint32 id = 1;
-    OfferInfo offer = 2;
+    DealInfo deal = 2;
 }
 
 message TakeRequest {
     uint32 id = 1;
-    string public_offer = 2;
+    string deal = 2;
     string bitcoin_address = 3;
     string monero_address = 4;
 }
@@ -228,12 +228,12 @@ message TakeResponse {
     uint32 id = 1;
 }
 
-message RevokeOfferRequest {
+message RevokeDealRequest {
     uint32 id = 1;
-    string public_offer = 2;
+    string deal = 2;
 }
 
-message RevokeOfferResponse {
+message RevokeDealResponse {
     uint32 id = 1;
 }
 

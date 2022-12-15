@@ -4,10 +4,10 @@
 // license that can be found in the LICENSE file or at
 // https://opensource.org/licenses/MIT.
 
-use farcaster_core::swap::btcxmr::Offer;
+use farcaster_core::swap::btcxmr::{Deal, DealParameters};
+use farcaster_core::Uuid;
 use std::io::{self, Read};
 use std::str::FromStr;
-use uuid::Uuid;
 
 use internet2::addr::{InetSocketAddr, NodeAddr};
 use microservices::shell::Exec;
@@ -17,7 +17,6 @@ use clap_complete::generate;
 use clap_complete::shells::*;
 use farcaster_core::{
     blockchain::{Blockchain, Network},
-    negotiation::PublicOffer,
     role::SwapRole,
     swap::SwapId,
 };
@@ -60,7 +59,7 @@ impl Exec for Command {
                             runtime
                                 .request_info(ServiceId::Peer(0, node_addr), InfoMsg::GetInfo)?;
                             ServiceId::Peer(0, node_addr)
-                        } else if let Ok(swap_id) = SwapId::from_str(&subj) {
+                        } else if let Ok(swap_id) = Uuid::from_str(&subj).map(|u| SwapId(u)) {
                             runtime.request_info(ServiceId::Swap(swap_id), InfoMsg::GetInfo)?;
                             ServiceId::Swap(swap_id)
                         } else {
@@ -134,9 +133,9 @@ impl Exec for Command {
                 runtime.report_response_or_fail()?;
             }
 
-            // TODO: only list offers matching list of OfferIds
-            Command::ListOffers { select } => {
-                runtime.request_info(ServiceId::Farcasterd, InfoMsg::ListOffers(select.into()))?;
+            // TODO: only list deals matching list of DealIds
+            Command::ListDeals { select } => {
+                runtime.request_info(ServiceId::Farcasterd, InfoMsg::ListDeals(select.into()))?;
                 runtime.report_response_or_fail()?;
             }
 
@@ -385,8 +384,8 @@ impl Exec for Command {
                     );
                     return Ok(());
                 }
-                let offer = Offer {
-                    uuid: Uuid::new_v4(),
+                let deal_parameters = DealParameters {
+                    uuid: Uuid::new().into(),
                     network,
                     arbitrating_blockchain,
                     accordant_blockchain,
@@ -398,44 +397,38 @@ impl Exec for Command {
                     maker_role,
                 };
                 let public_addr = InetSocketAddr::socket(public_ip_addr, public_port);
-                let proto_offer = ctl::ProtoPublicOffer {
-                    offer,
+                let proto_deal = ctl::ProtoDeal {
+                    deal_parameters,
                     public_addr,
                     arbitrating_addr,
                     accordant_addr,
                 };
-                runtime.request_ctl(ServiceId::Farcasterd, CtlMsg::MakeOffer(proto_offer))?;
+                runtime.request_ctl(ServiceId::Farcasterd, CtlMsg::MakeDeal(proto_deal))?;
                 // report success or failure of the request to cli
                 runtime.report_response_or_fail()?;
             }
 
-            Command::OfferInfo { public_offer } => {
-                println!(
-                    "\n Trading {}\n",
-                    offer_buy_information(&public_offer.offer)
-                );
-                println!(
-                    "{}",
-                    serde_yaml::to_string(&public_offer).expect("already parsed")
-                );
+            Command::DealInfo { deal } => {
+                println!("\n Trading {}\n", deal_buy_information(&deal.parameters));
+                println!("{}", serde_yaml::to_string(&deal).expect("already parsed"));
             }
 
             Command::Take {
-                public_offer,
+                deal,
                 bitcoin_address,
                 monero_address,
                 without_validation,
             } => {
-                let PublicOffer {
+                let Deal {
                     version: _,
-                    offer,
+                    parameters: deal_parameters,
                     node_id,
                     peer_address,
-                } = public_offer.clone();
+                } = deal.clone();
 
-                let network = offer.network;
-                let arbitrating_amount = offer.arbitrating_amount;
-                let accordant_amount = offer.accordant_amount;
+                let network = deal_parameters.network;
+                let arbitrating_amount = deal_parameters.arbitrating_amount;
+                let accordant_amount = deal_parameters.accordant_amount;
 
                 if network != bitcoin_address.network.into() {
                     eprintln!(
@@ -481,21 +474,18 @@ impl Exec for Command {
 
                 if !without_validation {
                     println!(
-                        "\nWant to buy {}?\n\nCarefully validate offer!\n",
-                        offer_buy_information(&offer)
+                        "\nWant to buy {}?\n\nCarefully validate deal!\n",
+                        deal_buy_information(&deal.parameters)
                     );
                     println!("Trade counterparty: {}@{}\n", &node_id, peer_address);
-                    println!(
-                        "{}",
-                        serde_yaml::to_string(&public_offer).expect("already parsed")
-                    );
+                    println!("{}", serde_yaml::to_string(&deal).expect("already parsed"));
                 }
-                if without_validation || take_offer() {
-                    // pass offer to farcasterd to initiate the swap
+                if without_validation || take_deal() {
+                    // pass deal to farcasterd to initiate the swap
                     runtime.request_ctl(
                         ServiceId::Farcasterd,
-                        CtlMsg::TakeOffer(ctl::PubOffer {
-                            public_offer,
+                        CtlMsg::TakeDeal(ctl::PubDeal {
+                            deal,
                             bitcoin_address,
                             monero_address,
                         }),
@@ -505,8 +495,8 @@ impl Exec for Command {
                 }
             }
 
-            Command::RevokeOffer { public_offer } => {
-                runtime.request_ctl(ServiceId::Farcasterd, CtlMsg::RevokeOffer(public_offer))?;
+            Command::RevokeDeal { deal } => {
+                runtime.request_ctl(ServiceId::Farcasterd, CtlMsg::RevokeDeal(deal))?;
                 runtime.report_response_or_fail()?;
             }
 
@@ -644,33 +634,33 @@ impl Exec for Command {
     }
 }
 
-fn take_offer() -> bool {
+fn take_deal() -> bool {
     println!("Take it? [y/n]");
     let mut input = [0u8; 1];
     std::io::stdin().read_exact(&mut input).unwrap_or(());
     match std::str::from_utf8(&input[..]) {
         Ok("y") | Ok("Y") => true,
         Ok("n") | Ok("N") => {
-            println!("Rejecting offer");
+            println!("Rejecting deal");
             false
         }
-        _ => take_offer(),
+        _ => take_deal(),
     }
 }
 
-fn offer_buy_information(offer: &Offer) -> String {
-    match offer.maker_role.other() {
+fn deal_buy_information(deal_parameters: &DealParameters) -> String {
+    match deal_parameters.maker_role.other() {
         SwapRole::Alice => format!(
             "{} for {} at {} BTC/XMR",
-            offer.arbitrating_amount,
-            offer.accordant_amount,
-            offer.arbitrating_amount.as_btc() / offer.accordant_amount.as_xmr()
+            deal_parameters.arbitrating_amount,
+            deal_parameters.accordant_amount,
+            deal_parameters.arbitrating_amount.as_btc() / deal_parameters.accordant_amount.as_xmr()
         ),
         SwapRole::Bob => format!(
             "{} for {} at {} XMR/BTC",
-            offer.accordant_amount,
-            offer.arbitrating_amount,
-            offer.accordant_amount.as_xmr() / offer.arbitrating_amount.as_btc()
+            deal_parameters.accordant_amount,
+            deal_parameters.arbitrating_amount,
+            deal_parameters.accordant_amount.as_xmr() / deal_parameters.arbitrating_amount.as_btc()
         ),
     }
 }

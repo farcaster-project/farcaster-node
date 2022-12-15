@@ -18,7 +18,7 @@ use crate::syncerd::AddressBalance;
 use crate::syncerd::{Event as SyncerEvent, HealthResult, SweepSuccess, TaskId};
 use crate::{
     bus::ctl::{Keys, ProgressStack, Token},
-    bus::info::{InfoMsg, NodeInfo, OfferInfo, OfferStatusSelector, ProgressEvent, SwapProgress},
+    bus::info::{DealInfo, DealStatusSelector, InfoMsg, NodeInfo, ProgressEvent, SwapProgress},
     bus::{Failure, FailureCode, Progress},
     clap::Parser,
     config::ParsedSwapConfig,
@@ -35,12 +35,12 @@ use std::iter::FromIterator;
 use std::process;
 use std::time::{Duration, SystemTime};
 
-use bitcoin::{hashes::hex::ToHex, secp256k1::PublicKey, secp256k1::SecretKey};
+use bitcoin::{secp256k1::PublicKey, secp256k1::SecretKey};
 use clap::IntoApp;
 use farcaster_core::{
     blockchain::{Blockchain, Network},
     role::TradeRole,
-    swap::btcxmr::PublicOffer,
+    swap::btcxmr::Deal,
     swap::SwapId,
 };
 use internet2::addr::NodeId;
@@ -85,7 +85,7 @@ pub fn run(
         auto_restored: false,
         spawning_services: none!(),
         registered_services: none!(),
-        public_offers: none!(),
+        deals: none!(),
         wallet_token,
         progress: none!(),
         progress_subscriptions: none!(),
@@ -107,13 +107,13 @@ pub struct Runtime {
     auto_restored: bool,                         // Set on Runtime instantiation
     node_secret_key: Option<SecretKey>, // Set by Keys request shortly after Hello from walletd
     node_public_key: Option<PublicKey>, // Set by Keys request shortly after Hello from walletd
-    pub listens: HashSet<InetSocketAddr>, // Set by MakeOffer, contains unique socket addresses of the binding peerd listeners.
+    pub listens: HashSet<InetSocketAddr>, // Set by MakeDeal, contains unique socket addresses of the binding peerd listeners.
     pub spawning_services: HashSet<ServiceId>, // Services that have been launched, but have not replied with Hello yet
     pub registered_services: HashSet<ServiceId>, // Services that have announced themselves with Hello
-    pub public_offers: HashSet<PublicOffer>, // The set of all known public offers. Includes open, consumed and ended offers includes open, consumed and ended offers
+    pub deals: HashSet<Deal>, // The set of all known deals. Includes open, consumed and ended deals includes open, consumed and ended deals
     progress: HashMap<ServiceId, VecDeque<ProgressStack>>, // A mapping from Swap ServiceId to its sent and received progress messages (Progress, Success, Failure)
     progress_subscriptions: HashMap<ServiceId, HashSet<ServiceId>>, // A mapping from a Client ServiceId to its subsribed swap progresses
-    pub stats: Stats,             // Some stats about offers and swaps
+    pub stats: Stats,             // Some stats about deals and swaps
     pub config: Config,           // The complete node configuration
     pub syncer_task_counter: u32, // A strictly incrementing counter of issued syncer tasks
     pub trade_state_machines: Vec<TradeStateMachine>, // New trade state machines are inserted on creation and destroyed upon state machine end transitions
@@ -239,7 +239,7 @@ impl Runtime {
                             ServiceBus::Ctl,
                             self.identity(),
                             ServiceId::Database,
-                            BusMsg::Ctl(CtlMsg::CleanDanglingOffers),
+                            BusMsg::Ctl(CtlMsg::CleanDanglingDeals),
                         )?;
                         self.handle_auto_restore(endpoints)?;
                     }
@@ -338,7 +338,7 @@ impl Runtime {
                 self.handle_failed_connection(endpoints, source.clone())?;
 
                 // log a message if a swap running over this connection
-                // is not completed, and thus present in consumed_offers
+                // is not completed, and thus present in consumed_deals
                 if self.connection_has_swap_client(&source) {
                     info!("A swap is still running over the terminated peer {}, the counterparty will attempt to reconnect.", source.bright_blue_italic());
                 }
@@ -425,10 +425,10 @@ impl Runtime {
                             .iter()
                             .filter_map(|tsm| tsm.swap_id())
                             .collect(),
-                        offers: self
+                        deals: self
                             .trade_state_machines
                             .iter()
-                            .filter_map(|tsm| tsm.open_offer())
+                            .filter_map(|tsm| tsm.open_deal())
                             .collect(),
                         stats: self.stats.clone(),
                     }),
@@ -456,31 +456,31 @@ impl Runtime {
                 )?;
             }
 
-            InfoMsg::ListOffers(ref offer_status_selector) => {
-                match offer_status_selector {
-                    OfferStatusSelector::Open => {
-                        let open_offers = self
+            InfoMsg::ListDeals(ref deal_status_selector) => {
+                match deal_status_selector {
+                    DealStatusSelector::Open => {
+                        let open_deals = self
                             .trade_state_machines
                             .iter()
-                            .filter_map(|tsm| tsm.open_offer())
-                            .map(|offer| OfferInfo {
-                                offer: offer.to_string(),
-                                details: offer.clone(),
+                            .filter_map(|tsm| tsm.open_deal())
+                            .map(|deal| DealInfo {
+                                deal: deal.to_string(),
+                                details: deal.clone(),
                             })
                             .collect();
-                        self.send_client_info(endpoints, source, InfoMsg::OfferList(open_offers))?;
+                        self.send_client_info(endpoints, source, InfoMsg::DealList(open_deals))?;
                     }
-                    OfferStatusSelector::InProgress => {
-                        let pub_offers = self
-                            .public_offers
+                    DealStatusSelector::InProgress => {
+                        let pub_deals = self
+                            .deals
                             .iter()
-                            .filter(|k| self.consumed_offers_contains(k))
-                            .map(|offer| OfferInfo {
-                                offer: offer.to_string(),
-                                details: offer.clone(),
+                            .filter(|k| self.consumed_deals_contains(k))
+                            .map(|deal| DealInfo {
+                                deal: deal.to_string(),
+                                details: deal.clone(),
                             })
                             .collect();
-                        self.send_client_info(endpoints, source, InfoMsg::OfferList(pub_offers))?;
+                        self.send_client_info(endpoints, source, InfoMsg::DealList(pub_deals))?;
                     }
                     _ => {
                         // Forward the request to database service
@@ -834,11 +834,11 @@ impl Runtime {
         Ok(())
     }
 
-    pub fn consumed_offers_contains(&self, offer: &PublicOffer) -> bool {
+    pub fn consumed_deals_contains(&self, deal: &Deal) -> bool {
         self.trade_state_machines
             .iter()
-            .filter_map(|tsm| tsm.consumed_offer())
-            .any(|tsm_offer| tsm_offer.offer.id() == offer.offer.id())
+            .filter_map(|tsm| tsm.consumed_deal())
+            .any(|tsm_deal| tsm_deal.id() == deal.id())
     }
 
     fn running_swaps_contain(&self, swap_id: &SwapId) -> bool {
@@ -929,26 +929,26 @@ impl Runtime {
             (BusMsg::Ctl(CtlMsg::RestoreCheckpoint(..)), _) => {
                 Ok(Some(TradeStateMachine::StartRestore))
             }
-            (BusMsg::Ctl(CtlMsg::MakeOffer(..)), _) => Ok(Some(TradeStateMachine::StartMaker)),
-            (BusMsg::Ctl(CtlMsg::TakeOffer(..)), _) => Ok(Some(TradeStateMachine::StartTaker)),
-            (BusMsg::P2p(PeerMsg::TakerCommit(TakerCommit { public_offer, .. })), _)
-            | (BusMsg::Ctl(CtlMsg::RevokeOffer(public_offer)), _) => Ok(self
+            (BusMsg::Ctl(CtlMsg::MakeDeal(..)), _) => Ok(Some(TradeStateMachine::StartMaker)),
+            (BusMsg::Ctl(CtlMsg::TakeDeal(..)), _) => Ok(Some(TradeStateMachine::StartTaker)),
+            (BusMsg::P2p(PeerMsg::TakerCommit(TakerCommit { deal, .. })), _)
+            | (BusMsg::Ctl(CtlMsg::RevokeDeal(deal)), _) => Ok(self
                 .trade_state_machines
                 .iter()
                 .position(|tsm| {
-                    if let Some(tsm_public_offer) = tsm.open_offer() {
-                        tsm_public_offer == *public_offer
+                    if let Some(tsm_deal) = tsm.open_deal() {
+                        tsm_deal == *deal
                     } else {
                         false
                     }
                 })
                 .map(|pos| self.trade_state_machines.remove(pos))),
-            (BusMsg::Ctl(CtlMsg::SwapKeys(SwapKeys { public_offer, .. })), _) => Ok(self
+            (BusMsg::Ctl(CtlMsg::SwapKeys(SwapKeys { deal, .. })), _) => Ok(self
                 .trade_state_machines
                 .iter()
                 .position(|tsm| {
-                    if let Some(tsm_public_offer) = tsm.consumed_offer() {
-                        tsm_public_offer == *public_offer
+                    if let Some(tsm_deal) = tsm.consumed_deal() {
+                        tsm_deal == *deal
                     } else {
                         false
                     }
@@ -1012,14 +1012,14 @@ impl Runtime {
             Ok(())
         } else {
             match request {
-                BusMsg::Ctl(CtlMsg::RevokeOffer(..)) => {
+                BusMsg::Ctl(CtlMsg::RevokeDeal(..)) => {
                     endpoints.send_to(
                         ServiceBus::Ctl,
                         self.identity(),
                         source,
                         BusMsg::Ctl(CtlMsg::Failure(Failure {
                             code: FailureCode::Unknown,
-                            info: "Offer to revoke not found.".to_string(),
+                            info: "Deal to revoke not found.".to_string(),
                         })),
                     )?;
                     Ok(())
@@ -1036,20 +1036,17 @@ impl Runtime {
                     )?;
                     Ok(())
                 }
-                BusMsg::P2p(PeerMsg::TakerCommit(TakerCommit {
-                    commit,
-                    public_offer,
-                })) => {
+                BusMsg::P2p(PeerMsg::TakerCommit(TakerCommit { commit, deal })) => {
                     debug!(
-                        "{} | Offer {} already taken or aborted, replying with offer not found to the counterparty",
+                        "{} | Deal {} already taken or aborted, replying with deal not found to the counterparty",
                         commit.swap_id(),
-                        public_offer.id(),
+                        deal.id(),
                     );
                     endpoints.send_to(
                         ServiceBus::Msg,
                         self.identity(),
                         source,
-                        BusMsg::P2p(PeerMsg::OfferNotFound(commit.swap_id())),
+                        BusMsg::P2p(PeerMsg::DealNotFound(commit.swap_id())),
                     )?;
                     Ok(())
                 }
@@ -1230,11 +1227,11 @@ pub fn syncer_up(
     }
 }
 
-/// Launch a swapd instance with all the necessary paramters for: swap id, offer to use, trade role
+/// Launch a swapd instance with all the necessary paramters for: swap id, deal to use, trade role
 /// to execute, temporal safety arguments.
 pub fn launch_swapd(
     local_trade_role: TradeRole,
-    public_offer: PublicOffer,
+    deal: Deal,
     swap_id: SwapId,
     swap_config: ParsedSwapConfig,
 ) -> Result<(), Error> {
@@ -1249,9 +1246,9 @@ pub fn launch_swapd(
             "--acc-finality".to_string(),
             swap_config.accordant.finality.to_string(),
             "--id".to_string(),
-            swap_id.to_hex(),
-            "--public-offer".to_string(),
-            public_offer.to_string(),
+            swap_id.to_string(),
+            "--deal".to_string(),
+            deal.to_string(),
             "--trade-role".to_string(),
             local_trade_role.to_string(),
         ],

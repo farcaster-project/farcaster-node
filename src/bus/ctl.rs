@@ -14,7 +14,7 @@ use farcaster_core::impl_strict_encoding;
 use farcaster_core::swap::btcxmr::KeyManager;
 use farcaster_core::{
     blockchain::Blockchain,
-    swap::btcxmr::{Offer, Parameters, PublicOffer},
+    swap::btcxmr::{Deal, DealParameters, Parameters},
     swap::SwapId,
 };
 
@@ -25,7 +25,7 @@ use strict_encoding::{NetworkDecode, NetworkEncode};
 
 use crate::bus::p2p::{PeerMsg, TakerCommit};
 use crate::bus::{
-    AddressSecretKey, CheckpointEntry, Failure, OfferStatusPair, OptionDetails, Outcome, Progress,
+    AddressSecretKey, CheckpointEntry, DealStatusPair, Failure, OptionDetails, Outcome, Progress,
 };
 use crate::swapd::CheckpointSwapd;
 use crate::syncerd::{Health, SweepAddressAddendum};
@@ -52,8 +52,8 @@ pub enum CtlMsg {
     #[display(inner)]
     Progress(Progress),
 
-    /// A message sent from farcaster to database on startup to cleanup dangling offer data
-    CleanDanglingOffers,
+    /// A message sent from farcaster to database on startup to cleanup dangling deal data
+    CleanDanglingDeals,
 
     /// A message sent from farcaster to maker swap service to begin the swap.
     #[display("make_swap({0})")]
@@ -65,7 +65,7 @@ pub enum CtlMsg {
 
     /// A message sent from farcaster to wallet service to create swap keys.
     #[display("create_swap_keys({0})")]
-    CreateSwapKeys(PublicOffer, Token),
+    CreateSwapKeys(Deal, Token),
 
     // A message sent from wallet to farcaster containing keys for a swap.
     #[display("swap_keys({0})")]
@@ -98,14 +98,14 @@ pub enum CtlMsg {
     #[display("restore_checkpoint({0})", alt = "{0:#}")]
     RestoreCheckpoint(CheckpointEntry),
 
-    /// A message sent from a client to farcaster to register a new offer a boostrap all necessary
+    /// A message sent from a client to farcaster to register a new deal a boostrap all necessary
     /// services on farcaster side.
-    #[display("make_offer({0})")]
-    MakeOffer(ProtoPublicOffer),
+    #[display("make_deal({0})")]
+    MakeDeal(ProtoDeal),
 
     /// A message sent from farcaster to wallet to trigger the creation of the taker wallet.
-    #[display("take_offer({0}))")]
-    TakeOffer(PubOffer),
+    #[display("take_deal({0}))")]
+    TakeDeal(PubDeal),
 
     /// A message sent from farcaster to wallet to trigger the creation of the maker wallet after a
     /// taker commit message is received.
@@ -115,8 +115,8 @@ pub enum CtlMsg {
     #[display("get_keys({0})")]
     GetKeys(GetKeys),
 
-    #[display("revoke_offer({0})")]
-    RevokeOffer(PublicOffer),
+    #[display("revoke_deal({0})")]
+    RevokeDeal(Deal),
 
     #[display("abort_swap()")]
     AbortSwap,
@@ -148,8 +148,8 @@ pub enum CtlMsg {
     #[display("remove_checkpoint")]
     RemoveCheckpoint(SwapId),
 
-    #[display("set_offer_history({0})")]
-    SetOfferStatus(OfferStatusPair),
+    #[display("set_deal_history({0})")]
+    SetDealStatus(DealStatusPair),
 
     #[display("keys({0})")]
     Keys(Keys),
@@ -193,17 +193,17 @@ pub enum ProgressStack {
 
 #[derive(Clone, PartialEq, Eq, Debug, Display, NetworkEncode, NetworkDecode)]
 #[display("..")]
-pub struct ProtoPublicOffer {
-    pub offer: Offer,
+pub struct ProtoDeal {
+    pub deal_parameters: DealParameters,
     pub public_addr: InetSocketAddr,
     pub arbitrating_addr: bitcoin::Address,
     pub accordant_addr: monero::Address,
 }
 
 #[derive(Clone, Debug, Display, NetworkEncode, NetworkDecode)]
-#[display("{public_offer}, ..")]
-pub struct PubOffer {
-    pub public_offer: PublicOffer,
+#[display("{deal}, ..")]
+pub struct PubDeal {
+    pub deal: Deal,
     pub bitcoin_address: bitcoin::Address,
     pub monero_address: monero::Address,
 }
@@ -221,10 +221,10 @@ pub struct Token(pub String);
 pub struct GetKeys(pub Token);
 
 #[derive(Clone, Debug, Display, NetworkEncode, NetworkDecode)]
-#[display("{public_offer}, ..")]
+#[display("{deal}, ..")]
 pub struct SwapKeys {
     pub key_manager: WrappedKeyManager,
-    pub public_offer: PublicOffer,
+    pub deal: Deal,
 }
 
 #[derive(Clone, Debug)]

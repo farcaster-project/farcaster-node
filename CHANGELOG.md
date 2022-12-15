@@ -7,6 +7,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.8.0] - 2022-12-15
+
+### Changed
+
+- Swap state machine by @TheCharlatan in <https://github.com/farcaster-project/farcaster-node/pull/804>
+- Deps: Bump monero-rpc to latest version (v0.3.2) by @TheCharlatan in <https://github.com/farcaster-project/farcaster-node/pull/821>
+- Grpc: Added decoded OfferInfo field to returned offers by @TheCharlatan in <https://github.com/farcaster-project/farcaster-node/pull/817>
+- TSM: Remove unneeded peerd check by @TheCharlatan in <https://github.com/farcaster-project/farcaster-node/pull/829>
+- Monero syncer: Use creation height when checking balance by @TheCharlatan in <https://github.com/farcaster-project/farcaster-node/pull/830>
+- Database: Improve error handling by @TheCharlatan in <https://github.com/farcaster-project/farcaster-node/pull/832>
+- Remove `swapd.runtime.syncer_state.{bitcoin,monero}_amount` by @Lederstrumpf in <https://github.com/farcaster-project/farcaster-node/pull/838>
+- Monero socks proxy by @TheCharlatan in <https://github.com/farcaster-project/farcaster-node/pull/824>
+- Grpc: Add network selectors to data queries by @TheCharlatan in <https://github.com/farcaster-project/farcaster-node/pull/818>
+- Alice: broadcast cancel tx eventually even if Alice overfunded by @Lederstrumpf in <https://github.com/farcaster-project/farcaster-node/pull/840>
+- Grpcd: Remove commented dead code block by @TheCharlatan in <https://github.com/farcaster-project/farcaster-node/pull/843>
+- Deps: Update core to v0.6 by @TheCharlatan in <https://github.com/farcaster-project/farcaster-node/pull/836>
+- Swapd: state refactors by @Lederstrumpf in <https://github.com/farcaster-project/farcaster-node/pull/839>
+
 ## [0.7.0] - 2022-12-13
 
 ### Changed
@@ -239,7 +257,8 @@ Initial version of Farcaster Node :tada:
 - Farcaster daemon to orchestrate the micro-services
 - Swap cli to control farcasterd and other services
 
-[Unreleased]: https://github.com/farcaster-project/farcaster-node/compare/v0.7.0...HEAD
+[Unreleased]: https://github.com/farcaster-project/farcaster-node/compare/v0.8.0...HEAD
+[0.8.0]: https://github.com/farcaster-project/farcaster-node/compare/v0.7.0...v0.8.0
 [0.7.0]: https://github.com/farcaster-project/farcaster-node/compare/v0.6.0...v0.7.0
 [0.6.0]: https://github.com/farcaster-project/farcaster-node/compare/v0.5.0...v0.6.0
 [0.5.0]: https://github.com/farcaster-project/farcaster-node/compare/v0.4.0...v0.5.0
