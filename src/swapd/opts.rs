@@ -6,7 +6,7 @@
 
 use farcaster_core::{
     role::TradeRole,
-    swap::{btcxmr::PublicOffer, SwapId},
+    swap::{btcxmr::Deal, SwapId},
 };
 use std::str::FromStr;
 
@@ -21,13 +21,13 @@ pub struct Opts {
     #[clap(long = "id", parse(try_from_str = SwapId::from_str))]
     pub swap_id: SwapId,
 
-    /// Public offer to initiate the swap runtime
+    /// Deal to initiate the swap runtime
     #[clap(long, parse(try_from_str = FromStr::from_str))]
-    pub public_offer: PublicOffer,
+    pub deal: Deal,
 
     /// Trade role to execute; maker propose the trade, taker accept the trade. Swap role (Alice or
-    /// Bob) is defined by the executed trade role and the public offer, if we are the maker we
-    /// execute the `maker role` defined in the public offer, otherwise we execute the
+    /// Bob) is defined by the executed trade role and the deal, if we are the maker we
+    /// execute the `maker role` defined in the deal, otherwise we execute the
     /// complementary role
     #[clap(long, parse(try_from_str = FromStr::from_str), possible_values = &["maker", "Maker", "taker", "Taker"])]
     pub trade_role: TradeRole,
