@@ -60,8 +60,6 @@ pub fn run(config: ServiceConfig, opts: Opts) -> Result<(), Error> {
         punish_timelock,
         maker_role, // SwapRole of maker (Alice or Bob)
         network,
-        accordant_amount: monero_amount,
-        arbitrating_amount: bitcoin_amount,
         ..
     } = public_offer.offer;
 
@@ -116,8 +114,6 @@ pub fn run(config: ServiceConfig, opts: Opts) -> Result<(), Error> {
         network,
         bitcoin_syncer: ServiceId::Syncer(Blockchain::Bitcoin, network),
         monero_syncer: ServiceId::Syncer(Blockchain::Monero, network),
-        monero_amount,
-        bitcoin_amount,
         awaiting_funding: false,
         xmr_addr_addendum: None,
         btc_fee_estimate_sat_per_kvb: None,
@@ -785,7 +781,7 @@ impl Runtime {
         let nr_inputs = 1;
         let total_fees =
             bitcoin::Amount::from_sat(p2wpkh_signed_tx_fee(sat_per_kvb, vsize, nr_inputs));
-        let amount = self.syncer_state.bitcoin_amount + total_fees;
+        let amount = self.public_offer.offer.arbitrating_amount + total_fees;
         self.log_info(format!(
             "Send {} to {}, this includes {} for the Lock transaction network fees",
             amount.bright_green_bold(),
