@@ -188,7 +188,7 @@ pub enum SwapStateMachine {
     #[display("Bob Reveal")]
     BobReveal(BobReveal),
     // BobFeeEstimated state - transitions to BobFunded on event AddressTransaction.
-    #[display("Bob Await Funding")]
+    #[display("Bob Fee Estimated")]
     BobFeeEstimated(BobFeeEstimated),
     // BobFunded state - transitions to BobRefundProcedureSignatures on request
     // RefundProcedureSignatures or BobAbortAwaitingSweep on request AbortSwap.
@@ -468,10 +468,10 @@ impl StateMachine<Runtime, Error> for SwapStateMachine {
             }
 
             SwapStateMachine::BobReveal(bob_reveal) => {
-                try_bob_reveal_to_bob_await_funding(event, runtime, bob_reveal)
+                try_bob_reveal_to_bob_fee_estimated(event, runtime, bob_reveal)
             }
-            SwapStateMachine::BobFeeEstimated(bob_await_funding) => {
-                try_bob_await_funding_to_bob_funded(event, runtime, bob_await_funding)
+            SwapStateMachine::BobFeeEstimated(bob_fee_estimated) => {
+                try_bob_fee_estimated_to_bob_funded(event, runtime, bob_fee_estimated)
             }
             SwapStateMachine::BobFunded(bob_funded) => {
                 try_bob_funded_to_bob_refund_procedure_signature(event, runtime, bob_funded)
@@ -920,7 +920,7 @@ fn try_alice_init_maker_to_alice_reveal(
     attempt_transition_to_alice_reveal(event, runtime, local_params, remote_commit, wallet)
 }
 
-fn try_bob_reveal_to_bob_await_funding(
+fn try_bob_reveal_to_bob_fee_estimated(
     event: Event,
     runtime: &mut Runtime,
     bob_reveal: BobReveal,
@@ -955,7 +955,7 @@ fn try_bob_reveal_to_bob_await_funding(
     }
 }
 
-fn try_bob_await_funding_to_bob_funded(
+fn try_bob_fee_estimated_to_bob_funded(
     mut event: Event,
     runtime: &mut Runtime,
     bob_reveal: BobFeeEstimated,
