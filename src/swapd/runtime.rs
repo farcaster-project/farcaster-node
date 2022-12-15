@@ -987,7 +987,7 @@ pub fn validate_reveal(reveal: &Reveal, remote_commit: Commit) -> Result<Params,
                 Ok(Params::Alice(parameters.clone().into_parameters()))
             }
             _ => {
-                let err_msg = "expected Some(Commit::Alice(commit))";
+                let err_msg = format!("expected Some(Commit::Alice(commit)), found {:?}", remote_commit);
                 error!("{}", err_msg);
                 Err(Error::Farcaster(err_msg.to_string()))
             }
@@ -998,7 +998,7 @@ pub fn validate_reveal(reveal: &Reveal, remote_commit: Commit) -> Result<Params,
                 Ok(Params::Bob(parameters.clone().into_parameters()))
             }
             _ => {
-                let err_msg = "expected Some(Commit::Bob(commit))";
+                let err_msg = format!("expected Some(Commit::Bob(commit)), found {:?}", remote_commit);
                 error!("{}", err_msg);
                 Err(Error::Farcaster(err_msg.to_string()))
             }
