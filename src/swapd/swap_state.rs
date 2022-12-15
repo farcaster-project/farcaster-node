@@ -354,7 +354,6 @@ pub struct BobReveal {
     local_params: Params,
     required_funding_amount: Option<bitcoin::Amount>,
     funding_address: bitcoin::Address,
-    funding_requested: bool,
     remote_params: Params,
     wallet: Wallet,
 }
@@ -917,10 +916,9 @@ fn try_bob_reveal_to_bob_funded(
         mut wallet,
         required_funding_amount,
         funding_address,
-        funding_requested,
     } = bob_reveal;
     match &event.request {
-        BusMsg::Sync(SyncMsg::Event(SyncEvent::FeeEstimation(_))) if !funding_requested => {
+        BusMsg::Sync(SyncMsg::Event(SyncEvent::FeeEstimation(_))) if required_funding_amount.is_none() => {
             runtime.log_debug("Sending funding info to farcasterd");
             let required_funding_amount = Some(runtime.ask_bob_to_fund(
                 runtime.syncer_state.btc_fee_estimate_sat_per_kvb.expect("swapd runtime processed event first and set the fee estimate"),
@@ -940,7 +938,6 @@ fn try_bob_reveal_to_bob_funded(
                 wallet,
                 required_funding_amount,
                 funding_address,
-                funding_requested: true,
             })))
         }
         BusMsg::Sync(SyncMsg::Event(SyncEvent::AddressTransaction(AddressTransaction {
@@ -2205,7 +2202,7 @@ fn attempt_transition_to_bob_reveal(
                 runtime.send_peer(event.endpoints, PeerMsg::Reveal(bob_reveal))?;
             }
 
-            let (funding_requested, required_funding_amount) = match runtime.syncer_state.btc_fee_estimate_sat_per_kvb {
+            let required_funding_amount = match runtime.syncer_state.btc_fee_estimate_sat_per_kvb {
                 Some(sat_per_kvb) => {
                     runtime.log_debug("Sending funding info to farcasterd");
                     let required_funding_amount = runtime.ask_bob_to_fund(
@@ -2220,16 +2217,15 @@ fn attempt_transition_to_bob_reveal(
                         runtime.syncer_state.bitcoin_syncer(),
                         SyncMsg::Task(watch_addr_task),
                     )?;
-                    (true, Some(required_funding_amount))
+                    Some(required_funding_amount)
                 },
-                None => (false, None)
+                None => None
             };
 
             Ok(Some(SwapStateMachine::BobReveal(BobReveal {
                 local_params,
                 required_funding_amount,
                 funding_address,
-                funding_requested,
                 remote_params,
                 wallet,
             })))
