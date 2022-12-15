@@ -7,4 +7,4 @@
 mod command;
 mod opts;
 
-pub use opts::{Command, OfferSelector, Opts};
+pub use opts::{Command, DealSelector, Opts};

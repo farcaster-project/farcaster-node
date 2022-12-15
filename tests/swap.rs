@@ -37,7 +37,7 @@ async fn swap_bob_maker_normal() {
 
     let (_, data_dir_maker, _, data_dir_taker) = launch_farcasterd_pair().await;
 
-    let (xmr_dest_wallet_name, bitcoin_address, swap_id) = make_and_take_offer(
+    let (xmr_dest_wallet_name, bitcoin_address, swap_id) = make_and_take_deal(
         data_dir_maker.clone(),
         data_dir_taker.clone(),
         "Bob".to_string(),
@@ -73,7 +73,7 @@ async fn swap_taker_reconnects() {
 
     let (_, data_dir_maker, _, data_dir_taker) = launch_farcasterd_pair().await;
 
-    let (_, _, swap_id) = make_and_take_offer_with_reconnect(
+    let (_, _, swap_id) = make_and_take_deal_with_reconnect(
         data_dir_maker.clone(),
         data_dir_taker.clone(),
         "Bob".to_string(),
@@ -91,7 +91,7 @@ async fn swap_taker_reconnects() {
         retry_until_bitcoin_funding_address(swap_id.clone(), cli_bob_needs_funding_args.clone())
             .await;
 
-    let (_, _, swap_id) = make_and_take_offer_with_reconnect(
+    let (_, _, swap_id) = make_and_take_deal_with_reconnect(
         data_dir_maker.clone(),
         data_dir_taker.clone(),
         "Alice".to_string(),
@@ -124,7 +124,7 @@ async fn swap_bob_funds_incorrect_amount() {
 
     let (_, data_dir_maker, _, data_dir_taker) = launch_farcasterd_pair().await;
 
-    let (_xmr_dest_wallet_name, bitcoin_address, swap_id) = make_and_take_offer(
+    let (_xmr_dest_wallet_name, bitcoin_address, swap_id) = make_and_take_deal(
         data_dir_maker.clone(),
         data_dir_taker.clone(),
         "Bob".to_string(),
@@ -158,7 +158,7 @@ async fn swap_bob_maker_manual_bitcoin_sweep() {
     let (farcasterd_maker, data_dir_maker, farcasterd_taker, data_dir_taker) =
         launch_farcasterd_pair().await;
 
-    let (_, _, swap_id) = make_and_take_offer(
+    let (_, _, swap_id) = make_and_take_deal(
         data_dir_maker.clone(),
         data_dir_taker.clone(),
         "Bob".to_string(),
@@ -190,7 +190,7 @@ async fn swap_bob_maker_manual_monero_sweep() {
 
     let (_, data_dir_maker, _, data_dir_taker) = launch_farcasterd_pair().await;
 
-    let (xmr_dest_wallet_name, bitcoin_address, swap_id) = make_and_take_offer(
+    let (xmr_dest_wallet_name, bitcoin_address, swap_id) = make_and_take_deal(
         data_dir_maker.clone(),
         data_dir_taker.clone(),
         "Bob".to_string(),
@@ -225,7 +225,7 @@ async fn swap_bob_maker_user_abort_sweep_btc() {
 
     let (_, data_dir_maker, _, data_dir_taker) = launch_farcasterd_pair().await;
 
-    let (_xmr_dest_wallet_name, bitcoin_address, swap_id) = make_and_take_offer(
+    let (_xmr_dest_wallet_name, bitcoin_address, swap_id) = make_and_take_deal(
         data_dir_maker.clone(),
         data_dir_taker.clone(),
         "Bob".to_string(),
@@ -263,7 +263,7 @@ async fn swap_bob_maker_kill_peerd_before_funding_should_reconnect_success() {
 
     let (_, data_dir_maker, _, data_dir_taker) = launch_farcasterd_pair().await;
 
-    let (xmr_dest_wallet_name, bitcoin_address, swap_id) = make_and_take_offer(
+    let (xmr_dest_wallet_name, bitcoin_address, swap_id) = make_and_take_deal(
         data_dir_maker.clone(),
         data_dir_taker.clone(),
         "Bob".to_string(),
@@ -297,7 +297,7 @@ async fn swap_bob_maker_kill_peerd_before_funding_should_reconnect_success() {
 #[tokio::test]
 #[timeout(600000)]
 #[ignore]
-async fn swap_revoke_offer_bob_maker_normal() {
+async fn swap_revoke_deal_bob_maker_normal() {
     setup_logging();
     let execution_mutex = Arc::new(Mutex::new(0));
     let bitcoin_rpc = Arc::new(bitcoin_setup());
@@ -305,8 +305,8 @@ async fn swap_revoke_offer_bob_maker_normal() {
 
     let (_, data_dir_maker, _, data_dir_taker) = launch_farcasterd_pair().await;
 
-    // first make and revoke an offer
-    make_and_revoke_offer(
+    // first make and revoke an deal
+    make_and_revoke_deal(
         data_dir_maker.clone(),
         "Bob".to_string(),
         Arc::clone(&bitcoin_rpc),
@@ -317,7 +317,7 @@ async fn swap_revoke_offer_bob_maker_normal() {
     .await;
 
     // then check if we can still swap normally
-    let (xmr_dest_wallet_name, bitcoin_address, swap_id) = make_and_take_offer(
+    let (xmr_dest_wallet_name, bitcoin_address, swap_id) = make_and_take_deal(
         data_dir_maker.clone(),
         data_dir_taker.clone(),
         "Bob".to_string(),
@@ -355,7 +355,7 @@ async fn swap_bob_maker_refund_alice_overfunds() {
 
     let (_, data_dir_maker, _, data_dir_taker) = launch_farcasterd_pair().await;
 
-    let (xmr_dest_wallet_name, bitcoin_address, swap_id) = make_and_take_offer(
+    let (xmr_dest_wallet_name, bitcoin_address, swap_id) = make_and_take_deal(
         data_dir_maker.clone(),
         data_dir_taker.clone(),
         "Bob".to_string(),
@@ -393,7 +393,7 @@ async fn swap_bob_maker_refund_race_cancel() {
 
     let (_, data_dir_maker, _, data_dir_taker) = launch_farcasterd_pair().await;
 
-    let (xmr_dest_wallet_name, bitcoin_address, swap_id) = make_and_take_offer(
+    let (xmr_dest_wallet_name, bitcoin_address, swap_id) = make_and_take_deal(
         data_dir_maker.clone(),
         data_dir_taker.clone(),
         "Bob".to_string(),
@@ -431,7 +431,7 @@ async fn swap_bob_maker_refund_kill_alice_after_funding() {
 
     let (_, data_dir_maker, farcasterd_taker, data_dir_taker) = launch_farcasterd_pair().await;
 
-    let (_xmr_dest_wallet_name, bitcoin_address, swap_id) = make_and_take_offer(
+    let (_xmr_dest_wallet_name, bitcoin_address, swap_id) = make_and_take_deal(
         data_dir_maker.clone(),
         data_dir_taker.clone(),
         "Bob".to_string(),
@@ -468,7 +468,7 @@ async fn swap_bob_maker_refund_alice_does_not_fund() {
 
     let (_, data_dir_maker, _, data_dir_taker) = launch_farcasterd_pair().await;
 
-    let (_xmr_dest_wallet_name, bitcoin_address, swap_id) = make_and_take_offer(
+    let (_xmr_dest_wallet_name, bitcoin_address, swap_id) = make_and_take_deal(
         data_dir_maker.clone(),
         data_dir_taker.clone(),
         "Bob".to_string(),
@@ -503,7 +503,7 @@ async fn swap_bob_maker_punish_kill_bob() {
 
     let (farcasterd_maker, data_dir_maker, _, data_dir_taker) = launch_farcasterd_pair().await;
 
-    let (_xmr_dest_wallet_name, bitcoin_address, swap_id) = make_and_take_offer(
+    let (_xmr_dest_wallet_name, bitcoin_address, swap_id) = make_and_take_deal(
         data_dir_maker.clone(),
         data_dir_taker.clone(),
         "Bob".to_string(),
@@ -541,7 +541,7 @@ async fn swap_bob_maker_restore_checkpoint_bob_pre_buy_alice_pre_lock() {
 
     let (_, data_dir_maker, _, data_dir_taker) = launch_farcasterd_pair().await;
 
-    let (xmr_dest_wallet_name, bitcoin_address, swap_id) = make_and_take_offer(
+    let (xmr_dest_wallet_name, bitcoin_address, swap_id) = make_and_take_deal(
         data_dir_maker.clone(),
         data_dir_taker.clone(),
         "Bob".to_string(),
@@ -577,7 +577,7 @@ async fn swap_bob_maker_restore_checkpoint_bob_pre_buy_alice_pre_buy() {
 
     let (_, data_dir_maker, _, data_dir_taker) = launch_farcasterd_pair().await;
 
-    let (xmr_dest_wallet_name, bitcoin_address, swap_id) = make_and_take_offer(
+    let (xmr_dest_wallet_name, bitcoin_address, swap_id) = make_and_take_deal(
         data_dir_maker.clone(),
         data_dir_taker.clone(),
         "Bob".to_string(),
@@ -613,7 +613,7 @@ async fn swap_bob_maker_restore_reconnect_alice_pre_lock() {
 
     let (_, data_dir_maker, taker_farcasterd, data_dir_taker) = launch_farcasterd_pair().await;
 
-    let (xmr_dest_wallet_name, bitcoin_address, swap_id) = make_and_take_offer(
+    let (xmr_dest_wallet_name, bitcoin_address, swap_id) = make_and_take_deal(
         data_dir_maker.clone(),
         data_dir_taker.clone(),
         "Bob".to_string(),
@@ -650,7 +650,7 @@ async fn swap_alice_maker() {
 
     let (_, data_dir_maker, _, data_dir_taker) = launch_farcasterd_pair().await;
 
-    let (xmr_dest_wallet_name, bitcoin_address, swap_id) = make_and_take_offer(
+    let (xmr_dest_wallet_name, bitcoin_address, swap_id) = make_and_take_deal(
         data_dir_maker.clone(),
         data_dir_taker.clone(),
         "Alice".to_string(),
@@ -696,13 +696,13 @@ async fn swap_parallel_execution() {
 
     let (_, data_dir_maker, _, data_dir_taker) = launch_farcasterd_pair().await;
 
-    let previous_offers: Arc<Mutex<HashSet<String>>> = Arc::new(Mutex::new(HashSet::new()));
+    let previous_deals: Arc<Mutex<HashSet<String>>> = Arc::new(Mutex::new(HashSet::new()));
     let previous_swap_ids: Arc<Mutex<HashSet<SwapId>>> = Arc::new(Mutex::new(HashSet::new()));
 
     let mut res = Vec::new();
     for i in 0..5 {
         let xmr_amount = format!("1.{} XMR", i);
-        res.push(make_and_take_offer_parallel(
+        res.push(make_and_take_deal_parallel(
             data_dir_maker.clone(),
             data_dir_taker.clone(),
             "Bob".to_string(),
@@ -710,7 +710,7 @@ async fn swap_parallel_execution() {
             Arc::clone(&monero_wallet),
             bitcoin::Amount::from_str("1 BTC").unwrap(),
             monero::Amount::from_str_with_denomination(&xmr_amount).unwrap(),
-            Arc::clone(&previous_offers),
+            Arc::clone(&previous_deals),
             Arc::clone(&previous_swap_ids),
         ));
     }
@@ -734,7 +734,7 @@ async fn swap_parallel_execution() {
     let mut res = Vec::new();
     for i in 0..5 {
         let xmr_amount = format!("1.{} XMR", i);
-        res.push(make_and_take_offer_parallel(
+        res.push(make_and_take_deal_parallel(
             data_dir_maker.clone(),
             data_dir_taker.clone(),
             "Alice".to_string(),
@@ -742,7 +742,7 @@ async fn swap_parallel_execution() {
             Arc::clone(&monero_wallet),
             bitcoin::Amount::from_str("1 BTC").unwrap(),
             monero::Amount::from_str_with_denomination(&xmr_amount).unwrap(),
-            Arc::clone(&previous_offers),
+            Arc::clone(&previous_deals),
             Arc::clone(&previous_swap_ids),
         ));
     }
@@ -2021,7 +2021,7 @@ async fn run_punish_swap_kill_bob_before_monero_funding(
 }
 
 #[allow(clippy::too_many_arguments)]
-async fn make_and_take_offer_parallel(
+async fn make_and_take_deal_parallel(
     data_dir_maker: Vec<String>,
     data_dir_taker: Vec<String>,
     role: String,
@@ -2029,7 +2029,7 @@ async fn make_and_take_offer_parallel(
     monero_wallet: Arc<Mutex<monero_rpc::WalletClient>>,
     btc_amount: bitcoin::Amount,
     xmr_amount: monero::Amount,
-    previous_offers: Arc<Mutex<HashSet<String>>>,
+    previous_deals: Arc<Mutex<HashSet<String>>>,
     previous_swap_ids: Arc<Mutex<HashSet<SwapId>>>,
 ) -> (String, bitcoin::Address, SwapId) {
     let maker_info_args = info_args(data_dir_maker.clone());
@@ -2046,7 +2046,7 @@ async fn make_and_take_offer_parallel(
 
     let (_stdout, _stderr) = run("../swap-cli", taker_info_args.clone()).unwrap();
 
-    let cli_make_args = make_offer_args(
+    let cli_make_args = make_deal_args(
         data_dir_maker.clone(),
         role,
         btc_addr.clone(),
@@ -2056,11 +2056,11 @@ async fn make_and_take_offer_parallel(
     );
     let (_stdout, _stderr) = run("../swap-cli", cli_make_args).unwrap();
 
-    // get offer strings
-    let offer =
-        retry_until_offer_parallel(maker_info_args.clone(), Arc::clone(&previous_offers)).await;
+    // get deal strings
+    let deal =
+        retry_until_deal_parallel(maker_info_args.clone(), Arc::clone(&previous_deals)).await;
 
-    let cli_take_args = take_offer_args(data_dir_taker.clone(), btc_addr, xmr_addr, offer.clone());
+    let cli_take_args = take_deal_args(data_dir_taker.clone(), btc_addr, xmr_addr, deal.clone());
     run("../swap-cli", cli_take_args).unwrap();
 
     let swap_id =
@@ -2069,7 +2069,7 @@ async fn make_and_take_offer_parallel(
     (xmr_address_wallet_name, btc_address, swap_id)
 }
 
-async fn make_and_revoke_offer(
+async fn make_and_revoke_deal(
     data_dir_maker: Vec<String>,
     role: String,
     bitcoin_rpc: Arc<bitcoincore_rpc::Client>,
@@ -2086,7 +2086,7 @@ async fn make_and_revoke_offer(
     let btc_addr = btc_address.to_string();
     let xmr_addr = xmr_address.to_string();
 
-    let cli_make_args = make_offer_args(
+    let cli_make_args = make_deal_args(
         data_dir_maker.clone(),
         role,
         btc_addr.clone(),
@@ -2096,18 +2096,18 @@ async fn make_and_revoke_offer(
     );
     let (_stdout, _stderr) = run("../swap-cli", cli_make_args).unwrap();
 
-    // get offer string
-    let offer = retry_until_offer(maker_info_args.clone()).await;
-    revoke_offer(offer[0].clone(), data_dir_maker);
+    // get deal string
+    let deal = retry_until_deal(maker_info_args.clone()).await;
+    revoke_deal(deal[0].clone(), data_dir_maker);
 
     assert!(get_info(maker_info_args)
-        .offers
+        .deals
         .iter()
-        .find(|o| format!("{}", o) == offer[0].clone())
+        .find(|o| format!("{}", o) == deal[0].clone())
         .is_none());
 }
 
-async fn make_and_take_offer(
+async fn make_and_take_deal(
     data_dir_maker: Vec<String>,
     data_dir_taker: Vec<String>,
     role: String,
@@ -2133,7 +2133,7 @@ async fn make_and_take_offer(
     let previous_swap_ids: HashSet<SwapId> =
         cli_output_to_node_info(stdout).swaps.drain(..).collect();
 
-    let cli_make_args = make_offer_args(
+    let cli_make_args = make_deal_args(
         data_dir_maker.clone(),
         role,
         btc_addr.clone(),
@@ -2143,15 +2143,11 @@ async fn make_and_take_offer(
     );
     let (_stdout, _stderr) = run("../swap-cli", cli_make_args).unwrap();
 
-    // get offer strings
-    let offers = retry_until_offer(maker_info_args.clone()).await;
+    // get deal strings
+    let deals = retry_until_deal(maker_info_args.clone()).await;
 
-    let cli_take_args = take_offer_args(
-        data_dir_taker.clone(),
-        btc_addr,
-        xmr_addr,
-        offers[0].clone(),
-    );
+    let cli_take_args =
+        take_deal_args(data_dir_taker.clone(), btc_addr, xmr_addr, deals[0].clone());
     run("../swap-cli", cli_take_args).unwrap();
 
     let swap_id = retry_until_swap_id(taker_info_args.clone(), previous_swap_ids).await;
@@ -2159,7 +2155,7 @@ async fn make_and_take_offer(
     (xmr_address_wallet_name, btc_address, swap_id)
 }
 
-async fn make_and_take_offer_with_reconnect(
+async fn make_and_take_deal_with_reconnect(
     data_dir_maker: Vec<String>,
     data_dir_taker: Vec<String>,
     role: String,
@@ -2185,7 +2181,7 @@ async fn make_and_take_offer_with_reconnect(
     let previous_swap_ids: HashSet<SwapId> =
         cli_output_to_node_info(stdout).swaps.drain(..).collect();
 
-    let cli_make_args = make_offer_args(
+    let cli_make_args = make_deal_args(
         data_dir_maker.clone(),
         role,
         btc_addr.clone(),
@@ -2194,20 +2190,16 @@ async fn make_and_take_offer_with_reconnect(
         xmr_amount,
     );
     let (stdout, stderr) = run("../swap-cli", cli_make_args).unwrap();
-    info!("Offer output: {:?}", stdout);
-    info!("Offer error: {:?}", stderr);
+    info!("Deal output: {:?}", stdout);
+    info!("Deal error: {:?}", stderr);
 
-    // get offer strings
-    info!("retrieving offers");
-    let offers = retry_until_offer(maker_info_args.clone()).await;
-    info!("Got the offer: {:?}", offers);
+    // get deal strings
+    info!("retrieving deals");
+    let deals = retry_until_deal(maker_info_args.clone()).await;
+    info!("Got the deal: {:?}", deals);
 
-    let cli_take_args = take_offer_args(
-        data_dir_taker.clone(),
-        btc_addr,
-        xmr_addr,
-        offers[0].clone(),
-    );
+    let cli_take_args =
+        take_deal_args(data_dir_taker.clone(), btc_addr, xmr_addr, deals[0].clone());
     run("../swap-cli", cli_take_args).unwrap();
     info!("killing connected peerd");
     kill_connected_peerd();
@@ -2923,7 +2915,7 @@ fn info_args(data_dir: Vec<String>) -> Vec<String> {
         .collect()
 }
 
-fn make_offer_args(
+fn make_deal_args(
     data_dir: Vec<String>,
     role: String,
     btc_addr: String,
@@ -2965,11 +2957,11 @@ fn make_offer_args(
         .collect()
 }
 
-fn take_offer_args(
+fn take_deal_args(
     data_dir: Vec<String>,
     btc_addr: String,
     xmr_addr: String,
-    offer: String,
+    deal: String,
 ) -> Vec<String> {
     data_dir
         .into_iter()
@@ -2979,8 +2971,8 @@ fn take_offer_args(
             btc_addr,
             "--xmr-addr".to_string(),
             xmr_addr,
-            "--offer".to_string(),
-            offer,
+            "--deal".to_string(),
+            deal,
             "--without-validation".to_string(),
         ])
         .collect()
@@ -2989,7 +2981,7 @@ fn take_offer_args(
 fn progress_args(data_dir: Vec<String>, swap_id: SwapId) -> Vec<String> {
     data_dir
         .into_iter()
-        .chain(vec!["progress".to_string(), format!("{:#?}", swap_id)])
+        .chain(vec!["progress".to_string(), format!("{}", swap_id)])
         .collect()
 }
 
@@ -3030,17 +3022,17 @@ fn needs_funding_args(data_dir: Vec<String>, currency: String) -> Vec<String> {
         .collect()
 }
 
-fn revoke_offer_args(data_dir: Vec<String>, offer: String) -> Vec<String> {
+fn revoke_deal_args(data_dir: Vec<String>, deal: String) -> Vec<String> {
     data_dir
         .into_iter()
-        .chain(vec!["revoke-offer".to_string(), format!("{}", offer)])
+        .chain(vec!["revoke-deal".to_string(), format!("{}", deal)])
         .collect()
 }
 
 fn abort_swap_args(data_dir: Vec<String>, swap_id: SwapId) -> Vec<String> {
     data_dir
         .into_iter()
-        .chain(vec!["abort-swap".to_string(), format!("{:#?}", swap_id)])
+        .chain(vec!["abort-swap".to_string(), format!("{}", swap_id)])
         .collect()
 }
 
@@ -3049,7 +3041,7 @@ fn restore_checkpoint_args(data_dir: Vec<String>, swap_id: SwapId) -> Vec<String
         .into_iter()
         .chain(vec![
             "restore-checkpoint".to_string(),
-            format!("{:#?}", swap_id),
+            format!("{}", swap_id),
         ])
         .collect()
 }
@@ -3075,21 +3067,21 @@ fn cli_output_to_funding_infos(stdout: Vec<String>) -> FundingInfos {
     .unwrap()
 }
 
-async fn retry_until_offer(args: Vec<String>) -> Vec<String> {
+async fn retry_until_deal(args: Vec<String>) -> Vec<String> {
     for _ in 0..ALLOWED_RETRIES {
         let (stdout, stderr) = run("../swap-cli", args.clone()).unwrap();
         debug!("{:?}", stderr);
-        let offers: Vec<String> = cli_output_to_node_info(stdout)
-            .offers
+        let deals: Vec<String> = cli_output_to_node_info(stdout)
+            .deals
             .iter()
-            .map(|offer| offer.to_string())
+            .map(|deal| deal.to_string())
             .collect();
-        if !offers.is_empty() {
-            return offers;
+        if !deals.is_empty() {
+            return deals;
         }
         tokio::time::sleep(time::Duration::from_secs(1)).await;
     }
-    panic!("timeout before any offer could be retrieved");
+    panic!("timeout before any deal could be retrieved");
 }
 
 fn get_info(args: Vec<String>) -> NodeInfo {
@@ -3122,8 +3114,8 @@ fn abort_swap(swap_id: SwapId, data_dir: Vec<String>) {
     info!("res: {:?}", res);
 }
 
-fn revoke_offer(offer: String, data_dir: Vec<String>) {
-    run("../swap-cli", revoke_offer_args(data_dir, offer)).unwrap();
+fn revoke_deal(deal: String, data_dir: Vec<String>) {
+    run("../swap-cli", revoke_deal_args(data_dir, deal)).unwrap();
 }
 
 fn restore_checkpoint(swap_id: SwapId, data_dir: Vec<String>) {
@@ -3152,26 +3144,26 @@ fn restore_checkpoint(swap_id: SwapId, data_dir: Vec<String>) {
     let (_stdout, _stderr) = run("../swap-cli", cli_restore_checkpoint_args).unwrap();
 }
 
-async fn retry_until_offer_parallel(
+async fn retry_until_deal_parallel(
     args: Vec<String>,
-    previous_offers: Arc<Mutex<HashSet<String>>>,
+    previous_deals: Arc<Mutex<HashSet<String>>>,
 ) -> String {
     for _ in 0..ALLOWED_RETRIES {
-        let mut previous_offers_lock = previous_offers.lock().await;
+        let mut previous_deals_lock = previous_deals.lock().await;
         let (stdout, _stderr) = run("../swap-cli", args.clone()).unwrap();
-        let new_offers: HashSet<String> = cli_output_to_node_info(stdout)
-            .offers
+        let new_deals: HashSet<String> = cli_output_to_node_info(stdout)
+            .deals
             .drain(..)
-            .map(|offer| offer.to_string())
+            .map(|deal| deal.to_string())
             .collect();
-        if let Some(offer) = new_offers.difference(&previous_offers_lock.clone()).next() {
-            previous_offers_lock.insert(offer.clone());
-            drop(previous_offers_lock);
-            return offer.clone();
+        if let Some(deal) = new_deals.difference(&previous_deals_lock.clone()).next() {
+            previous_deals_lock.insert(deal.clone());
+            drop(previous_deals_lock);
+            return deal.clone();
         }
         tokio::time::sleep(time::Duration::from_secs(1)).await;
     }
-    panic!("timeout before any offer could be retrieved");
+    panic!("timeout before any deal could be retrieved");
 }
 
 async fn retry_until_swap_id(args: Vec<String>, previous_swap_ids: HashSet<SwapId>) -> SwapId {

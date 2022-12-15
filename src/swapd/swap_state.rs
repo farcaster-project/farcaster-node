@@ -622,7 +622,7 @@ fn attempt_transition_to_init_taker(
             runtime.enquirer = Some(report_to.clone());
             let wallet = Wallet::new_taker(
                 event.endpoints,
-                runtime.public_offer.clone(),
+                runtime.deal.clone(),
                 target_bitcoin_address.clone(),
                 target_monero_address,
                 key_manager.0.clone(),
@@ -645,7 +645,7 @@ fn attempt_transition_to_init_taker(
                 })?;
             let take_swap = TakerCommit {
                 commit: local_commit.clone(),
-                public_offer: runtime.public_offer.clone(),
+                deal: runtime.deal.clone(),
             };
             // send taker commit message to counter-party
             runtime.send_peer(event.endpoints, PeerMsg::TakerCommit(take_swap))?;
@@ -686,7 +686,7 @@ fn attempt_transition_to_init_maker(
             runtime.syncer_state.watch_fee_and_height(event.endpoints)?;
             let wallet = Wallet::new_maker(
                 event.endpoints,
-                runtime.public_offer.clone(),
+                runtime.deal.clone(),
                 target_bitcoin_address,
                 target_monero_address,
                 key_manager.0,
@@ -748,10 +748,10 @@ fn try_bob_init_taker_to_bob_taker_maker_commit(
         mut wallet,
     } = bob_init_taker;
     match event.request.clone() {
-        BusMsg::P2p(PeerMsg::OfferNotFound(_)) => {
+        BusMsg::P2p(PeerMsg::DealNotFound(_)) => {
             runtime.log_error(format!(
-                "Taken offer {} was not found by the maker, aborting this swap.",
-                runtime.public_offer.id().swap_id(),
+                "Taken deal {} was not found by the maker, aborting this swap.",
+                runtime.deal.id().swap_id(),
             ));
             // just cancel the swap, no additional logic required
             handle_bob_abort_swap(event, runtime, wallet, funding_address)
@@ -800,10 +800,10 @@ fn try_alice_init_taker_to_alice_taker_maker_commit(
         mut wallet,
     } = bob_init_taker;
     match event.request {
-        BusMsg::P2p(PeerMsg::OfferNotFound(_)) => {
+        BusMsg::P2p(PeerMsg::DealNotFound(_)) => {
             runtime.log_error(format!(
-                "Taken offer {} was not found by the maker, aborting this swap.",
-                runtime.public_offer.id().swap_id(),
+                "Taken deal {} was not found by the maker, aborting this swap.",
+                runtime.deal.id().swap_id(),
             ));
             // just cancel the swap, no additional logic required
             handle_abort_swap(event, runtime)
@@ -1123,10 +1123,10 @@ fn try_bob_refund_procedure_signatures_to_bob_accordant_lock(
             && runtime.syncer_state.tasks.watched_addrs.get(&id) == Some(&TxLabel::AccLock) =>
         {
             let amount = monero::Amount::from_pico(amount.clone());
-            if amount < runtime.public_offer.offer.accordant_amount {
+            if amount < runtime.deal.parameters.accordant_amount {
                 runtime.log_warn(format!(
                     "Not enough monero locked: expected {}, found {}",
-                    runtime.public_offer.offer.accordant_amount, amount
+                    runtime.deal.parameters.accordant_amount, amount
                 ));
                 return Ok(None);
             }
@@ -1541,7 +1541,7 @@ fn try_alice_core_arbitrating_setup_to_alice_arbitrating_lock_final(
                 let address =
                     monero::Address::from_viewpair(runtime.syncer_state.network.into(), &viewpair);
                 let swap_id = runtime.swap_id();
-                let amount = runtime.public_offer.offer.accordant_amount;
+                let amount = runtime.deal.parameters.accordant_amount;
                 let funding_info = MoneroFundingInfo {
                     swap_id,
                     address,

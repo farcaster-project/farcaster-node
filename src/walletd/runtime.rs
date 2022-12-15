@@ -81,7 +81,7 @@ impl Runtime {
                 debug!("Received Hello from {}", source);
             }
 
-            CtlMsg::CreateSwapKeys(public_offer, wallet_token) => {
+            CtlMsg::CreateSwapKeys(deal, wallet_token) => {
                 if wallet_token != self.wallet_token {
                     return Err(Error::InvalidToken);
                 }
@@ -89,7 +89,7 @@ impl Runtime {
                 let key_manager = KeyManager::new(self.node_secrets.wallet_seed, wallet_index)?;
                 let swap_keys = SwapKeys {
                     key_manager: WrappedKeyManager(key_manager),
-                    public_offer,
+                    deal,
                 };
                 endpoints.send_to(
                     ServiceBus::Ctl,

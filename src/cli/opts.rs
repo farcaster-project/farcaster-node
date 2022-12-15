@@ -14,7 +14,7 @@ use farcaster_core::{
     bitcoin::{fee::SatPerVByte, timelock::CSVTimelock},
     blockchain::{Blockchain, FeeStrategy, Network},
     role::SwapRole,
-    swap::{btcxmr::PublicOffer, SwapId},
+    swap::{btcxmr::Deal, SwapId},
 };
 
 use crate::bus::info::Address;
@@ -58,24 +58,24 @@ pub enum Command {
     #[clap(aliases = &["ls"])]
     ListSwaps,
 
-    /// Lists public offers created by daemon
+    /// Lists public deals created by daemon
     #[clap(aliases = &["lo"])]
-    ListOffers {
+    ListDeals {
         #[clap(
             short,
             long,
             default_value = "open",
             possible_values = &["open", "Open", "inprogress", "in_progress", "ended", "Ended", "all", "All"],
         )]
-        select: OfferSelector,
+        select: DealSelector,
     },
 
-    /// Gives information on an open offer
+    /// Gives information on an open deal
     #[clap(aliases = &["oi"])]
-    #[display("offer-info<{public_offer}>")]
-    OfferInfo {
-        /// The offer to be canceled.
-        public_offer: PublicOffer,
+    #[display("deal-info<{deal}>")]
+    DealInfo {
+        /// The deal to be canceled.
+        deal: Deal,
     },
 
     /// Lists listeners created by daemon
@@ -128,9 +128,9 @@ pub enum Command {
         swap_id: SwapId,
     },
 
-    /// Maker creates offer and start listening for incoming connections. Command used to to print
-    /// the resulting public offer that shall be shared with Taker. Additionally it spins up the
-    /// listener awaiting for connection related to this offer.
+    /// Maker creates deal and start listening for incoming connections. Command used to to print
+    /// the resulting public deal that shall be shared with Taker. Additionally it spins up the
+    /// listener awaiting for connection related to this deal.
     ///
     /// Example usage:
     ///
@@ -197,12 +197,12 @@ pub enum Command {
         #[clap(long, default_value = "1 satoshi/vByte")]
         fee_strategy: FeeStrategy<SatPerVByte>,
 
-        /// Public IPv4 or IPv6 address to advertise in the public offer. This allows taker to
+        /// Public IPv4 or IPv6 address to advertise in the public deal. This allows taker to
         /// connect; defaults to 127.0.0.1.
         #[clap(short = 'I', long, default_value = "127.0.0.1")]
         public_ip_addr: IpAddr,
 
-        /// Public port to advertise in the public offer; defaults to the FC port 7067.
+        /// Public port to advertise in the public deal; defaults to the FC port 7067.
         ///
         /// This port should either be equal to 'farcasterd.bind_port' value in your config file or
         /// you should setup a proxy to forward trafic from {-I}:{-p} to
@@ -211,7 +211,7 @@ pub enum Command {
         public_port: u16,
     },
 
-    /// Taker accepts offer and connects to maker's daemon to start the trade.
+    /// Taker accepts deal and connects to maker's daemon to start the trade.
     Take {
         /// Bitcoin address used as destination or refund address.
         #[clap(long = "btc-addr")]
@@ -221,20 +221,20 @@ pub enum Command {
         #[clap(long = "xmr-addr")]
         monero_address: XmrAddress,
 
-        /// An encoded public offer.
-        #[clap(short = 'o', long = "offer")]
-        public_offer: PublicOffer,
+        /// An encoded public deal.
+        #[clap(short = 'o', long = "deal")]
+        deal: Deal,
 
-        /// Accept the public offer without validation.
+        /// Accept the public deal without validation.
         #[clap(short, long)]
         without_validation: bool,
     },
 
-    /// Revoke offer accepts an offer and revokes it within the runtime.
-    #[display("revoke-offer<{public_offer}>")]
-    RevokeOffer {
-        /// The offer to be canceled.
-        public_offer: PublicOffer,
+    /// Revoke deal accepts an deal and revokes it within the runtime.
+    #[display("revoke-deal<{deal}>")]
+    RevokeDeal {
+        /// The deal to be canceled.
+        deal: Deal,
     },
 
     /// Abort a swap if it has not locked yet.
@@ -313,7 +313,7 @@ pub enum Command {
 }
 
 #[derive(Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Debug, Display, From)]
-pub enum OfferSelector {
+pub enum DealSelector {
     #[display("Open")]
     Open,
     #[display("In Progress")]
@@ -323,23 +323,23 @@ pub enum OfferSelector {
     #[display("All")]
     All,
 }
-impl FromStr for OfferSelector {
-    type Err = OfferSelectorParseError;
-    fn from_str(input: &str) -> Result<OfferSelector, Self::Err> {
+impl FromStr for DealSelector {
+    type Err = DealSelectorParseError;
+    fn from_str(input: &str) -> Result<DealSelector, Self::Err> {
         match input {
-            "open" | "Open" => Ok(OfferSelector::Open),
-            "in_progress" | "inprogress" => Ok(OfferSelector::InProgress),
-            "ended" | "Ended" => Ok(OfferSelector::Ended),
-            "all" | "All" => Ok(OfferSelector::All),
-            _ => Err(OfferSelectorParseError::Invalid),
+            "open" | "Open" => Ok(DealSelector::Open),
+            "in_progress" | "inprogress" => Ok(DealSelector::InProgress),
+            "ended" | "Ended" => Ok(DealSelector::Ended),
+            "all" | "All" => Ok(DealSelector::All),
+            _ => Err(DealSelectorParseError::Invalid),
         }
     }
 }
 
 #[derive(Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Debug, Display, Error, From)]
 #[display(doc_comments)]
-pub enum OfferSelectorParseError {
-    /// The provided value can't be parsed as an offer selector
+pub enum DealSelectorParseError {
+    /// The provided value can't be parsed as an deal selector
     Invalid,
 }
 
@@ -366,7 +366,7 @@ impl FromStr for CheckpointSelector {
 #[derive(Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Debug, Display, Error, From)]
 #[display(doc_comments)]
 pub enum CheckpointSelectorParseError {
-    /// The provided value can't be parsed as an offer selector
+    /// The provided value can't be parsed as an deal selector
     Invalid,
 }
 

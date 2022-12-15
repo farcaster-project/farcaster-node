@@ -9,17 +9,17 @@ use std::time::Duration;
 
 use amplify::ToYamlString;
 use farcaster_core::role::{SwapRole, TradeRole};
-use farcaster_core::{blockchain::Blockchain, swap::btcxmr::PublicOffer, swap::SwapId};
+use farcaster_core::trade::DealId;
+use farcaster_core::{blockchain::Blockchain, swap::btcxmr::Deal, swap::SwapId};
 use internet2::addr::{InetSocketAddr, NodeAddr, NodeId};
 #[cfg(feature = "serde")]
 use serde_with::{DisplayFromStr, DurationSeconds};
-use strict_encoding::{NetworkDecode, NetworkEncode, StrictDecode, StrictEncode};
-use uuid::Uuid;
+use strict_encoding::{NetworkDecode, NetworkEncode};
 
 use crate::bus::{
-    AddressSecretKey, CheckpointEntry, Failure, List, OfferStatusPair, OptionDetails, Progress,
+    AddressSecretKey, CheckpointEntry, DealStatusPair, Failure, List, OptionDetails, Progress,
 };
-use crate::cli::OfferSelector;
+use crate::cli::DealSelector;
 use crate::farcasterd::stats::Stats;
 use crate::swapd::StateReport;
 use crate::syncerd::runtime::SyncerdTask;
@@ -46,8 +46,8 @@ pub enum InfoMsg {
     #[display("list_tasks()")]
     ListTasks,
 
-    #[display("list_offers({0})")]
-    ListOffers(OfferStatusSelector),
+    #[display("list_deals({0})")]
+    ListDeals(DealStatusSelector),
 
     #[display("list_listens()")]
     ListListens,
@@ -99,10 +99,10 @@ pub enum InfoMsg {
     String(String),
 
     #[display(inner)]
-    MadeOffer(MadeOffer),
+    MadeDeal(MadeDeal),
 
     #[display(inner)]
-    TookOffer(TookOffer),
+    TookDeal(TookDeal),
 
     // - GetInfo section
     #[display("syncer_info(..)")]
@@ -140,14 +140,14 @@ pub enum InfoMsg {
     TaskList(List<SyncerdTask>),
     // - End ListTasks section
 
-    // - ListOffers section
+    // - ListDeals section
     #[display(inner)]
     #[from]
-    OfferList(List<OfferInfo>),
+    DealList(List<DealInfo>),
 
     #[display(inner)]
-    OfferStatusList(List<OfferStatusPair>),
-    // - End ListOffers section
+    DealStatusList(List<DealStatusPair>),
+    // - End ListDeals section
 
     // - ListListen section
     #[display(inner)]
@@ -212,39 +212,23 @@ pub struct MoneroAddressSwapIdPair {
     derive(Serialize, Deserialize),
     serde(crate = "serde_crate")
 )]
-#[display(MadeOffer::to_yaml_string)]
-pub struct MadeOffer {
+#[display(MadeDeal::to_yaml_string)]
+pub struct MadeDeal {
     pub message: String,
-    pub offer_info: OfferInfo,
+    pub deal_info: DealInfo,
 }
 
 #[cfg_attr(feature = "serde", serde_as)]
-#[derive(Clone, PartialEq, Eq, Debug, Display)]
+#[derive(Clone, PartialEq, Eq, Debug, Display, NetworkEncode, NetworkDecode)]
 #[cfg_attr(
     feature = "serde",
     derive(Serialize, Deserialize),
     serde(crate = "serde_crate")
 )]
-#[display(TookOffer::to_yaml_string)]
-pub struct TookOffer {
-    pub offerid: Uuid,
+#[display(TookDeal::to_yaml_string)]
+pub struct TookDeal {
+    pub dealid: DealId,
     pub message: String,
-}
-
-impl StrictEncode for TookOffer {
-    fn strict_encode<W: std::io::Write>(&self, mut w: W) -> Result<usize, strict_encoding::Error> {
-        let mut len = self.offerid.to_bytes_le().strict_encode(&mut w)?;
-        len += self.message.strict_encode(&mut w)?;
-        Ok(len)
-    }
-}
-
-impl StrictDecode for TookOffer {
-    fn strict_decode<R: std::io::Read>(mut r: R) -> Result<Self, strict_encoding::Error> {
-        let offerid = Uuid::from_bytes_le(<[u8; 16]>::strict_decode(&mut r)?);
-        let message = String::strict_decode(&mut r)?;
-        Ok(TookOffer { offerid, message })
-    }
 }
 
 #[cfg_attr(feature = "serde", serde_as)]
@@ -280,7 +264,7 @@ pub struct NodeInfo {
     pub peers: Vec<NodeAddr>,
     pub swaps: Vec<SwapId>,
     #[serde_as(as = "Vec<DisplayFromStr>")]
-    pub offers: Vec<PublicOffer>,
+    pub deals: Vec<Deal>,
     #[serde(alias = "statistics")]
     pub stats: Stats,
 }
@@ -318,15 +302,14 @@ pub struct PeerInfo {
 )]
 #[display(SwapInfo::to_yaml_string)]
 pub struct SwapInfo {
-    #[serde_as(as = "Option<DisplayFromStr>")]
-    pub swap_id: Option<SwapId>,
+    pub swap_id: SwapId,
     #[serde_as(as = "Option<DisplayFromStr>")]
     pub connection: Option<NodeAddr>,
     pub connected: bool,
     #[serde_as(as = "DurationSeconds")]
     pub uptime: Duration,
     pub since: u64,
-    pub public_offer: PublicOffer,
+    pub deal: Deal,
     pub local_trade_role: TradeRole,
     pub local_swap_role: SwapRole,
     pub connected_counterparty_node_id: Option<NodeId>,
@@ -418,7 +401,7 @@ pub struct AddressBalance {
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Display, NetworkEncode, NetworkDecode)]
-pub enum OfferStatusSelector {
+pub enum DealStatusSelector {
     #[display("Open")]
     Open,
     #[display("In Progress")]
@@ -429,24 +412,24 @@ pub enum OfferStatusSelector {
     All,
 }
 
-impl From<OfferSelector> for OfferStatusSelector {
-    fn from(offer_selector: OfferSelector) -> OfferStatusSelector {
-        match offer_selector {
-            OfferSelector::Open => OfferStatusSelector::Open,
-            OfferSelector::InProgress => OfferStatusSelector::InProgress,
-            OfferSelector::Ended => OfferStatusSelector::Ended,
-            OfferSelector::All => OfferStatusSelector::All,
+impl From<DealSelector> for DealStatusSelector {
+    fn from(deal_selector: DealSelector) -> DealStatusSelector {
+        match deal_selector {
+            DealSelector::Open => DealStatusSelector::Open,
+            DealSelector::InProgress => DealStatusSelector::InProgress,
+            DealSelector::Ended => DealStatusSelector::Ended,
+            DealSelector::All => DealStatusSelector::All,
         }
     }
 }
 
-impl FromStr for OfferStatusSelector {
+impl FromStr for DealStatusSelector {
     type Err = ();
-    fn from_str(input: &str) -> Result<OfferStatusSelector, Self::Err> {
+    fn from_str(input: &str) -> Result<DealStatusSelector, Self::Err> {
         match input {
-            "open" | "Open" => Ok(OfferStatusSelector::Open),
-            "in_progress" | "inprogress" => Ok(OfferStatusSelector::Open),
-            "ended" | "Ended" => Ok(OfferStatusSelector::Ended),
+            "open" | "Open" => Ok(DealStatusSelector::Open),
+            "in_progress" | "inprogress" => Ok(DealStatusSelector::Open),
+            "ended" | "Ended" => Ok(DealStatusSelector::Ended),
             _ => Err(()),
         }
     }
@@ -459,10 +442,10 @@ impl FromStr for OfferStatusSelector {
     derive(Serialize, Deserialize),
     serde(crate = "serde_crate")
 )]
-#[display(OfferInfo::to_yaml_string)]
-pub struct OfferInfo {
-    pub offer: String,
-    pub details: PublicOffer,
+#[display(DealInfo::to_yaml_string)]
+pub struct DealInfo {
+    pub deal: String,
+    pub details: Deal,
 }
 
 #[cfg(feature = "serde")]
@@ -470,11 +453,11 @@ impl ToYamlString for BitcoinAddressSwapIdPair {}
 #[cfg(feature = "serde")]
 impl ToYamlString for MoneroAddressSwapIdPair {}
 #[cfg(feature = "serde")]
-impl ToYamlString for OfferInfo {}
+impl ToYamlString for DealInfo {}
 #[cfg(feature = "serde")]
-impl ToYamlString for MadeOffer {}
+impl ToYamlString for MadeDeal {}
 #[cfg(feature = "serde")]
-impl ToYamlString for TookOffer {}
+impl ToYamlString for TookDeal {}
 #[cfg(feature = "serde")]
 impl ToYamlString for CheckpointEntry {}
 #[cfg(feature = "serde")]

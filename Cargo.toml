@@ -67,7 +67,7 @@ config = "0.11"
 dotenv = { version = "0.15", optional = true }
 electrum-client = "0.11.0"
 env_logger = "0.7"
-farcaster_core = "0.5.1"
+farcaster_core = "0.6"
 hex = { version = "^0.4.3", features = ["serde"] }
 internet2 = "0.8.3"
 lazy_static = "1.4"
