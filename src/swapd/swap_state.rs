@@ -720,7 +720,9 @@ fn attempt_transition_to_init_maker(
                     Ok(Some(SwapStateMachine::BobInitMaker(BobInitMaker {
                         local_commit,
                         local_params,
-                        funding_address: funding_tx.get_address().ok().unwrap(),
+                        funding_address: funding_tx
+                            .get_address()
+                            .expect("Funding address should be valid"),
                         remote_commit: commit,
                         wallet,
                         reveal: None,
