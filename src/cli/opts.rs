@@ -222,7 +222,7 @@ pub enum Command {
         monero_address: XmrAddress,
 
         /// An encoded deal.
-        #[clap(short = 'd', long = "deal")]
+        #[clap(short = 'D', long = "deal")]
         deal: Deal,
 
         /// Accept the deal without validation.
