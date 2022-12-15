@@ -538,7 +538,7 @@ impl StateMachine<Runtime, Error> for SwapStateMachine {
             SwapStateMachine::AliceRefundSweeping => {
                 try_alice_refund_sweeping_to_swap_end(event, runtime)
             }
-            SwapStateMachine::AlicePunish => try_alice_punish_to_swap_end(event, runtime),
+            SwapStateMachine::AlicePunish => try_punish_to_swap_end(event, runtime),
 
             _ => Ok(Some(self)),
         }
@@ -1370,7 +1370,7 @@ fn try_bob_cancel_final_to_swap_end(
             // send swap outcome to farcasterd
             Ok(Some(SwapStateMachine::SwapEnd(Outcome::FailureRefund)))
         }
-        _ => Ok(None),
+        _ => try_punish_to_swap_end(event, runtime),
     }
 }
 
@@ -2060,7 +2060,8 @@ fn try_alice_refund_sweeping_to_swap_end(
     }
 }
 
-fn try_alice_punish_to_swap_end(
+/// Checked by both Alice and Bob to verify whether Punish is final
+fn try_punish_to_swap_end(
     mut event: Event,
     runtime: &mut Runtime,
 ) -> Result<Option<SwapStateMachine>, Error> {
