@@ -59,7 +59,7 @@ pub enum Command {
     ListSwaps,
 
     /// Lists public deals created by daemon
-    #[clap(aliases = &["lo"])]
+    #[clap(aliases = &["ld"])]
     ListDeals {
         #[clap(
             short,
@@ -71,7 +71,7 @@ pub enum Command {
     },
 
     /// Gives information on an open deal
-    #[clap(aliases = &["oi"])]
+    #[clap(aliases = &["di"])]
     #[display("deal-info<{deal}>")]
     DealInfo {
         /// The deal to be canceled.
@@ -222,7 +222,7 @@ pub enum Command {
         monero_address: XmrAddress,
 
         /// An encoded public deal.
-        #[clap(short = 'o', long = "deal")]
+        #[clap(short = 'd', long = "deal")]
         deal: Deal,
 
         /// Accept the public deal without validation.
