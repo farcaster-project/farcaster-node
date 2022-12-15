@@ -300,7 +300,6 @@ pub enum SwapStateMachine {
 
 #[derive(Clone, Debug, StrictEncode, StrictDecode)]
 pub struct BobInitMaker {
-    local_commit: Commit,
     local_params: Params,
     funding_address: bitcoin::Address,
     remote_commit: Commit,
@@ -316,7 +315,6 @@ pub struct AliceInitMaker {
 
 #[derive(Clone, Debug, StrictEncode, StrictDecode)]
 pub struct BobInitTaker {
-    local_commit: Commit,
     local_params: Params,
     funding_address: bitcoin::Address,
     wallet: Wallet,
@@ -337,7 +335,6 @@ pub struct AliceTakerMakerCommit {
 
 #[derive(Clone, Debug, StrictEncode, StrictDecode)]
 pub struct BobTakerMakerCommit {
-    local_commit: Commit,
     local_params: Params,
     funding_address: bitcoin::Address,
     remote_commit: Commit,
@@ -647,7 +644,6 @@ fn attempt_transition_to_init_taker(
                 SwapRole::Bob => Ok(Some(SwapStateMachine::BobInitTaker(BobInitTaker {
                     funding_address: funding_address.unwrap(),
                     local_params,
-                    local_commit,
                     wallet,
                 }))),
                 SwapRole::Alice => Ok(Some(SwapStateMachine::AliceInitTaker(AliceInitTaker {
@@ -711,7 +707,6 @@ fn attempt_transition_to_init_maker(
             runtime.send_peer(event.endpoints, PeerMsg::MakerCommit(local_commit.clone()))?;
             match swap_role {
                 SwapRole::Bob => Ok(Some(SwapStateMachine::BobInitMaker(BobInitMaker {
-                    local_commit,
                     local_params,
                     funding_address: funding_address.unwrap(),
                     remote_commit: commit,
@@ -735,7 +730,6 @@ fn try_bob_init_taker_to_bob_taker_maker_commit(
     bob_init_taker: BobInitTaker,
 ) -> Result<Option<SwapStateMachine>, Error> {
     let BobInitTaker {
-        local_commit,
         local_params,
         funding_address,
         mut wallet,
@@ -767,7 +761,6 @@ fn try_bob_init_taker_to_bob_taker_maker_commit(
             runtime.log_trace("Sent reveal peer message to peerd");
             Ok(Some(SwapStateMachine::BobTakerMakerCommit(
                 BobTakerMakerCommit {
-                    local_commit,
                     local_params,
                     funding_address,
                     wallet,
@@ -826,7 +819,6 @@ fn try_bob_taker_maker_commit_to_bob_reveal(
     bob_taker_maker_commit: BobTakerMakerCommit,
 ) -> Result<Option<SwapStateMachine>, Error> {
     let BobTakerMakerCommit {
-        local_commit,
         local_params,
         funding_address,
         remote_commit,
@@ -835,7 +827,6 @@ fn try_bob_taker_maker_commit_to_bob_reveal(
     attempt_transition_to_bob_reveal(
         event,
         runtime,
-        local_commit,
         local_params,
         funding_address,
         remote_commit,
@@ -863,7 +854,6 @@ fn try_bob_init_maker_to_bob_reveal(
     bob_init_maker: BobInitMaker,
 ) -> Result<Option<SwapStateMachine>, Error> {
     let BobInitMaker {
-        local_commit,
         local_params,
         funding_address,
         remote_commit,
@@ -872,7 +862,6 @@ fn try_bob_init_maker_to_bob_reveal(
     attempt_transition_to_bob_reveal(
         event,
         runtime,
-        local_commit,
         local_params,
         funding_address,
         remote_commit,
@@ -2176,7 +2165,6 @@ fn try_request_funding(
 fn attempt_transition_to_bob_reveal(
     event: Event,
     runtime: &mut Runtime,
-    local_commit: Commit,
     local_params: Params,
     funding_address: bitcoin::Address,
     remote_commit: Commit,
