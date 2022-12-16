@@ -1273,34 +1273,7 @@ fn try_bob_accordant_lock_final_to_bob_buy_final(
             } else {
                 return Ok(None);
             };
-            let acc_confs_needs = runtime
-                .syncer_state
-                .get_confs(TxLabel::AccLock)
-                .map(|c| {
-                    runtime
-                        .temporal_safety
-                        .sweep_monero_thr
-                        .checked_sub(c)
-                        .unwrap_or(0)
-                })
-                .unwrap_or(runtime.temporal_safety.sweep_monero_thr);
-            let sweep_block =
-                runtime.syncer_state.height(Blockchain::Monero) + acc_confs_needs as u64;
-            runtime.log_info(format!(
-                "Tx {} needs {} confirmations, and has {} confirmations",
-                TxLabel::AccLock.label(),
-                acc_confs_needs.bright_green_bold(),
-                runtime
-                    .syncer_state
-                    .get_confs(TxLabel::AccLock)
-                    .unwrap_or(0),
-            ));
-            runtime.log_info(format!(
-                "{} reaches your address {} after block {}",
-                Blockchain::Monero.label(),
-                sweep_xmr.destination_address.addr(),
-                sweep_block.bright_blue_bold(),
-            ));
+            runtime.log_monero_maturity(sweep_xmr.destination_address);
             Ok(Some(SwapStateMachine::BobBuyFinal(sweep_address)))
         }
         _ => handle_bob_swap_interrupt_after_lock(event, runtime),
@@ -1938,34 +1911,7 @@ fn try_alice_canceled_to_alice_refund_or_alice_punish(
                 } else {
                     return Ok(None);
                 };
-                let acc_confs_needs = runtime
-                    .syncer_state
-                    .get_confs(TxLabel::AccLock)
-                    .map(|c| {
-                        runtime
-                            .temporal_safety
-                            .sweep_monero_thr
-                            .checked_sub(c)
-                            .unwrap_or(0)
-                    })
-                    .unwrap_or(runtime.temporal_safety.sweep_monero_thr);
-                let sweep_block =
-                    runtime.syncer_state.height(Blockchain::Monero) + acc_confs_needs as u64;
-                runtime.log_info(format!(
-                    "Tx {} needs {} more confirmations, and has {} confirmations",
-                    TxLabel::AccLock.label(),
-                    acc_confs_needs.bright_green_bold(),
-                    runtime
-                        .syncer_state
-                        .get_confs(TxLabel::AccLock)
-                        .unwrap_or(0),
-                ));
-                runtime.log_info(format!(
-                    "{} reaches your address {} after block {}",
-                    Blockchain::Monero.label(),
-                    sweep_xmr.destination_address.addr(),
-                    sweep_block.bright_blue_bold(),
-                ));
+                runtime.log_monero_maturity(sweep_xmr.destination_address);
                 runtime.log_warn(
                     "Peerd might crash, just ignore it, counterparty closed \
                         connection but you don't need it anymore!",

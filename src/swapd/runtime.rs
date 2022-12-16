@@ -349,8 +349,8 @@ impl Runtime {
     ) -> Result<(), Error> {
         match request {
             CtlMsg::Hello => {
-                self.log_info(format!(
-                    "Service {} daemon is now connected",
+                self.log_debug(format!(
+                    "Received Hello from {}",
                     source.bright_green_bold(),
                 ));
             }
@@ -899,6 +899,30 @@ impl Runtime {
             })),
         )?;
         Ok(())
+    }
+
+    pub fn log_monero_maturity(&self, address: monero::Address) {
+        let acc_confs_needs = self
+            .syncer_state
+            .get_confs(TxLabel::AccLock)
+            .map(|confs| {
+                self.temporal_safety
+                    .sweep_monero_thr
+                    .checked_sub(confs)
+                    .unwrap_or(0)
+            })
+            .unwrap_or(self.temporal_safety.sweep_monero_thr);
+        let sweep_block = self.syncer_state.height(Blockchain::Monero) + acc_confs_needs as u64;
+        self.log_info(format!(
+            "Tx {} needs {} more confirmations to spending maturity, and has {} confirmations.\n\
+                {} reaches your address {} after block {}",
+            TxLabel::AccLock.label(),
+            acc_confs_needs.bright_green_bold(),
+            self.syncer_state.get_confs(TxLabel::AccLock).unwrap_or(0),
+            Blockchain::Monero.label(),
+            address.addr(),
+            sweep_block.bright_blue_bold(),
+        ));
     }
 
     pub fn log_info(&self, msg: impl std::fmt::Display) {
