@@ -12,6 +12,7 @@ use crate::bus::info::Address;
 use crate::bus::info::DealStatusSelector;
 use crate::bus::info::ProgressEvent;
 use crate::bus::AddressSecretKey;
+use crate::bus::DealStatus;
 use crate::bus::Failure;
 use crate::bus::HealthCheckSelector;
 use crate::bus::OptionDetails;
@@ -178,9 +179,9 @@ impl From<Outcome> for farcaster::Outcome {
     }
 }
 
-impl From<Deal> for DealInfo {
-    fn from(deal: Deal) -> DealInfo {
-        DealInfo {
+impl From<Deal> for DeserializedDeal {
+    fn from(deal: Deal) -> DeserializedDeal {
+        DeserializedDeal {
             arbitrating_amount: deal.parameters.arbitrating_amount.as_sat(),
             accordant_amount: deal.parameters.accordant_amount.as_pico(),
             cancel_timelock: deal.parameters.cancel_timelock.as_u32(),
@@ -197,7 +198,32 @@ impl From<Deal> for DealInfo {
                 .into(),
             node_id: deal.node_id.to_string(),
             peer_address: deal.peer_address.to_string(),
-            encoded_deal: deal.to_string(),
+        }
+    }
+}
+
+impl From<DealStatus> for farcaster::DealStatus {
+    fn from(t: DealStatus) -> farcaster::DealStatus {
+        match t {
+            DealStatus::Open => farcaster::DealStatus::DealOpen,
+            DealStatus::InProgress => farcaster::DealStatus::DealInProgress,
+            DealStatus::Ended(outcome) => match outcome {
+                Outcome::SuccessSwap => farcaster::DealStatus::DealEndedSuccessSwap,
+                Outcome::FailureAbort => farcaster::DealStatus::DealEndedFailureAbort,
+                Outcome::FailurePunish => farcaster::DealStatus::DealEndedFailurePunish,
+                Outcome::FailureRefund => farcaster::DealStatus::DealEndedFailureRefund,
+            },
+        }
+    }
+}
+
+impl DealInfo {
+    fn new(deal: Deal, local_trade_role: TradeRole, status: DealStatus) -> DealInfo {
+        DealInfo {
+            serialized_deal: deal.to_string(),
+            deserialized_deal: Some(deal.into()),
+            local_trade_role: farcaster::TradeRole::from(local_trade_role).into(),
+            deal_status: farcaster::DealStatus::from(status).into(),
         }
     }
 }
@@ -398,7 +424,11 @@ impl Farcaster for FarcasterService {
                     connected,
                     uptime: uptime.as_secs(),
                     since,
-                    deal: Some(deal.into()),
+                    deal: Some(DealInfo::new(
+                        deal,
+                        local_trade_role,
+                        DealStatus::InProgress,
+                    )),
                     trade_role: farcaster::TradeRole::from(local_trade_role).into(),
                     swap_role: farcaster::SwapRole::from(local_swap_role).into(),
                     connected_counterparty_node_id: connected_counterparty_node_id
@@ -442,17 +472,20 @@ impl Farcaster for FarcasterService {
                         .drain(..)
                         .filter(|d| {
                             network_selector == NetworkSelector::AllNetworks
-                                || Some(d.details.parameters.network) == network_selector.into()
+                                || Some(d.deal.parameters.network) == network_selector.into()
                         })
-                        .map(|d| DealInfo::from(d.details))
+                        .map(|d| DealInfo::new(d.deal, d.local_trade_role, d.status))
                         .collect(),
                 };
                 Ok(GrpcResponse::new(reply))
             }
-            Ok(BusMsg::Info(InfoMsg::DealStatusList(mut deals))) => {
+            Ok(BusMsg::Info(InfoMsg::DealInfoList(mut deals))) => {
                 let reply = ListDealsResponse {
                     id,
-                    deals: deals.drain(..).map(|d| DealInfo::from(d.deal)).collect(),
+                    deals: deals
+                        .drain(..)
+                        .map(|d| DealInfo::new(d.deal, d.local_trade_role, d.status))
+                        .collect(),
                 };
                 Ok(GrpcResponse::new(reply))
             }
@@ -476,7 +509,8 @@ impl Farcaster for FarcasterService {
 
         let reply = DealInfoResponse {
             id,
-            deal_info: Some(deal.into()),
+            deal: deal.to_string(),
+            deserialized_deal: Some(deal.into()),
         };
         Ok(GrpcResponse::new(reply))
     }
@@ -547,7 +581,11 @@ impl Farcaster for FarcasterService {
                         })
                         .map(|entry| farcaster::CheckpointEntry {
                             swap_id: entry.swap_id.to_string(),
-                            deal: Some(entry.deal.clone().into()),
+                            deal: Some(DealInfo::new(
+                                entry.deal.clone(),
+                                entry.trade_role,
+                                DealStatus::InProgress,
+                            )),
                             trade_role: farcaster::TradeRole::from(entry.trade_role) as i32,
                         })
                         .collect(),
@@ -766,7 +804,8 @@ impl Farcaster for FarcasterService {
             Ok(BusMsg::Info(InfoMsg::MadeDeal(made_deal))) => {
                 let reply = farcaster::MakeResponse {
                     id,
-                    deal: Some(made_deal.deal_info.details.into()),
+                    deal: made_deal.viewable_deal.deal,
+                    deserialized_deal: Some(made_deal.viewable_deal.details.into()),
                 };
                 Ok(GrpcResponse::new(reply))
             }

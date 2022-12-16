@@ -109,14 +109,16 @@ pub enum DealStatus {
     derive(Serialize, Deserialize),
     serde(crate = "serde_crate")
 )]
-#[display(DealStatusPair::to_yaml_string)]
-pub struct DealStatusPair {
+#[display(DealInfo::to_yaml_string)]
+pub struct DealInfo {
     pub deal: Deal,
+    pub serialized_deal: String,
     pub status: DealStatus,
+    pub local_trade_role: TradeRole,
 }
 
 #[cfg(feature = "serde")]
-impl ToYamlString for DealStatusPair {}
+impl ToYamlString for DealInfo {}
 
 #[derive(Clone, Debug, Eq, PartialEq, Hash, Display, NetworkEncode, NetworkDecode)]
 #[cfg_attr(

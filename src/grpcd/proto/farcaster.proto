@@ -94,10 +94,18 @@ message DealInfoRequest {
 
 message DealInfoResponse {
     uint32 id = 1;
-    DealInfo deal_info = 2;
+    DeserializedDeal deserialized_deal = 2;
+    string deal = 3;
 }
 
 message DealInfo {
+    DeserializedDeal deserialized_deal = 1;
+    string serialized_deal = 2;
+    TradeRole local_trade_role = 3;
+    DealStatus deal_status = 4;
+}
+
+message DeserializedDeal {
     uint64 arbitrating_amount = 1;
     uint64 accordant_amount = 2;
     uint32 cancel_timelock = 3;
@@ -110,7 +118,15 @@ message DealInfo {
     Blockchain accordant_blockchain = 10;
     string node_id = 11;
     string peer_address = 12;
-    string encoded_deal = 13;
+}
+
+enum DealStatus {
+    DEAL_OPEN = 0;
+    DEAL_IN_PROGRESS = 1;
+    DEAL_ENDED_SUCCESS_SWAP = 2;
+    DEAL_ENDED_FAILURE_REFUND = 3;
+    DEAL_ENDED_FAILURE_PUNISH = 4;
+    DEAL_ENDED_FAILURE_ABORT = 5;
 }
 
 message PeersRequest {
@@ -214,7 +230,8 @@ message MakeRequest {
  
 message MakeResponse {
     uint32 id = 1;
-    DealInfo deal = 2;
+    DeserializedDeal deserialized_deal = 2;
+    string deal = 3;
 }
 
 message TakeRequest {
