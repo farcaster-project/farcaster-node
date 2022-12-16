@@ -14,7 +14,6 @@ use crate::service::Endpoints;
 use crate::swapd::Opts;
 use crate::syncerd::bitcoin_syncer::p2wpkh_signed_tx_fee;
 use crate::syncerd::types::{Event, TransactionConfirmations};
-use crate::syncerd::{FeeEstimation, FeeEstimations};
 use crate::{
     bus::ctl::{BitcoinFundingInfo, Checkpoint, CtlMsg, FundingInfo, Params},
     bus::info::{InfoMsg, SwapInfo},
@@ -116,7 +115,6 @@ pub fn run(config: ServiceConfig, opts: Opts) -> Result<(), Error> {
         monero_syncer: ServiceId::Syncer(Blockchain::Monero, network),
         awaiting_funding: false,
         xmr_addr_addendum: None,
-        btc_fee_estimate_sat_per_kvb: None,
         confirmations: none!(),
     };
 
@@ -411,23 +409,10 @@ impl Runtime {
                 // We need to update the peerd for the pending requests in case of reconnect
                 self.local_trade_role = local_trade_role;
                 self.txs = txs.drain(..).collect();
-                self.log_trace("Watch height bitcoin");
-                let watch_height_bitcoin = self.syncer_state.watch_height(Blockchain::Bitcoin);
-                endpoints.send_to(
-                    ServiceBus::Sync,
-                    self.identity(),
-                    self.syncer_state.bitcoin_syncer(),
-                    BusMsg::Sync(SyncMsg::Task(watch_height_bitcoin)),
-                )?;
-
-                self.log_trace("Watch height monero");
-                let watch_height_monero = self.syncer_state.watch_height(Blockchain::Monero);
-                endpoints.send_to(
-                    ServiceBus::Sync,
-                    self.identity(),
-                    self.syncer_state.monero_syncer(),
-                    BusMsg::Sync(SyncMsg::Task(watch_height_monero)),
-                )?;
+                self.syncer_state
+                    .watch_height(endpoints, Blockchain::Bitcoin)?;
+                self.syncer_state
+                    .watch_height(endpoints, Blockchain::Monero)?;
 
                 self.log_trace("Watching transactions");
                 for (tx_label, txid) in txids.iter() {
@@ -656,18 +641,8 @@ impl Runtime {
                         self.log_debug(event);
                     }
 
-                    Event::FeeEstimation(FeeEstimation {
-                        fee_estimations:
-                            FeeEstimations::BitcoinFeeEstimation {
-                                high_priority_sats_per_kvbyte,
-                                low_priority_sats_per_kvbyte: _,
-                            },
-                        id: _,
-                    }) => {
-                        // FIXME handle low priority as well
-                        self.log_info(format!("Fee: {} sat/kvB", high_priority_sats_per_kvbyte));
-                        self.syncer_state.btc_fee_estimate_sat_per_kvb =
-                            Some(*high_priority_sats_per_kvbyte);
+                    Event::FeeEstimation(event) => {
+                        self.log_debug(event);
                     }
                     Event::Empty(_) => self.log_debug("empty event not handled for Bitcoin"),
 
@@ -1002,7 +977,10 @@ pub fn validate_reveal(reveal: &Reveal, remote_commit: Commit) -> Result<Params,
                 Ok(Params::Alice(parameters.clone().into_parameters()))
             }
             _ => {
-                let err_msg = "expected Some(Commit::Alice(commit))";
+                let err_msg = format!(
+                    "expected Some(Commit::Alice(commit)), found {}",
+                    remote_commit
+                );
                 error!("{}", err_msg);
                 Err(Error::Farcaster(err_msg.to_string()))
             }
@@ -1013,7 +991,10 @@ pub fn validate_reveal(reveal: &Reveal, remote_commit: Commit) -> Result<Params,
                 Ok(Params::Bob(parameters.clone().into_parameters()))
             }
             _ => {
-                let err_msg = "expected Some(Commit::Bob(commit))";
+                let err_msg = format!(
+                    "expected Some(Commit::Bob(commit)), found {}",
+                    remote_commit
+                );
                 error!("{}", err_msg);
                 Err(Error::Farcaster(err_msg.to_string()))
             }
