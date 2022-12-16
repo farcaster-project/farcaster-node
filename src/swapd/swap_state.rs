@@ -1380,7 +1380,8 @@ fn try_awaiting_sweep_to_swap_end(
                 ServiceId::Farcasterd,
                 CtlMsg::FundingCanceled(Blockchain::Bitcoin),
             )?;
-            handle_abort_swap(event, runtime)
+            runtime.log_info("Aborted swap.");
+            Ok(Some(SwapStateMachine::SwapEnd(Outcome::FailureAbort)))
         }
 
         BusMsg::Sync(SyncMsg::Event(SyncEvent::SweepSuccess(SweepSuccess { id, .. })))
@@ -1390,7 +1391,8 @@ fn try_awaiting_sweep_to_swap_end(
                 ServiceId::Farcasterd,
                 CtlMsg::FundingCanceled(Blockchain::Bitcoin),
             )?;
-            handle_abort_swap(event, runtime)
+            runtime.log_info("Aborted swap.");
+            Ok(Some(SwapStateMachine::SwapEnd(Outcome::FailureAbort)))
         }
         _ => Ok(None),
     }
