@@ -1082,7 +1082,9 @@ fn try_bob_funded_to_bob_refund_procedure_signature(
                 });
             runtime.log_debug("Checkpointing bob refund signature swapd state.");
             // manually add lock_tx to pending broadcasts to ensure it's checkpointed
-            runtime.syncer_state.broadcast(lock_tx.clone());
+            runtime
+                .syncer_state
+                .broadcast(lock_tx.clone(), TxLabel::Lock);
             runtime.checkpoint_state(event.endpoints, None, new_ssm.clone())?;
             runtime.broadcast(lock_tx, TxLabel::Lock, event.endpoints)?;
             Ok(Some(new_ssm))
@@ -1212,6 +1214,7 @@ fn try_bob_accordant_lock_final_to_bob_buy_final(
                 &Some(confirmations),
                 runtime.swap_id(),
                 runtime.temporal_safety.btc_finality_thr,
+                event.endpoints,
             );
             runtime.log_warn(
                 "Peerd might crash, just ignore it, counterparty closed \
@@ -1307,6 +1310,7 @@ fn try_bob_cancel_final_to_swap_end(
                 &Some(confirmations),
                 runtime.swap_id(),
                 runtime.temporal_safety.btc_finality_thr,
+                event.endpoints,
             );
             let abort_all = Task::Abort(Abort {
                 task_target: TaskTarget::AllTasks,
@@ -1355,6 +1359,7 @@ fn try_bob_canceled_to_bob_cancel_final(
                 &Some(confirmations),
                 runtime.swap_id(),
                 runtime.temporal_safety.btc_finality_thr,
+                event.endpoints,
             );
             runtime.log_trace("Bob publishes refund tx");
             if !runtime.temporal_safety.safe_refund(confirmations) {
@@ -1752,6 +1757,7 @@ fn try_alice_buy_procedure_signature_to_swap_end(
                 &Some(confirmations),
                 runtime.swap_id(),
                 runtime.temporal_safety.btc_finality_thr,
+                event.endpoints,
             );
             let abort_all = Task::Abort(Abort {
                 task_target: TaskTarget::AllTasks,
