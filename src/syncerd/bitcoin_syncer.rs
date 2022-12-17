@@ -95,7 +95,7 @@ impl ElectrumRpc {
         debug!("creating ElectrumRpc client");
         let client = create_electrum_client(electrum_server, proxy_address)?;
         let header = client.block_headers_subscribe()?;
-        debug!("New ElectrumRpc at height {:?}", header.height);
+        debug!("New ElectrumRpc at height {}", header.height);
 
         Ok(Self {
             client,
@@ -120,10 +120,10 @@ impl ElectrumRpc {
         address_addendum: BtcAddressAddendum,
         filter: TxFilter,
     ) -> Result<AddressNotif, Error> {
-        debug!("attempting subscribing to: {:?}", address_addendum);
+        debug!("attempting subscribing to: {}", address_addendum.address);
 
         if !self.addresses.contains_key(&address_addendum) {
-            debug!("subscribing to: {:?}", address_addendum);
+            debug!("subscribing to: {}", address_addendum.address);
             let script_status = self
                 .client
                 .script_subscribe(&address_addendum.address.script_pubkey())?;
@@ -131,7 +131,8 @@ impl ElectrumRpc {
                 .insert(address_addendum.clone(), (script_status, filter.clone()));
             debug!(
                 "registering address {} with script_status {:?}",
-                &address_addendum.address, &script_status
+                &address_addendum.address,
+                &script_status.map(|h| hex::encode(h.to_vec()))
             );
         }
         let txs = query_addr_history(&mut self.client, &address_addendum, &filter)?;
@@ -149,7 +150,7 @@ impl ElectrumRpc {
         {
             self.height = height as u64;
             self.block_hash = header.block_hash();
-            trace!("new height received: {:?}", self.height);
+            trace!("new height received: {}", self.height);
             blocks.push(Block {
                 height: self.height,
                 block_hash: self.block_hash,
@@ -172,13 +173,15 @@ impl ElectrumRpc {
                         .is_some()
                     {
                         debug!(
-                            "updated address {:?} with script_status {:?}",
-                            &address, &script_status
+                            "updated address {} with script_status {}",
+                            address.address,
+                            hex::encode(script_status.to_vec())
                         );
                     } else {
                         debug!(
-                            "registering address {:?} with script_status {:?}",
-                            &address, &script_status
+                            "registering address {} with script_status {}",
+                            address.address,
+                            hex::encode(script_status.to_vec())
                         );
                     }
                     match query_addr_history(&mut self.client, &address, &filter) {
@@ -582,7 +585,7 @@ async fn run_syncerd_bridge_event_sender(
         let mut session = LocalSession::with_zmq_socket(ZmqSocketType::Push, tx);
         while let Some(event) = event_rx.recv().await {
             let request = BusMsg::Sync(SyncMsg::BridgeEvent(event));
-            trace!("sending request over syncerd bridge: {:?}", request);
+            trace!("sending request over syncerd bridge: {}", request);
             session
                 .send_routed_message(
                     &syncer_address,
@@ -656,7 +659,7 @@ async fn run_syncerd_task_receiver(
                             drop(state_guard);
                         }
                         Task::BroadcastTransaction(task) => {
-                            debug!("trying to broadcast tx: {:?}", task.tx.to_hex());
+                            debug!("trying to broadcast tx: {}", task.tx.to_hex());
                             if let Some(height) = task.broadcast_after_height {
                                 let mut state_guard = state.lock().await;
                                 // If we already surpassed the height, immediately broadcast it. Otherwise queue the broadcast
@@ -700,7 +703,10 @@ async fn run_syncerd_task_receiver(
                             drop(state_guard);
                         }
                         Task::WatchTransaction(task) => {
-                            debug!("received new task: {:?}", task);
+                            debug!(
+                                "received new watch tx task for txid: {}",
+                                hex::encode(&task.hash)
+                            );
                             let mut state_guard = state.lock().await;
                             state_guard.watch_transaction(task, syncerd_task.source);
                             drop(state_guard);
@@ -755,7 +761,7 @@ fn address_polling(
                 Ok(client) => client,
                 Err(err) => {
                     error!(
-                        "failed to spawn electrum rpc client ({}) t in address polling: {:?}",
+                        "failed to spawn electrum rpc client {} in address polling: {}",
                         &electrum_server, err
                     );
                     // wait a bit before retrying the connection
@@ -766,7 +772,7 @@ fn address_polling(
 
             loop {
                 if let Err(err) = rpc.ping() {
-                    error!("error ping electrum client in address polling: {:?}", err);
+                    error!("error ping electrum client in address polling: {}", err);
                     // break this loop and retry, since the electrum rpc client is probably
                     // broken
                     break;
@@ -842,7 +848,7 @@ fn height_polling(
                 Ok(client) => client,
                 Err(err) => {
                     error!(
-                        "failed to spawn electrum rpc client ({}) in height polling: {:?}",
+                        "failed to spawn electrum rpc client {} in height polling: {}",
                         &electrum_server, err
                     );
                     // wait a bit before retrying the connection
@@ -859,7 +865,7 @@ fn height_polling(
             // inner loop actually polls
             loop {
                 if let Err(err) = rpc.ping() {
-                    error!("error ping electrum client in height polling: {:?}", err);
+                    error!("error ping electrum client in height polling: {}", err);
                     // break this loop and retry, since the electrum rpc client is probably
                     // broken
                     break;
@@ -867,7 +873,7 @@ fn height_polling(
                 let mut blocks = match rpc.new_block_check() {
                     Ok(blks) => blks,
                     Err(err) => {
-                        error!("error polling bitcoin block height: {:?}", err);
+                        error!("error polling bitcoin block height: {}", err);
                         // break this loop and retry, since the electrum rpc client is probably
                         // broken
                         break;
@@ -932,7 +938,7 @@ fn unseen_transaction_polling(
                 Ok(client) => client,
                 Err(err) => {
                     error!(
-                        "failed to spawn electrum rpc client ({}) in transaction polling: {:?}",
+                        "failed to spawn electrum rpc client ({}) in transaction polling: {}",
                         &electrum_server, err
                     );
                     // wait a bit before retrying the connection
@@ -1105,7 +1111,7 @@ fn sweep_polling(
                             if let SweepAddressAddendum::Bitcoin(addendum) =
                                 sweep_address_task.addendum.clone()
                             {
-                                let sweep_address_txs = sweep_address(
+                                let sweep_address_txids = sweep_address(
                                     addendum.source_secret_key,
                                     addendum.source_address,
                                     addendum.destination_address,
@@ -1113,13 +1119,16 @@ fn sweep_polling(
                                     network,
                                 )
                                 .unwrap_or_else(|err| {
-                                    warn!("error polling sweep address {:?}, retrying", err);
+                                    warn!("error polling sweep address {}, retrying", err);
                                     vec![]
                                 });
-                                debug!("sweep address transaction: {:?}", sweep_address_txs);
+                                debug!(
+                                    "sweep address transaction: {:?}",
+                                    sweep_address_txids.iter().map(|txid| hex::encode(txid))
+                                );
                                 let mut state_guard = state.lock().await;
-                                if !sweep_address_txs.is_empty() {
-                                    state_guard.success_sweep(id, sweep_address_txs).await;
+                                if !sweep_address_txids.is_empty() {
+                                    state_guard.success_sweep(id, sweep_address_txids).await;
                                 } else if !sweep_address_task.retry {
                                     state_guard.fail_sweep(id).await;
                                 }
@@ -1165,7 +1174,7 @@ fn transaction_fetcher(
                         .await
                         .expect("error sending transaction retrieved event");
                     debug!(
-                        "successfully retrieved tx: {:?}",
+                        "successfully retrieved tx: {}",
                         hex::encode(get_transaction.hash)
                     );
                 }
@@ -1180,7 +1189,11 @@ fn transaction_fetcher(
                         })
                         .await
                         .expect("error sending transaction retrieved event");
-                    debug!("failed to retrieve tx: {:?}", e);
+                    debug!(
+                        "Error while retrieving tx {}: {}",
+                        hex::encode(&get_transaction.hash),
+                        e
+                    );
                 }
             }
         }
@@ -1229,7 +1242,7 @@ fn balance_fetcher(
                         .send(BridgeEvent {
                             event: Event::AddressBalance(AddressBalance {
                                 id: get_balance.id,
-                                address: Address::Bitcoin(address),
+                                address: Address::Bitcoin(address.clone()),
                                 balance: balance.unconfirmed.unsigned_abs(),
                                 err: None,
                             }),
@@ -1237,14 +1250,18 @@ fn balance_fetcher(
                         })
                         .await
                         .expect("error sending address balance event");
-                    debug!("successfully retrieved address balance: {:?}", balance);
+                    debug!(
+                        "successfully retrieved balance: {} for address {}.",
+                        balance.unconfirmed.unsigned_abs(),
+                        address
+                    );
                 }
                 Err(e) => {
                     tx_event
                         .send(BridgeEvent {
                             event: Event::AddressBalance(AddressBalance {
                                 id: get_balance.id,
-                                address: Address::Bitcoin(address),
+                                address: Address::Bitcoin(address.clone()),
                                 balance: 0,
                                 err: Some(e.to_string()),
                             }),
@@ -1252,7 +1269,7 @@ fn balance_fetcher(
                         })
                         .await
                         .expect("error sending address balance event");
-                    debug!("failed to retrieve address balance: {}", e);
+                    debug!("failed to retrieve balance for address {}: {}", address, e);
                 }
             }
         }

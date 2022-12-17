@@ -216,7 +216,7 @@ impl MoneroRpc {
             .await
         {
             Err(err) => {
-                debug!("wallet doesn't exist, generating a new wallet: {:?}", err);
+                debug!("wallet doesn't exist, generating a new wallet: {}", err);
                 wallet
                     .generate_from_keys(GenerateFromKeysArgs {
                         restore_height: Some(address_addendum.from_height),
@@ -336,7 +336,7 @@ async fn sweep_address(
         .await
     {
         debug!(
-            "error opening to be sweeped wallet: {:?}, falling back to generating a new wallet",
+            "error opening to be sweeped wallet: {}, falling back to generating a new wallet",
             err,
         );
         wallet
@@ -429,7 +429,7 @@ async fn sweep_address(
         Ok(tx_ids)
     } else {
         debug!(
-            "retrying sweep, balance not unlocked yet. Unlocked balance {:?}. Total balance {:?}. Expected balance {:?}.",
+            "retrying sweep, balance not unlocked yet. Unlocked balance {}. Total balance {}. Expected balance {}.",
             balance.unlocked_balance, balance.balance, minimum_balance
         );
         trace!("releasing sweep wallet lock");
@@ -511,7 +511,7 @@ async fn run_syncerd_task_receiver(
                         }
                         Task::WatchAddress(task) => match task.addendum.clone() {
                             AddressAddendum::Monero(_) => {
-                                debug!("received new task: {:?}", task);
+                                debug!("received new watch address task for address: {}", task);
                                 let mut state_guard = state.lock().await;
                                 state_guard.watch_address(task, syncerd_task.source);
                             }
@@ -528,7 +528,7 @@ async fn run_syncerd_task_receiver(
                             state_guard.watch_height(task, syncerd_task.source).await;
                         }
                         Task::WatchTransaction(task) => {
-                            debug!("received new task: {:?}", task);
+                            debug!("received new watch tx task: {}", hex::encode(&task.hash));
                             let mut state_guard = state.lock().await;
                             state_guard.watch_transaction(task, syncerd_task.source);
                         }
@@ -592,19 +592,19 @@ async fn subscribe_address_lws(
     };
     let address = monero::Address::from_viewpair(network, &keypair);
     let daemon_client = monero_lws::LwsRpcClient::new(monero_lws_url);
-    debug!("subscribing monero address: {}, {:?}", address, address);
+    trace!("subscribing monero address: {}, {}", address, address);
     let res = daemon_client
         .login(address, keypair.view, true, true)
         .await?;
-    debug!("account created: {:?}", res);
+    trace!("account created: {:?}", res);
     let res = daemon_client
         .login(address, keypair.view, false, false)
         .await?;
-    debug!("logged in to lws: {:?}", res);
+    trace!("logged in to lws: {:?}", res);
     let res = daemon_client
         .import_request(address, keypair.view, Some(address_addendum.from_height))
         .await?;
-    debug!("import request to lws: {:?}", res);
+    trace!("import request to lws: {:?}", res);
     Ok(())
 }
 
@@ -649,7 +649,7 @@ fn address_polling(
                                     true
                                 }
                                 Err(err) => {
-                                    warn!("error subscribing address to monero lws: {:?}", err);
+                                    warn!("error subscribing address to monero lws: {}", err);
                                     false
                                 }
                             };
@@ -671,7 +671,7 @@ fn address_polling(
                             Err(err) => {
                                 // an error might indicate that the remote server shutdown, so we should re-subscribe everything on re-connect
                                 needs_resubscribe = true;
-                                error!("error polling addresses: {:?}", err);
+                                error!("error polling addresses: {}", err);
                                 // the remote server may have disconnected, set the subscribed addresses to none
                                 None
                             }
@@ -691,7 +691,7 @@ fn address_polling(
                         {
                             Ok(address_transactions) => Some(address_transactions),
                             Err(err) => {
-                                error!("error polling addresses: {:?}", err);
+                                error!("error polling addresses: {}", err);
                                 None
                             }
                         }
@@ -744,7 +744,7 @@ fn height_polling(
                             polled_transactions = txs;
                         }
                         Err(err) => {
-                            error!("polling transactions error: {:?}", err);
+                            error!("polling transactions error: {}", err);
                         }
                     }
                     let mut state_guard = state.lock().await;
@@ -787,7 +787,7 @@ fn sweep_polling(
                     .await
                     .unwrap_or_else(|err| {
                         warn!(
-                            "error polling sweep address {:?}, retrying: {}",
+                            "error polling sweep address {}, retrying: {}",
                             err, sweep_address_task.retry
                         );
                         vec![]
@@ -833,7 +833,7 @@ fn unseen_transaction_polling(
                         polled_transactions = txs;
                     }
                     Err(err) => {
-                        error!("polling unseen transactions error: {:?}", err);
+                        error!("polling unseen transactions error: {}", err);
                     }
                 }
                 let mut state_guard = state.lock().await;
@@ -857,7 +857,7 @@ async fn run_syncerd_bridge_event_sender(
         let mut session = LocalSession::with_zmq_socket(ZmqSocketType::Push, tx);
         while let Some(event) = event_rx.recv().await {
             let request = BusMsg::Sync(SyncMsg::BridgeEvent(event));
-            trace!("sending request over syncerd bridge: {:?}", request);
+            trace!("sending request over syncerd bridge: {}", request);
             session
                 .send_routed_message(
                     &syncer_address,
@@ -888,7 +888,7 @@ async fn fetch_balance(
         .await
     {
         debug!(
-            "error opening to be sweeped wallet: {:?}, falling back to generating a new wallet",
+            "error opening to be sweeped wallet: {}, falling back to generating a new wallet",
             err,
         );
         wallet
