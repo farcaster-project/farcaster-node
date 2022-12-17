@@ -4,7 +4,7 @@
 // license that can be found in the LICENSE file or at
 // https://opensource.org/licenses/MIT.
 
-use bitcoin::psbt::serialize::Deserialize;
+use bitcoin::{hashes::Hash, psbt::serialize::Deserialize};
 use farcaster_core::{
     blockchain::Blockchain, role::SwapRole, swap::btcxmr::message::BuyProcedureSignature,
     transaction::TxLabel,
@@ -1294,36 +1294,87 @@ fn try_bob_cancel_final_to_swap_end(
             },
         ))) if runtime
             .temporal_safety
-            .final_tx(confirmations, Blockchain::Bitcoin)
-            && runtime.syncer_state.tasks.watched_txs.get(&id) == Some(&TxLabel::Refund) =>
+            .final_tx(confirmations, Blockchain::Bitcoin) =>
         {
-            runtime.syncer_state.handle_tx_confs(
-                &id,
-                &Some(confirmations),
-                runtime.swap_id(),
-                runtime.temporal_safety.btc_finality_thr,
-            );
-            let abort_all = Task::Abort(Abort {
-                task_target: TaskTarget::AllTasks,
-                respond: Boolean::False,
-            });
-            event.send_sync_service(
-                runtime.syncer_state.monero_syncer(),
-                SyncMsg::Task(abort_all.clone()),
-            )?;
-            event.send_sync_service(
-                runtime.syncer_state.bitcoin_syncer(),
-                SyncMsg::Task(abort_all),
-            )?;
-            // remove txs to invalidate outdated states
-            runtime.txs.remove(&TxLabel::Cancel);
-            runtime.txs.remove(&TxLabel::Refund);
-            runtime.txs.remove(&TxLabel::Buy);
-            runtime.txs.remove(&TxLabel::Punish);
-            // send swap outcome to farcasterd
-            Ok(Some(SwapStateMachine::SwapEnd(Outcome::FailureRefund)))
+            match runtime.syncer_state.tasks.watched_txs.get(&id) {
+                Some(&TxLabel::Refund) => {
+                    runtime.syncer_state.handle_tx_confs(
+                        &id,
+                        &Some(confirmations),
+                        runtime.swap_id(),
+                        runtime.temporal_safety.btc_finality_thr,
+                    );
+                    let abort_all = Task::Abort(Abort {
+                        task_target: TaskTarget::AllTasks,
+                        respond: Boolean::False,
+                    });
+                    event.send_sync_service(
+                        runtime.syncer_state.monero_syncer(),
+                        SyncMsg::Task(abort_all.clone()),
+                    )?;
+                    event.send_sync_service(
+                        runtime.syncer_state.bitcoin_syncer(),
+                        SyncMsg::Task(abort_all),
+                    )?;
+                    // remove txs to invalidate outdated states
+                    runtime.txs.remove(&TxLabel::Cancel);
+                    runtime.txs.remove(&TxLabel::Refund);
+                    runtime.txs.remove(&TxLabel::Buy);
+                    runtime.txs.remove(&TxLabel::Punish);
+                    // send swap outcome to farcasterd
+                    Ok(Some(SwapStateMachine::SwapEnd(Outcome::FailureRefund)))
+                }
+                Some(&TxLabel::Punish) => {
+                    let abort_all = Task::Abort(Abort {
+                        task_target: TaskTarget::AllTasks,
+                        respond: Boolean::False,
+                    });
+                    event.send_sync_service(
+                        runtime.syncer_state.monero_syncer(),
+                        SyncMsg::Task(abort_all.clone()),
+                    )?;
+                    event.send_sync_service(
+                        runtime.syncer_state.bitcoin_syncer(),
+                        SyncMsg::Task(abort_all),
+                    )?;
+                    // remove txs to invalidate outdated states
+                    runtime.txs.remove(&TxLabel::Cancel);
+                    runtime.txs.remove(&TxLabel::Refund);
+                    runtime.txs.remove(&TxLabel::Buy);
+                    Ok(Some(SwapStateMachine::SwapEnd(Outcome::FailurePunish)))
+                }
+                _ => Ok(None),
+            }
         }
-        _ => try_punish_to_swap_end(event, runtime),
+
+        BusMsg::Sync(SyncMsg::Event(SyncEvent::AddressTransaction(AddressTransaction {
+            id,
+            ref hash,
+            incoming,
+            ..
+        }))) if runtime.syncer_state.tasks.watched_addrs.get(&id) == Some(&TxLabel::Cancel)
+            && !incoming =>
+        {
+            let txid = bitcoin::Txid::from_slice(&hash).expect("should serialize to valid txid");
+            if txid != runtime.txs.get(&TxLabel::Refund).unwrap().txid()
+                && Some(txid)
+                    != runtime
+                        .syncer_state
+                        .tasks
+                        .txids
+                        .get(&TxLabel::Punish)
+                        .copied()
+            {
+                let watch_punish_task = runtime.syncer_state.watch_tx_btc(txid, TxLabel::Punish);
+                event.send_sync_service(
+                    runtime.syncer_state.bitcoin_syncer(),
+                    SyncMsg::Task(watch_punish_task),
+                )?;
+            }
+            Ok(None)
+        }
+
+        _ => Ok(None),
     }
 }
 
@@ -2147,7 +2198,7 @@ fn attempt_transition_to_alice_reveal(
 /// Checks whether Bob can cancel the swap and does so if possible.
 /// Throws a warning if Bob tries to abort since swap already locked in.
 fn handle_bob_swap_interrupt_after_lock(
-    event: Event,
+    mut event: Event,
     runtime: &mut Runtime,
 ) -> Result<Option<SwapStateMachine>, Error> {
     match event.request {
@@ -2166,6 +2217,29 @@ fn handle_bob_swap_interrupt_after_lock(
             && runtime.temporal_safety.valid_cancel(confirmations)
             && runtime.txs.contains_key(&TxLabel::Cancel) =>
         {
+            // add a watch for the cancel tx output address. This is necessary so Bob can detect punish:
+            // Since Alice can craft the punish tx at her leisure and Bob won't know its txid in advance,
+            // Bob needs to watch the address of the cancel script to detect the punish tx.
+            let cancel_tx = runtime
+                .txs
+                .get(&TxLabel::Cancel)
+                .expect("just checked TxLabel::Cancel exists");
+            let cancel_script = &cancel_tx.output[0].script_pubkey;
+            let cancel_address =
+                bitcoin::Address::from_script(cancel_script, runtime.syncer_state.network.into())
+                    .expect("cancel script is valid");
+            runtime.log_debug(format!(
+                "Watching cancel address {}",
+                cancel_address.clone()
+            ));
+            let watch_addr_task = runtime
+                .syncer_state
+                .watch_addr_btc(cancel_address.clone(), TxLabel::Cancel);
+            event.send_sync_service(
+                runtime.syncer_state.bitcoin_syncer(),
+                SyncMsg::Task(watch_addr_task),
+            )?;
+
             let (tx_label, cancel_tx) = runtime.txs.remove_entry(&TxLabel::Cancel).unwrap();
             runtime.broadcast(cancel_tx, tx_label, event.endpoints)?;
             Ok(None)

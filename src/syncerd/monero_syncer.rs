@@ -294,8 +294,7 @@ impl MoneroRpc {
         let mut address_txs: Vec<AddressTx> = vec![];
         for (category, mut txs) in transfers.drain() {
             let incoming = match category {
-                GetTransfersCategory::In
-                | GetTransfersCategory::Pool => true,
+                GetTransfersCategory::In | GetTransfersCategory::Pool => true,
                 GetTransfersCategory::Out | GetTransfersCategory::Pending => false,
                 _ => continue,
             };
