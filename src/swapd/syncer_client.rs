@@ -61,7 +61,6 @@ pub struct SyncerState {
     pub xmr_addr_addendum: Option<XmrAddressAddendum>,
     pub confirmations: HashMap<TxLabel, Option<u32>>,
     pub awaiting_funding: bool,
-    pub btc_fee_estimate_sat_per_kvb: Option<u64>,
 }
 impl SyncerState {
     pub fn task_lifetime(&self, blockchain: Blockchain) -> u64 {
@@ -114,6 +113,13 @@ impl SyncerState {
     }
 
     pub fn watch_tx_btc(&mut self, txid: Txid, tx_label: TxLabel) -> Task {
+        if self.is_watched_tx(&tx_label) {
+            warn!(
+                "{} | Already watching for tx with label {} - notifications will be repeated",
+                self.swap_id.swap_id(),
+                tx_label.label()
+            );
+        }
         let id = self.tasks.new_taskid();
         self.tasks.watched_txs.insert(id, tx_label);
         self.tasks.txids.insert(tx_label, txid);
@@ -136,6 +142,13 @@ impl SyncerState {
         self.tasks.watched_txs.values().any(|tx| tx == tx_label)
     }
     pub fn watch_tx_xmr(&mut self, hash: Vec<u8>, tx_label: TxLabel) -> Task {
+        if self.is_watched_tx(&tx_label) {
+            warn!(
+                "{} | Already watching for tx with label {} - notifications will be repeated",
+                self.swap_id.swap_id(),
+                tx_label.label()
+            );
+        }
         let id = self.tasks.new_taskid();
         self.tasks.watched_txs.insert(id, tx_label);
         info!(
@@ -265,15 +278,29 @@ impl SyncerState {
         task
     }
 
-    pub fn watch_height(&mut self, blockchain: Blockchain) -> Task {
-        let id = self.tasks.new_taskid();
+    pub fn watch_height(
+        &mut self,
+        endpoints: &mut Endpoints,
+        blockchain: Blockchain,
+    ) -> Result<(), Error> {
+        let swap_id = ServiceId::Swap(self.swap_id.clone());
+        let task_id = self.tasks.new_taskid();
         trace!("Watch height {}", blockchain);
         let task = Task::WatchHeight(WatchHeight {
-            id,
+            id: task_id,
             lifetime: self.task_lifetime(blockchain),
         });
-        self.tasks.tasks.insert(id, task.clone());
-        task
+        self.tasks.tasks.insert(task_id, task.clone());
+        endpoints.send_to(
+            ServiceBus::Sync,
+            swap_id.clone(),
+            match blockchain {
+                Blockchain::Bitcoin => self.bitcoin_syncer(),
+                Blockchain::Monero => self.monero_syncer(),
+            },
+            BusMsg::Sync(SyncMsg::Task(task)),
+        )?;
+        Ok(())
     }
 
     pub fn sweep_btc(&mut self, addendum: SweepBitcoinAddress, retry: bool) -> Task {
@@ -414,7 +441,7 @@ impl SyncerState {
             )
         }
     }
-    pub fn watch_fee_and_height(&mut self, endpoints: &mut Endpoints) -> Result<(), Error> {
+    pub fn watch_bitcoin_fee(&mut self, endpoints: &mut Endpoints) -> Result<(), Error> {
         let identity = ServiceId::Swap(self.swap_id.clone());
         let task = self.estimate_fee_btc();
         endpoints.send_to(
@@ -422,21 +449,6 @@ impl SyncerState {
             identity.clone(),
             self.bitcoin_syncer(),
             BusMsg::Sync(SyncMsg::Task(task)),
-        )?;
-        let watch_height_btc_task = self.watch_height(Blockchain::Bitcoin);
-        endpoints.send_to(
-            ServiceBus::Sync,
-            identity.clone(),
-            self.bitcoin_syncer(),
-            BusMsg::Sync(SyncMsg::Task(watch_height_btc_task)),
-        )?;
-        // assumes xmr syncer will be up as well at this point
-        let watch_height_xmr_task = self.watch_height(Blockchain::Monero);
-        endpoints.send_to(
-            ServiceBus::Sync,
-            identity,
-            self.monero_syncer(),
-            BusMsg::Sync(SyncMsg::Task(watch_height_xmr_task)),
         )?;
         Ok(())
     }

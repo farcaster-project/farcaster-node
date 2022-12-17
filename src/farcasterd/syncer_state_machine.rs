@@ -401,7 +401,7 @@ fn attempt_transition_to_end(
         (BusMsg::Sync(SyncMsg::Event(SyncerEvent::HealthResult(res))), syncer_id)
             if syncer == syncer_id && res.id == syncer_task_id =>
         {
-            event.send_ctl_service(source, CtlMsg::HealthResult(res.health))?;
+            event.send_client_ctl(source, CtlMsg::HealthResult(res.health))?;
             runtime.clean_up_after_syncer_usage(event.endpoints)?;
             Ok(None)
         }

@@ -274,12 +274,12 @@ impl Runtime {
                     }
                     ServiceId::Syncer(_, _) => {
                         if self.spawning_services.remove(&source) {
+                            self.registered_services.insert(source.clone());
                             info!(
                                 "Syncer {} is registered; total {} syncers are known",
                                 source,
                                 self.count_syncers().bright_blue_bold()
                             );
-                            self.registered_services.insert(source.clone());
                         } else {
                             error!(
                                 "Syncer {} was already registered; the service probably was relaunched\\
