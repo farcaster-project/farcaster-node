@@ -10,12 +10,12 @@ use crate::{
     syncerd::{
         Abort, AddressAddendum, Boolean, BroadcastTransaction, BtcAddressAddendum, GetTx,
         SweepAddress, SweepAddressAddendum, SweepBitcoinAddress, SweepMoneroAddress, TaskTarget,
-        TransactionBroadcasted, TxFilter, WatchAddress, WatchEstimateFee, WatchHeight,
+        TransactionBroadcasted, TxFilter, Txid, WatchAddress, WatchEstimateFee, WatchHeight,
         WatchTransaction, XmrAddressAddendum,
     },
     Error,
 };
-use bitcoin::{consensus::Decodable, Txid};
+use bitcoin::consensus::Decodable;
 use farcaster_core::{blockchain::Blockchain, swap::SwapId, transaction::TxLabel};
 use std::collections::{HashMap, HashSet};
 
@@ -35,7 +35,7 @@ pub struct SyncerTasks {
     pub broadcasting_txs: HashSet<TaskId>,
     pub sweeping_addr: Option<TaskId>,
     // external address: needed to subscribe for buy (bob) or refund (alice) address_txs
-    pub txids: HashMap<TxLabel, Txid>,
+    pub txids: HashMap<TxLabel, bitcoin::Txid>,
     pub tasks: HashMap<TaskId, Task>,
 }
 
@@ -112,7 +112,7 @@ impl SyncerState {
         task
     }
 
-    pub fn watch_tx_btc(&mut self, txid: Txid, tx_label: TxLabel) -> Task {
+    pub fn watch_tx_btc(&mut self, txid: bitcoin::Txid, tx_label: TxLabel) -> Task {
         if self.is_watched_tx(&tx_label) {
             warn!(
                 "{} | Already watching for tx with label {} - notifications will be repeated",
@@ -132,7 +132,7 @@ impl SyncerState {
         let task = Task::WatchTransaction(WatchTransaction {
             id,
             lifetime: self.task_lifetime(Blockchain::Bitcoin),
-            hash: txid.to_vec(),
+            hash: Txid::Bitcoin(txid),
             confirmation_bound: self.confirmation_bound,
         });
         self.tasks.tasks.insert(id, task.clone());
@@ -141,7 +141,7 @@ impl SyncerState {
     pub fn is_watched_tx(&self, tx_label: &TxLabel) -> bool {
         self.tasks.watched_txs.values().any(|tx| tx == tx_label)
     }
-    pub fn watch_tx_xmr(&mut self, hash: Vec<u8>, tx_label: TxLabel) -> Task {
+    pub fn watch_tx_xmr(&mut self, hash: Txid, tx_label: TxLabel) -> Task {
         if self.is_watched_tx(&tx_label) {
             warn!(
                 "{} | Already watching for tx with label {} - notifications will be repeated",
@@ -155,13 +155,13 @@ impl SyncerState {
             "{} | Watching {} transaction ({})",
             self.swap_id.swap_id(),
             tx_label.label(),
-            hex::encode(&hash).tx_hash(),
+            hash,
         );
-        debug!("Watching transaction {} with {}", hex::encode(&hash), id);
+        debug!("Watching transaction {} with {}", hash, id);
         let task = Task::WatchTransaction(WatchTransaction {
             id,
             lifetime: self.task_lifetime(Blockchain::Monero),
-            hash,
+            hash: hash,
             confirmation_bound: self.confirmation_bound,
         });
         self.tasks.tasks.insert(id, task.clone());
@@ -169,10 +169,7 @@ impl SyncerState {
     }
     pub fn retrieve_tx_btc(&mut self, txid: Txid, tx_label: TxLabel) -> Task {
         let id = self.tasks.new_taskid();
-        let task = Task::GetTx(GetTx {
-            id,
-            hash: txid.to_vec(),
-        });
+        let task = Task::GetTx(GetTx { id, hash: txid });
         self.tasks
             .retrieving_txs
             .insert(id, (tx_label, task.clone()));

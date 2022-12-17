@@ -17,7 +17,7 @@ use strict_encoding::{StrictDecode, StrictEncode};
 
 use crate::{
     bus::ctl::{MoneroFundingInfo, Params},
-    syncerd::AddressTransaction,
+    syncerd::{AddressTransaction, Txid},
 };
 use crate::{
     bus::{
@@ -938,7 +938,11 @@ fn try_bob_fee_estimated_to_bob_funded(
                 "Received AddressTransaction, processing tx {}",
                 &tx.txid().tx_hash()
             ));
-            log_tx_seen(runtime.swap_id, &TxLabel::Funding, &tx.txid());
+            log_tx_seen(
+                runtime.swap_id,
+                &TxLabel::Funding,
+                &Txid::Bitcoin(tx.txid()),
+            );
             runtime.syncer_state.awaiting_funding = false;
             // If the bitcoin amount does not match the expected funding amount, abort the swap
             let amount = bitcoin::Amount::from_sat(*amount);
@@ -1218,7 +1222,9 @@ fn try_bob_accordant_lock_final_to_bob_buy_final(
                 .txids
                 .remove_entry(&TxLabel::Buy)
                 .unwrap();
-            let task = runtime.syncer_state.retrieve_tx_btc(txid, txlabel);
+            let task = runtime
+                .syncer_state
+                .retrieve_tx_btc(Txid::Bitcoin(txid), txlabel);
             event.send_sync_service(runtime.syncer_state.bitcoin_syncer(), SyncMsg::Task(task))?;
             Ok(Some(SwapStateMachine::BobAccordantLockFinal(
                 BobAccordantLockFinal {
@@ -1236,7 +1242,7 @@ fn try_bob_accordant_lock_final_to_bob_buy_final(
             Some((TxLabel::Buy, _))
         ) =>
         {
-            log_tx_seen(runtime.swap_id, &TxLabel::Buy, &tx.txid());
+            log_tx_seen(runtime.swap_id, &TxLabel::Buy, &Txid::Bitcoin(tx.txid()));
             let sweep_xmr = wallet.process_buy_tx(
                 tx,
                 event.endpoints,
@@ -1804,7 +1810,9 @@ fn try_alice_canceled_to_alice_refund_or_alice_punish(
                         .txids
                         .remove_entry(&TxLabel::Refund)
                         .unwrap();
-                    let task = runtime.syncer_state.retrieve_tx_btc(txid, txlabel);
+                    let task = runtime
+                        .syncer_state
+                        .retrieve_tx_btc(Txid::Bitcoin(txid), txlabel);
                     event.send_sync_service(
                         runtime.syncer_state.bitcoin_syncer(),
                         SyncMsg::Task(task),
@@ -1894,7 +1902,7 @@ fn try_alice_canceled_to_alice_refund_or_alice_punish(
                 .retrieving_txs
                 .remove(&id)
                 .unwrap();
-            log_tx_seen(runtime.swap_id, &txlabel, &tx.txid());
+            log_tx_seen(runtime.swap_id, &txlabel, &Txid::Bitcoin(tx.txid()));
             let sweep_xmr = wallet.process_refund_tx(
                 event.endpoints,
                 tx.clone(),

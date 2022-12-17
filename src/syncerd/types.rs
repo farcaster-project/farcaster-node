@@ -4,6 +4,9 @@
 // license that can be found in the LICENSE file or at
 // https://opensource.org/licenses/MIT.
 
+use std::fmt;
+
+use bitcoin::consensus::Decodable;
 #[cfg(feature = "serde")]
 use serde_with::DisplayFromStr;
 use strict_encoding::{StrictDecode, StrictEncode};
@@ -30,9 +33,10 @@ pub struct TaskId(pub u32);
     derive(Serialize, Deserialize),
     serde(crate = "serde_crate")
 )]
-#[display(Debug)]
 pub enum AddressAddendum {
+    #[display("Monero Address {0}")]
     Monero(XmrAddressAddendum),
+    #[display("Bitcoin Address {0}")]
     Bitcoin(BtcAddressAddendum),
 }
 
@@ -57,7 +61,7 @@ pub struct BtcAddressAddendum {
     derive(Serialize, Deserialize),
     serde(crate = "serde_crate")
 )]
-#[display(Debug)]
+#[display("address: {address}, from_height: {from_height}")]
 pub struct XmrAddressAddendum {
     pub address: monero::Address,
     #[serde_as(as = "DisplayFromStr")]
@@ -72,7 +76,7 @@ pub struct XmrAddressAddendum {
     derive(Serialize, Deserialize),
     serde(crate = "serde_crate")
 )]
-#[display(Debug)]
+#[display("SweepAddress({addendum}, retry: {retry}, id: {id}, lifetime: {lifetime})")]
 pub struct SweepAddress {
     pub retry: bool,
     pub id: TaskId,
@@ -86,9 +90,10 @@ pub struct SweepAddress {
     derive(Serialize, Deserialize),
     serde(crate = "serde_crate")
 )]
-#[display(Debug)]
 pub enum SweepAddressAddendum {
+    #[display("SweepMoneroAddress({0})")]
     Monero(SweepMoneroAddress),
+    #[display("SweepBitcoinAddress({0})")]
     Bitcoin(SweepBitcoinAddress),
 }
 
@@ -99,7 +104,7 @@ pub enum SweepAddressAddendum {
     derive(Serialize, Deserialize),
     serde(crate = "serde_crate")
 )]
-#[display(Debug)]
+#[display("Sweep destination: {destination_address}, Min balance: {minimum_balance}")]
 pub struct SweepMoneroAddress {
     #[serde_as(as = "DisplayFromStr")]
     pub source_spend_key: monero::PrivateKey,
@@ -117,7 +122,7 @@ pub struct SweepMoneroAddress {
     derive(Serialize, Deserialize),
     serde(crate = "serde_crate")
 )]
-#[display(Debug)]
+#[display("Source address: {source_address}, destination_address: {destination_address}")]
 pub struct SweepBitcoinAddress {
     pub source_secret_key: bitcoin::secp256k1::SecretKey,
     pub source_address: bitcoin::Address,
@@ -165,7 +170,7 @@ pub struct WatchHeight {
     derive(Serialize, Deserialize),
     serde(crate = "serde_crate")
 )]
-#[display(Debug)]
+#[display("WatchAddress({addendum}, id: {id}, lifetime: {lifetime}, include_tx: {include_tx})")]
 pub struct WatchAddress {
     pub id: TaskId,
     pub lifetime: u64,
@@ -208,28 +213,35 @@ impl From<Boolean> for bool {
     }
 }
 
-#[derive(Clone, Debug, Display, StrictEncode, StrictDecode, Eq, PartialEq, Hash)]
+#[derive(Clone, Debug, StrictEncode, StrictDecode, Eq, PartialEq, Hash)]
 #[cfg_attr(
     feature = "serde",
     derive(Serialize, Deserialize),
     serde(crate = "serde_crate")
 )]
-#[display(Debug)]
 pub struct WatchTransaction {
     pub id: TaskId,
     pub lifetime: u64,
-    #[serde(with = "hex")]
-    pub hash: Vec<u8>,
+    pub hash: Txid,
     pub confirmation_bound: u32,
 }
 
-#[derive(Clone, Debug, Display, StrictEncode, StrictDecode, Eq, PartialEq, Hash)]
+impl fmt::Display for WatchTransaction {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(
+            f,
+            "WatchTransaction(id: {}, lifetime: {}, hash: {}, confirmations_bound: {})",
+            self.id, self.lifetime, self.hash, self.confirmation_bound
+        )
+    }
+}
+
+#[derive(Clone, Debug, StrictEncode, StrictDecode, Eq, PartialEq, Hash)]
 #[cfg_attr(
     feature = "serde",
     derive(Serialize, Deserialize),
     serde(crate = "serde_crate")
 )]
-#[display(Debug)]
 pub struct BroadcastTransaction {
     pub id: TaskId,
     #[serde(with = "hex")]
@@ -237,17 +249,36 @@ pub struct BroadcastTransaction {
     pub broadcast_after_height: Option<u64>,
 }
 
-#[derive(Clone, Debug, Display, StrictEncode, StrictDecode, Eq, PartialEq, Hash)]
+impl fmt::Display for BroadcastTransaction {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        let bitcoin_tx_id =
+            bitcoin::Transaction::consensus_decode(std::io::Cursor::new(self.tx.clone()))
+                .map(|tx| tx.txid().to_string())
+                .unwrap_or("".to_string());
+
+        write!(
+            f,
+            "BroadcastTransaction(id: {}, broadcast_after_height: {:?}, tx_id: {})",
+            self.id, self.broadcast_after_height, bitcoin_tx_id
+        )
+    }
+}
+
+#[derive(Clone, Debug, StrictEncode, StrictDecode, Eq, PartialEq, Hash)]
 #[cfg_attr(
     feature = "serde",
     derive(Serialize, Deserialize),
     serde(crate = "serde_crate")
 )]
-#[display(Debug)]
 pub struct GetTx {
     pub id: TaskId,
-    #[serde(with = "hex")]
-    pub hash: Vec<u8>,
+    pub hash: Txid,
+}
+
+impl fmt::Display for GetTx {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "GetTx(id: {}, hash: {})", self.id, self.hash,)
+    }
 }
 
 #[derive(Clone, Debug, Display, StrictEncode, StrictDecode, Eq, PartialEq, Hash)]
@@ -293,18 +324,28 @@ pub struct GetAddressBalance {
     derive(Serialize, Deserialize),
     serde(crate = "serde_crate")
 )]
-#[display(Debug)]
 pub enum Task {
+    #[display("{0}")]
     Abort(Abort),
+    #[display("{0}")]
     WatchHeight(WatchHeight),
+    #[display("{0}")]
     WatchAddress(WatchAddress),
+    #[display("{0}")]
     WatchTransaction(WatchTransaction),
+    #[display("{0}")]
     BroadcastTransaction(BroadcastTransaction),
+    #[display("{0}")]
     SweepAddress(SweepAddress),
+    #[display("{0}")]
     GetTx(GetTx),
+    #[display("{0}")]
     GetAddressBalance(GetAddressBalance),
+    #[display("{0}")]
     WatchEstimateFee(WatchEstimateFee),
+    #[display("{0}")]
     HealthCheck(HealthCheck),
+    #[display("Terminate")]
     Terminate,
 }
 
@@ -315,20 +356,43 @@ pub struct TaskAborted {
     pub error: Option<String>,
 }
 
-#[derive(Clone, Debug, Display, StrictEncode, StrictDecode, Eq, PartialEq, Hash)]
-#[display(Debug)]
+#[derive(Clone, Debug, StrictEncode, StrictDecode, Eq, PartialEq, Hash)]
 pub struct HeightChanged {
     pub id: TaskId,
     pub block: Vec<u8>,
     pub height: u64,
 }
 
+impl fmt::Display for HeightChanged {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(
+            f,
+            "HeightChanged(id: {}, block: {}, height: {})",
+            self.id,
+            hex::encode(&self.block),
+            self.height,
+        )
+    }
+}
+
 #[derive(Clone, Debug, Display, StrictEncode, StrictDecode, Eq, PartialEq, Hash)]
-#[display(Debug)]
+#[cfg_attr(
+    feature = "serde",
+    derive(Serialize, Deserialize),
+    serde(crate = "serde_crate")
+)]
+pub enum Txid {
+    #[display("{0}")]
+    Monero(monero::Hash),
+    #[display("{0}")]
+    Bitcoin(bitcoin::Txid),
+}
+
+#[derive(Clone, Debug, StrictEncode, StrictDecode, Eq, PartialEq, Hash)]
 pub struct AddressTransaction {
     pub id: TaskId,
-    pub hash: Vec<u8>,
-    pub amount: u64, // Only calculated for incoming transactions
+    pub hash: Txid,
+    pub amount: u64,
     pub block: Vec<u8>,
     // for bitcoin with bitcoin::consensus encoding, chunked into chunks with
     // length < 2^16 as a workaround for the strict encoding length limit
@@ -336,8 +400,20 @@ pub struct AddressTransaction {
     pub incoming: bool,
 }
 
-#[derive(Clone, Debug, Display, StrictEncode, StrictDecode, Eq, PartialEq, Hash)]
-#[display(Debug)]
+impl fmt::Display for AddressTransaction {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(
+            f,
+            "AddressTransaction(id: {}, hash: {}, amount: {}, block: {})",
+            self.id,
+            self.hash,
+            self.amount,
+            hex::encode(&self.block),
+        )
+    }
+}
+
+#[derive(Clone, Debug, StrictEncode, StrictDecode, Eq, PartialEq, Hash)]
 pub struct TransactionConfirmations {
     pub id: TaskId,
     pub block: Vec<u8>,
@@ -347,26 +423,63 @@ pub struct TransactionConfirmations {
     pub tx: Vec<Vec<u8>>,
 }
 
-#[derive(Clone, Debug, Display, StrictEncode, StrictDecode, Eq, PartialEq, Hash)]
-#[display(Debug)]
+impl fmt::Display for TransactionConfirmations {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(
+            f,
+            "TransactionConfirmations(id: {}, block: {}, confirmations: {:?})",
+            self.id,
+            hex::encode(&self.block),
+            self.confirmations,
+        )
+    }
+}
+
+#[derive(Clone, Debug, StrictEncode, StrictDecode, Eq, PartialEq, Hash)]
 pub struct TransactionBroadcasted {
     pub id: TaskId,
     pub tx: Vec<u8>,
     pub error: Option<String>,
 }
 
-#[derive(Clone, Debug, Display, StrictEncode, StrictDecode, Eq, PartialEq, Hash)]
-#[display(Debug)]
+impl fmt::Display for TransactionBroadcasted {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        let bitcoin_tx_id =
+            bitcoin::Transaction::consensus_decode(std::io::Cursor::new(self.tx.clone()))
+                .map(|tx| tx.txid().to_string())
+                .unwrap_or("".to_string());
+        write!(
+            f,
+            "TransactionBroadcasted(id: {}, tx_id: {}, error: {:?})",
+            self.id, bitcoin_tx_id, self.error,
+        )
+    }
+}
+
+#[derive(Clone, Debug, StrictEncode, StrictDecode, Eq, PartialEq, Hash)]
 pub struct SweepSuccess {
     pub id: TaskId,
-    pub txids: Vec<Vec<u8>>,
+    pub txids: Vec<Txid>,
+}
+
+impl fmt::Display for SweepSuccess {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(
+            f,
+            "SweepSuccess(id: {}, txids: {:?})",
+            self.id,
+            self.txids
+                .iter()
+                .map(|t| t.to_string())
+                .collect::<Vec<String>>(),
+        )
+    }
 }
 
 #[derive(Clone, Debug, Display, StrictEncode, StrictDecode, Eq, PartialEq, Hash)]
 #[display(Debug)]
 pub struct TransactionRetrieved {
     pub id: TaskId,
-    // for bitcoin with bitcoin::consensus encoding
     pub tx: Option<bitcoin::Transaction>,
 }
 
@@ -423,21 +536,32 @@ pub struct AddressBalance {
 /// Events are identified with a unique 32-bits integer that match the [`Task`]
 /// id.
 #[derive(Clone, Debug, Display, StrictEncode, StrictDecode, Eq, PartialEq, Hash)]
-#[display(Debug)]
 pub enum Event {
     /// Notify the daemon the blockchain height changed.
+    #[display("{0}")]
     HeightChanged(HeightChanged),
+    #[display("{0}")]
     AddressTransaction(AddressTransaction),
+    #[display("{0}")]
     TransactionConfirmations(TransactionConfirmations),
+    #[display("{0}")]
     TransactionBroadcasted(TransactionBroadcasted),
+    #[display("{0}")]
     SweepSuccess(SweepSuccess),
+    #[display("{0}")]
     /// Notify the daemon the task has been aborted with success or failure.
     /// Carries the status for the task abortion.
+    #[display("{0}")]
     TaskAborted(TaskAborted),
+    #[display("{0}")]
     TransactionRetrieved(TransactionRetrieved),
+    #[display("{0}")]
     FeeEstimation(FeeEstimation),
     /// Empty event to signify that a task with a certain id has not produced an initial result
+    #[display("{0}")]
     Empty(TaskId),
+    #[display("{0}")]
     HealthResult(HealthResult),
+    #[display("{0}")]
     AddressBalance(AddressBalance),
 }

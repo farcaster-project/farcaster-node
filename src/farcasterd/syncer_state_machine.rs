@@ -4,7 +4,6 @@
 // license that can be found in the LICENSE file or at
 // https://opensource.org/licenses/MIT.
 
-use bitcoin::hashes::{hex::ToHex, Hash};
 use farcaster_core::blockchain::{Blockchain, Network};
 
 use crate::{
@@ -334,16 +333,12 @@ fn attempt_transition_to_end(
         (BusMsg::Sync(SyncMsg::Event(SyncerEvent::SweepSuccess(mut success))), syncer_id)
             if syncer == syncer_id && success.id == syncer_task_id =>
         {
-            if let Some(Some(txid)) = success
-                .txids
-                .pop()
-                .map(|txid| bitcoin::Txid::from_slice(&txid).ok())
-            {
+            if let Some(txid) = success.txids.pop() {
                 event.send_client_info(
                     source,
                     InfoMsg::String(format!(
                         "Successfully sweeped address. Transaction Id: {}.",
-                        txid.to_hex()
+                        txid
                     )),
                 )?;
             } else {

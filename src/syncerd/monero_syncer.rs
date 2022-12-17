@@ -23,12 +23,11 @@ use crate::syncerd::{AddressBalance, TxFilter};
 use crate::syncerd::{Event, Health};
 use crate::ServiceId;
 use farcaster_core::blockchain::{Blockchain, Network};
-use hex;
 use internet2::session::LocalSession;
 use internet2::zeromq::ZmqSocketType;
 use internet2::SendRecvMessage;
 use internet2::TypedEnum;
-use monero::{Hash, PrivateKey};
+use monero::PrivateKey;
 use monero_rpc::{
     GenerateFromKeysArgs, GetBlockHeaderSelector, GetTransfersCategory, GetTransfersSelector,
     PrivateKeyType,
@@ -42,8 +41,8 @@ use tokio::sync::mpsc::Receiver as TokioReceiver;
 use tokio::sync::mpsc::Sender as TokioSender;
 use tokio::sync::Mutex;
 
-use super::GetAddressBalance;
 use super::HealthCheck;
+use super::{GetAddressBalance, Txid};
 
 #[derive(Debug, Clone)]
 pub struct MoneroRpc {
@@ -66,7 +65,7 @@ struct AddressNotif {
 
 #[derive(Debug)]
 pub struct Transaction {
-    tx_id: Vec<u8>,
+    tx_id: monero::Hash,
     confirmations: Option<u32>,
     block_hash: Option<Vec<u8>>,
 }
@@ -102,16 +101,10 @@ impl MoneroRpc {
         Ok(header.hash.0.to_vec())
     }
 
-    async fn get_transactions(&mut self, tx_ids: Vec<Vec<u8>>) -> Result<Vec<Transaction>, Error> {
-        let mut buffer: [u8; 32] = [0; 32];
-        let monero_txids = tx_ids
-            .iter()
-            .map(|tx_id| {
-                hex::decode_to_slice(hex::encode(tx_id), &mut buffer).unwrap();
-                Hash::from(buffer)
-            })
-            .collect();
-
+    async fn get_transactions(
+        &mut self,
+        monero_txids: Vec<monero::Hash>,
+    ) -> Result<Vec<Transaction>, Error> {
         let txs = self
             .daemon_rpc
             .get_transactions(monero_txids, Some(true), Some(true))
@@ -130,13 +123,13 @@ impl MoneroRpc {
                 confirmations = Some((block_height - tx_height + 1) as u32);
             }
             transactions.push(Transaction {
-                tx_id: hex::decode(tx.tx_hash.to_string()).unwrap(),
+                tx_id: tx.tx_hash.0,
                 confirmations,
                 block_hash,
             });
         }
         transactions.extend(txs.missed_tx.iter().flatten().map(|tx| Transaction {
-            tx_id: hex::decode(tx.to_string()).unwrap(),
+            tx_id: tx.0,
             confirmations: None,
             block_hash: None,
         }));
@@ -180,7 +173,7 @@ impl MoneroRpc {
                 };
                 AddressTx {
                     amount,
-                    tx_id: tx.hash.0.to_bytes().into(),
+                    tx_id: Txid::Monero(tx.hash.0),
                     tx: vec![],
                     incoming,
                 }
@@ -298,7 +291,7 @@ impl MoneroRpc {
                 // FIXME: tx set to vec![0]
                 address_txs.push(AddressTx {
                     amount: tx.amount.as_pico(),
-                    tx_id: tx.txid.0,
+                    tx_id: Txid::Monero(monero::Hash::from_slice(&tx.txid.0)),
                     tx: vec![0],
                     incoming,
                 });
@@ -318,7 +311,7 @@ async fn sweep_address(
     wallet_mutex: Arc<Mutex<monero_rpc::WalletClient>>,
     restore_height: Option<u64>,
     wallet_dir_path: Option<PathBuf>,
-) -> Result<Vec<Vec<u8>>, Error> {
+) -> Result<Vec<Txid>, Error> {
     let keypair = monero::KeyPair { view, spend };
     let password = s!(" ");
     let source_address = monero::Address::from_keypair(*network, &keypair);
@@ -376,13 +369,13 @@ async fn sweep_address(
             get_tx_metadata: None,
         };
         let res = wallet.sweep_all(sweep_args).await?;
-        let tx_ids: Vec<Vec<u8>> = res
+        let tx_ids: Vec<Txid> = res
             .tx_hash_list
             .iter()
-            .filter_map(|hash| {
+            .map(|hash| {
                 let hash_str = hash.to_string();
                 info!("Sweep transaction hash: {}", hash_str.tx_hash());
-                hex::decode(hash_str).ok()
+                Txid::Monero(hash.0)
             })
             .collect();
 
@@ -524,7 +517,7 @@ async fn run_syncerd_task_receiver(
                             state_guard.watch_height(task, syncerd_task.source).await;
                         }
                         Task::WatchTransaction(task) => {
-                            debug!("received new watch tx task: {}", hex::encode(&task.hash));
+                            debug!("received new watch tx task: {}", task.hash);
                             let mut state_guard = state.lock().await;
                             state_guard.watch_transaction(task, syncerd_task.source);
                         }
@@ -724,8 +717,16 @@ fn height_polling(
                 drop(state_guard);
 
                 if !transactions.is_empty() {
-                    let tx_ids: Vec<Vec<u8>> =
-                        transactions.drain().map(|(_, tx)| tx.task.hash).collect();
+                    let tx_ids: Vec<monero::Hash> = transactions
+                        .drain()
+                        .filter_map(|(_, tx)| {
+                            if let Txid::Monero(txid) = tx.task.hash {
+                                Some(txid)
+                            } else {
+                                None
+                            }
+                        })
+                        .collect();
                     let mut polled_transactions = vec![];
                     match rpc.get_transactions(tx_ids).await {
                         Ok(txs) => {
@@ -738,7 +739,12 @@ fn height_polling(
                     let mut state_guard = state.lock().await;
                     for tx in polled_transactions.drain(..) {
                         state_guard
-                            .change_transaction(tx.tx_id, tx.block_hash, tx.confirmations, vec![])
+                            .change_transaction(
+                                Txid::Monero(tx.tx_id),
+                                tx.block_hash,
+                                tx.confirmations,
+                                vec![],
+                            )
                             .await;
                     }
                 }
@@ -806,11 +812,15 @@ fn unseen_transaction_polling(
             let unseen_transactions = state_guard.unseen_transactions.clone();
             if !unseen_transactions.is_empty() {
                 let transactions = state_guard.transactions.clone();
-                let tx_ids: Vec<Vec<u8>> = unseen_transactions
+                let tx_ids: Vec<monero::Hash> = unseen_transactions
                     .iter()
-                    .map(|id| {
+                    .filter_map(|id| {
                         let tx = transactions.get(id).expect("attempted fetching a monero syncer state transaction that does not exist");
-                        tx.task.hash.clone()
+                        if let Txid::Monero(txid) = tx.task.hash.clone() {
+                            Some(txid)
+                        } else {
+                            None
+                        }
                     })
                     .collect();
                 drop(state_guard);
@@ -827,7 +837,12 @@ fn unseen_transaction_polling(
                 let mut state_guard = state.lock().await;
                 for tx in polled_transactions.drain(..) {
                     state_guard
-                        .change_transaction(tx.tx_id, tx.block_hash, tx.confirmations, vec![])
+                        .change_transaction(
+                            Txid::Monero(tx.tx_id),
+                            tx.block_hash,
+                            tx.confirmations,
+                            vec![],
+                        )
                         .await;
                 }
             }

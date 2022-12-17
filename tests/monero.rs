@@ -5,7 +5,7 @@ use farcaster_node::syncerd::monero_syncer::MoneroSyncer;
 use farcaster_node::syncerd::opts::Opts;
 use farcaster_node::syncerd::runtime::SyncerdTask;
 use farcaster_node::syncerd::types::{
-    Abort, AddressAddendum, Boolean, BroadcastTransaction, Task, WatchAddress, WatchHeight,
+    Abort, AddressAddendum, Boolean, BroadcastTransaction, Task, Txid, WatchAddress, WatchHeight,
     WatchTransaction,
 };
 use farcaster_node::syncerd::{
@@ -350,7 +350,7 @@ async fn monero_syncer_address_test() {
             address1
         );
         let request = misc::get_request_from_message(message);
-        assert::address_transaction(request, 1, vec![tx_id_1.clone()]);
+        assert::address_transaction(request, 1, vec![tx_id_1]);
 
         // Generate two transactions for same address and watch them
         let (address2, view_key2) = new_address(&wallet).await;
@@ -610,7 +610,7 @@ async fn monero_syncer_transaction_test() {
         task: Task::WatchTransaction(WatchTransaction {
             id: TaskId(1),
             lifetime: blocks + 5,
-            hash: txid_1.to_vec(),
+            hash: txid_1,
             confirmation_bound: 2,
         }),
         source: SOURCE1.clone(),
@@ -671,7 +671,7 @@ async fn monero_syncer_transaction_test() {
         task: Task::WatchTransaction(WatchTransaction {
             id: TaskId(1),
             lifetime: blocks + 5,
-            hash: txid_2.to_vec(),
+            hash: txid_2,
             confirmation_bound: 2,
         }),
         source: SOURCE1.clone(),
@@ -681,7 +681,7 @@ async fn monero_syncer_transaction_test() {
         task: Task::WatchTransaction(WatchTransaction {
             id: TaskId(1),
             lifetime: blocks + 5,
-            hash: txid_3.to_vec(),
+            hash: txid_3,
             confirmation_bound: 2,
         }),
         source: SOURCE1.clone(),
@@ -723,7 +723,7 @@ async fn monero_syncer_transaction_test() {
         task: Task::WatchTransaction(WatchTransaction {
             id: TaskId(1),
             lifetime: blocks + 5,
-            hash: hex::decode(transaction.tx_hash.to_string()).unwrap(),
+            hash: Txid::Monero(transaction.tx_hash.0),
             confirmation_bound: 2,
         }),
         source: SOURCE1.clone(),
@@ -779,11 +779,13 @@ async fn monero_syncer_abort_test() {
         .unwrap()
         .height;
 
+    let zero_txid_hash = Txid::Monero(monero::Hash::new(vec![0]));
+
     let task = SyncerdTask {
         task: Task::WatchTransaction(WatchTransaction {
             id: TaskId(0),
             lifetime: blocks + 2,
-            hash: vec![0; 32],
+            hash: zero_txid_hash.clone(),
             confirmation_bound: 2,
         }),
         source: SOURCE2.clone(),
@@ -829,7 +831,7 @@ async fn monero_syncer_abort_test() {
         task: Task::WatchTransaction(WatchTransaction {
             id: TaskId(0),
             lifetime: blocks + 10,
-            hash: vec![0; 32],
+            hash: zero_txid_hash.clone(),
             confirmation_bound: 2,
         }),
         source: SOURCE2.clone(),
@@ -842,7 +844,7 @@ async fn monero_syncer_abort_test() {
         task: Task::WatchTransaction(WatchTransaction {
             id: TaskId(1),
             lifetime: blocks + 10,
-            hash: vec![0; 32],
+            hash: zero_txid_hash,
             confirmation_bound: 2,
         }),
         source: SOURCE2.clone(),
@@ -1021,7 +1023,7 @@ async fn send_monero(
     wallet: &monero_rpc::WalletClient,
     address: monero::Address,
     amount: u64,
-) -> Vec<u8> {
+) -> Txid {
     let options = monero_rpc::TransferOptions {
         account_index: None,
         subaddr_indices: None,
@@ -1042,7 +1044,7 @@ async fn send_monero(
         )
         .await
         .unwrap();
-    hex::decode(transaction.tx_hash.to_string()).unwrap()
+    Txid::Monero(transaction.tx_hash.0)
 }
 
 async fn get_block_hash_from_height(
