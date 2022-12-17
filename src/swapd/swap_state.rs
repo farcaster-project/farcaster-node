@@ -12,6 +12,7 @@ use farcaster_core::{
     transaction::TxLabel,
 };
 use microservices::esb::Handler;
+use monero::ViewPair;
 use strict_encoding::{StrictDecode, StrictEncode};
 
 use crate::{
@@ -1037,10 +1038,14 @@ fn try_bob_funded_to_bob_refund_procedure_signature(
                 (&local_params, &remote_params)
             {
                 let (spend, view) = aggregate_xmr_spend_view(alice_params, bob_params);
+                let address = monero::Address::from_viewpair(
+                    runtime.syncer_state.network.into(),
+                    &ViewPair { spend, view },
+                );
                 let txlabel = TxLabel::AccLock;
                 let task = runtime
                     .syncer_state
-                    .watch_addr_xmr(spend, view, txlabel, None);
+                    .watch_addr_xmr(address, view, txlabel, None);
                 event
                     .send_sync_service(runtime.syncer_state.monero_syncer(), SyncMsg::Task(task))?
             } else {
@@ -1485,7 +1490,7 @@ fn try_alice_core_arbitrating_setup_to_alice_arbitrating_lock_final(
                     runtime.monero_address_creation_height =
                         Some(runtime.syncer_state.height(Blockchain::Monero));
                 }
-                let viewpair = monero::ViewPair { spend, view };
+                let viewpair = ViewPair { spend, view };
                 let address =
                     monero::Address::from_viewpair(runtime.syncer_state.network.into(), &viewpair);
                 let swap_id = runtime.swap_id();
@@ -1497,7 +1502,7 @@ fn try_alice_core_arbitrating_setup_to_alice_arbitrating_lock_final(
                 };
                 let txlabel = TxLabel::AccLock;
                 let watch_addr_task = runtime.syncer_state.watch_addr_xmr(
-                    spend,
+                    address,
                     view,
                     txlabel,
                     runtime.monero_address_creation_height,

@@ -159,17 +159,14 @@ impl MoneroRpc {
     async fn check_address_lws(
         &mut self,
         address_addendum: XmrAddressAddendum,
-        network: monero::Network,
         monero_lws_url: String,
     ) -> Result<AddressNotif, Error> {
-        let keypair = monero::ViewPair {
-            spend: address_addendum.spend_key,
-            view: address_addendum.view_key,
-        };
-        let address = monero::Address::from_viewpair(network, &keypair);
+        let XmrAddressAddendum {
+            address, view_key, ..
+        } = address_addendum;
         let daemon_client = monero_lws::LwsRpcClient::new(monero_lws_url);
         trace!("checking txs through lws for address {}", address);
-        let mut txs = daemon_client.get_address_txs(address, keypair.view).await?;
+        let mut txs = daemon_client.get_address_txs(address, view_key).await?;
         trace!("received txs {:?} from lws for address {}", txs, address);
         let address_txs: Vec<AddressTx> = txs
             .transactions
@@ -195,16 +192,15 @@ impl MoneroRpc {
     async fn check_address(
         &mut self,
         address_addendum: XmrAddressAddendum,
-        network: monero::Network,
         wallet_mutex: Arc<Mutex<monero_rpc::WalletClient>>,
         initial_check_done: bool,
         filter: TxFilter,
     ) -> Result<AddressNotif, Error> {
-        let keypair = monero::ViewPair {
-            spend: address_addendum.spend_key,
-            view: address_addendum.view_key,
-        };
-        let address = monero::Address::from_viewpair(network, &keypair);
+        let XmrAddressAddendum {
+            address,
+            view_key,
+            from_height,
+        } = address_addendum;
         let wallet_filename = format!("watch:{}", address);
         let password = s!(" ");
 
@@ -219,11 +215,11 @@ impl MoneroRpc {
                 debug!("wallet doesn't exist, generating a new wallet: {}", err);
                 wallet
                     .generate_from_keys(GenerateFromKeysArgs {
-                        restore_height: Some(address_addendum.from_height),
+                        restore_height: Some(from_height),
                         filename: wallet_filename.clone(),
                         address,
                         spendkey: None,
-                        viewkey: keypair.view,
+                        viewkey: view_key,
                         password: password.clone(),
                         autosave_current: Some(true),
                     })
@@ -282,7 +278,7 @@ impl MoneroRpc {
             subaddr_indices: None,
             account_index: None,
             block_height_filter: Some(monero_rpc::BlockHeightFilter {
-                min_height: Some(address_addendum.from_height),
+                min_height: Some(from_height),
                 max_height: None,
             }),
         };
@@ -583,26 +579,21 @@ async fn run_syncerd_task_receiver(
 
 async fn subscribe_address_lws(
     address_addendum: XmrAddressAddendum,
-    network: monero::Network,
     monero_lws_url: String,
 ) -> Result<(), Error> {
-    let keypair = monero::ViewPair {
-        spend: address_addendum.spend_key,
-        view: address_addendum.view_key,
-    };
-    let address = monero::Address::from_viewpair(network, &keypair);
+    let XmrAddressAddendum {
+        view_key,
+        address,
+        from_height,
+    } = address_addendum;
     let daemon_client = monero_lws::LwsRpcClient::new(monero_lws_url);
-    trace!("subscribing monero address: {}, {}", address, address);
-    let res = daemon_client
-        .login(address, keypair.view, true, true)
-        .await?;
+    trace!("subscribing monero address: {}", address);
+    let res = daemon_client.login(address, view_key, true, true).await?;
     trace!("account created: {:?}", res);
-    let res = daemon_client
-        .login(address, keypair.view, false, false)
-        .await?;
+    let res = daemon_client.login(address, view_key, false, false).await?;
     trace!("logged in to lws: {:?}", res);
     let res = daemon_client
-        .import_request(address, keypair.view, Some(address_addendum.from_height))
+        .import_request(address, view_key, Some(from_height))
         .await?;
     trace!("import request to lws: {:?}", res);
     Ok(())
@@ -611,7 +602,6 @@ async fn subscribe_address_lws(
 fn address_polling(
     state: Arc<Mutex<SyncerState>>,
     syncer_servers: MoneroSyncerServers,
-    network: monero::Network,
     wallet_mutex: Arc<Mutex<monero_rpc::WalletClient>>,
     proxy_address: Option<String>,
 ) -> tokio::task::JoinHandle<()> {
@@ -639,7 +629,6 @@ fn address_polling(
                         if !subscribed_addresses.contains(&watched_address.task.addendum) {
                             let success = match subscribe_address_lws(
                                 address_addendum.clone(),
-                                network,
                                 monero_lws.clone(),
                             )
                             .await
@@ -664,7 +653,7 @@ fn address_polling(
                             }
                         }
                         match rpc
-                            .check_address_lws(address_addendum.clone(), network, monero_lws)
+                            .check_address_lws(address_addendum.clone(), monero_lws)
                             .await
                         {
                             Ok(address_transactions) => Some(address_transactions),
@@ -682,7 +671,6 @@ fn address_polling(
                         match rpc
                             .check_address(
                                 address_addendum.clone(),
-                                network,
                                 Arc::clone(&wallet_mutex),
                                 watched_address.initial_check_done,
                                 watched_address.task.filter,
@@ -1078,7 +1066,6 @@ impl Synclet for MoneroSyncer {
                         let address_handle = address_polling(
                             Arc::clone(&state),
                             syncer_servers.clone(),
-                            network,
                             Arc::clone(&wallet_mutex),
                             proxy_address.clone(),
                         );

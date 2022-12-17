@@ -443,12 +443,12 @@ impl Runtime {
 
                 if let Some(XmrAddressAddendum {
                     view_key,
-                    spend_key,
+                    address,
                     from_height,
                 }) = xmr_addr_addendum
                 {
                     let task = self.syncer_state.watch_addr_xmr(
-                        spend_key,
+                        address,
                         view_key,
                         TxLabel::AccLock,
                         Some(from_height),

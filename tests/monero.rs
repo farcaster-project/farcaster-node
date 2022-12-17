@@ -324,7 +324,7 @@ async fn monero_syncer_address_test() {
         std::thread::sleep(duration);
 
         let addendum_1 = AddressAddendum::Monero(XmrAddressAddendum {
-            spend_key: address1.public_spend,
+            address: address1,
             view_key: view_key1,
             from_height: if lws_bool { 0 } else { 10 },
         });
@@ -367,7 +367,7 @@ async fn monero_syncer_address_test() {
         };
 
         let addendum_2 = AddressAddendum::Monero(XmrAddressAddendum {
-            spend_key: address2.public_spend,
+            address: address2,
             view_key: view_key2,
             from_height: 0,
         });
@@ -396,7 +396,7 @@ async fn monero_syncer_address_test() {
         assert::address_transaction(request, 1, vec![tx_id2_1.clone(), tx_id2_2.clone()]);
 
         let addendum_3 = AddressAddendum::Monero(XmrAddressAddendum {
-            spend_key: address2.public_spend,
+            address: address2,
             view_key: view_key2,
             from_height: 0,
         });
@@ -437,7 +437,7 @@ async fn monero_syncer_address_test() {
         };
 
         let addendum_4 = AddressAddendum::Monero(XmrAddressAddendum {
-            spend_key: address4.public_spend,
+            address: address4,
             view_key: view_key4,
             from_height: 0,
         });
@@ -477,7 +477,7 @@ async fn monero_syncer_address_test() {
         send_monero(&wallet, address4, 1).await;
 
         let addendum_5 = AddressAddendum::Monero(XmrAddressAddendum {
-            spend_key: address5.public_spend,
+            address: address5,
             view_key: view_key5,
             from_height: blocks,
         });
@@ -520,7 +520,7 @@ async fn monero_syncer_address_test() {
 
         let (address6, view_key6) = new_address(&wallet).await;
         let addendum_6 = AddressAddendum::Monero(XmrAddressAddendum {
-            spend_key: address6.public_spend,
+            address: address6,
             view_key: view_key6,
             from_height: blocks,
         });

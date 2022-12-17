@@ -59,8 +59,7 @@ pub struct BtcAddressAddendum {
 )]
 #[display(Debug)]
 pub struct XmrAddressAddendum {
-    #[serde_as(as = "DisplayFromStr")]
-    pub spend_key: monero::PublicKey,
+    pub address: monero::Address,
     #[serde_as(as = "DisplayFromStr")]
     pub view_key: monero::PrivateKey,
     /// The blockchain height where to start the query (not inclusive).

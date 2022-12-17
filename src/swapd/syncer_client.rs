@@ -231,35 +231,29 @@ impl SyncerState {
     /// Watches an xmr address. If no `from_height` is provided, it will be set to current_height - 20.
     pub fn watch_addr_xmr(
         &mut self,
-        spend: monero::PublicKey,
+        address: monero::Address,
         view: monero::PrivateKey,
         tx_label: TxLabel,
         from_height: Option<u64>,
     ) -> Task {
         if self.is_watched_addr(&tx_label) {
             warn!(
-                "{} | Address already watched for {} - notifications will be repeated",
+                "{} | Address {} already watched for {} - notifications will be repeated",
+                address,
                 self.swap_id.swap_id(),
                 tx_label.label()
             );
         }
         debug!(
-            "{} | Address's secret view key for {}: {}",
+            "{} | Address {} secret view key for {}: {}",
+            address,
             self.swap_id.bright_blue_italic(),
             tx_label.bright_white_bold(),
             view.bright_white_italic()
         );
-        debug!(
-            "{} | Address's public spend key for {}: {}",
-            self.swap_id.bright_blue_italic(),
-            tx_label.bright_white_bold(),
-            spend.bright_white_italic()
-        );
-        let viewpair = monero::ViewPair { spend, view };
-        let address = monero::Address::from_viewpair(self.network.into(), &viewpair);
         let from_height = from_height.unwrap_or_else(|| self.from_height(Blockchain::Monero, 20));
         let addendum = XmrAddressAddendum {
-            spend_key: spend,
+            address,
             view_key: view,
             from_height,
         };
