@@ -389,8 +389,8 @@ fn attempt_transition_to_end(
                 CtlMsg::Failure(Failure {
                     code: FailureCode::Unknown,
                     info: format!(
-                        "Failure in chain query: {}",
-                        error.unwrap_or("".to_string())
+                        "Failure in chain query{}",
+                        error.map_or("".to_string(), |e| format!(": {}", e))
                     ),
                 }),
             )?;
