@@ -14,7 +14,7 @@ use crate::farcasterd::stats::Stats;
 use crate::farcasterd::syncer_state_machine::{SyncerStateMachine, SyncerStateMachineExecutor};
 use crate::farcasterd::trade_state_machine::{TradeStateMachine, TradeStateMachineExecutor};
 use crate::farcasterd::Opts;
-use crate::syncerd::AddressBalance;
+use crate::syncerd::{AddressBalance, TaskAborted};
 use crate::syncerd::{Event as SyncerEvent, HealthResult, SweepSuccess, TaskId};
 use crate::{
     bus::ctl::{Keys, ProgressStack, Token},
@@ -274,12 +274,12 @@ impl Runtime {
                     }
                     ServiceId::Syncer(_, _) => {
                         if self.spawning_services.remove(&source) {
+                            self.registered_services.insert(source.clone());
                             info!(
                                 "Syncer {} is registered; total {} syncers are known",
                                 source,
                                 self.count_syncers().bright_blue_bold()
                             );
-                            self.registered_services.insert(source.clone());
                         } else {
                             error!(
                                 "Syncer {} was already registered; the service probably was relaunched\\
@@ -834,6 +834,34 @@ impl Runtime {
         Ok(())
     }
 
+    pub fn clean_up_after_syncer_usage(&mut self, endpoints: &mut Endpoints) -> Result<(), Error> {
+        self.registered_services = self
+            .registered_services
+            .clone()
+            .drain()
+            .filter(|service| {
+                if let ServiceId::Syncer(..) = service {
+                    if !self.syncer_has_client(service) {
+                        info!("Terminating {}", service);
+                        endpoints
+                            .send_to(
+                                ServiceBus::Ctl,
+                                self.identity(),
+                                service.clone(),
+                                BusMsg::Ctl(CtlMsg::Terminate),
+                            )
+                            .is_err()
+                    } else {
+                        true
+                    }
+                } else {
+                    true
+                }
+            })
+            .collect();
+        Ok(())
+    }
+
     pub fn consumed_deals_contains(&self, deal: &Deal) -> bool {
         self.trade_state_machines
             .iter()
@@ -916,6 +944,19 @@ impl Runtime {
                 }))),
                 _,
             ) => Ok(self.syncer_state_machines.remove(id)),
+            (BusMsg::Sync(SyncMsg::Event(SyncerEvent::TaskAborted(TaskAborted { id, .. }))), _) => {
+                // can only match to a syncer state machine if `id` vec is singleton, i.e. a single ssm.
+                // note that this limitation of the syncer state machine handling is not a problem in the
+                // *current* implementation since the `TaskAborted.id` vec is only non-singleton when the
+                // task target is `TaskTarget::AllTasks`, and this is only emitted when a swap ends normally
+                // without error, thus does not require any cleanup.
+                if let Some(id) = id.clone().pop() {
+                    Ok(self.syncer_state_machines.remove(&id))
+                } else {
+                    Ok(None)
+                }
+            }
+
             _ => Ok(None),
         }
     }
