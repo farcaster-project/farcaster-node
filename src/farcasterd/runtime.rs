@@ -945,6 +945,11 @@ impl Runtime {
                 _,
             ) => Ok(self.syncer_state_machines.remove(id)),
             (BusMsg::Sync(SyncMsg::Event(SyncerEvent::TaskAborted(TaskAborted { id, .. }))), _) => {
+                // can only match to a syncer state machine if `id` vec is singleton, i.e. a single ssm.
+                // note that this limitation of the syncer state machine handling is not a problem in the
+                // *current* implementation since the `TaskAborted.id` vec is only non-singleton when the
+                // task target is `TaskTarget::AllTasks`, and this is only emitted when a swap ends normally
+                // without error, thus does not require any cleanup.
                 if let Some(id) = id.clone().pop() {
                     Ok(self.syncer_state_machines.remove(&id))
                 } else {
