@@ -241,6 +241,24 @@ impl MoneroRpc {
             wallet.refresh(None).await?;
         }
 
+        // transaction filtering in monero-rpc is not documented well,
+        // and the implementation within monero::wallet2 is a mess,
+        // so here's an overview of how transactions are filtered:
+        // - GetTransfersCategory::In:
+        //  incoming transfers to the address
+        //   wallet2::get_payments->payments
+        // - GetTransfersCategory::Out:
+        //  outgoing transfers from the address
+        //  wallet2::get_payments_out->confirmed_txs
+        // - GetTransfersCategory::{Pending|Failed}:
+        //  outgoing transfers from the address that are not confirmed yet or have failed
+        //  wallet2::get_unconfirmed_payments_out->unconfirmed_txs
+        //  GetTransfersCategory::Pool:
+        //  incoming transfers that are not confirmed yet (i.e. just on mempool)
+        //  wallet2::get_unconfirmed_payments->unconfirmed_payments
+        //  GetTransfersCategory::Block:
+        //  incoming transfers that are coinbase transactions
+        //  seems deprecated: not used in wallet2, so removed here too
         let mut category_selector: HashMap<GetTransfersCategory, bool> = HashMap::new();
         match filter {
             TxFilter::All => {
@@ -248,12 +266,10 @@ impl MoneroRpc {
                 category_selector.insert(GetTransfersCategory::Out, true);
                 category_selector.insert(GetTransfersCategory::Pending, true);
                 category_selector.insert(GetTransfersCategory::Pool, true);
-                category_selector.insert(GetTransfersCategory::Block, true);
             }
             TxFilter::Incoming => {
                 category_selector.insert(GetTransfersCategory::In, true);
                 category_selector.insert(GetTransfersCategory::Pool, true);
-                category_selector.insert(GetTransfersCategory::Block, true);
             }
             TxFilter::Outgoing => {
                 category_selector.insert(GetTransfersCategory::Out, true);
@@ -279,7 +295,6 @@ impl MoneroRpc {
         for (category, mut txs) in transfers.drain() {
             let incoming = match category {
                 GetTransfersCategory::In
-                | GetTransfersCategory::Block
                 | GetTransfersCategory::Pool => true,
                 GetTransfersCategory::Out | GetTransfersCategory::Pending => false,
                 _ => continue,
