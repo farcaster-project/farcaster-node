@@ -1894,13 +1894,14 @@ async fn run_punish_swap_kill_bob_before_monero_funding(
     let cli_bob_progress_args: Vec<String> = progress_args(data_dir_bob.clone(), swap_id);
     let cli_alice_progress_args: Vec<String> = progress_args(data_dir_alice.clone(), swap_id);
     let cli_bob_needs_funding_args: Vec<String> =
-        needs_funding_args(data_dir_bob, "bitcoin".to_string());
+        needs_funding_args(data_dir_bob.clone(), "bitcoin".to_string());
     let cli_alice_needs_funding_args: Vec<String> =
         needs_funding_args(data_dir_alice, "monero".to_string());
 
     bitcoin_rpc
         .generate_to_address(1, &reusable_btc_address())
         .unwrap();
+    info!("generated 1 bitcoin block");
 
     // run until bob has the btc funding address
     let (address, amount) =
@@ -1968,7 +1969,7 @@ async fn run_punish_swap_kill_bob_before_monero_funding(
         .generate_to_address(3, &reusable_btc_address())
         .unwrap();
 
-    info!("generated 20 bitcoin blocks");
+    info!("generated 3 bitcoin blocks");
 
     tokio::time::sleep(time::Duration::from_secs(20)).await;
 
@@ -1998,19 +1999,43 @@ async fn run_punish_swap_kill_bob_before_monero_funding(
         .generate_to_address(3, &reusable_btc_address())
         .unwrap();
 
-    info!("generated 20 bitcoin blocks");
+    info!("generated 3 bitcoin blocks");
 
-    // run until the FailurePunish is received
+    // run until the FailurePunish is received for Alice
     retry_until_finish_transition(
         cli_alice_progress_args.clone(),
         "Failure Punish".to_string(),
     )
     .await;
 
+    info!("restoring Bob");
+    // restore Bob from checkpoint
+    launch_farcasterd_maker();
+
+    // wait a bit for all of Bob's daemons to start
+    tokio::time::sleep(time::Duration::from_secs(2)).await;
+
+    restore_checkpoint(swap_id, data_dir_bob.clone());
+
+    // wait a bit for Bob to get up to speed
+    tokio::time::sleep(time::Duration::from_secs(5)).await;
+
+    bitcoin_rpc
+        .generate_to_address(10, &reusable_btc_address())
+        .unwrap();
+    info!("generated 10 bitcoin blocks");
+
+    // wait a bit for Bob to get up to speed
+    tokio::time::sleep(time::Duration::from_secs(5)).await;
+
+    // run until the FailurePunish is received for Bob
+    retry_until_finish_transition(cli_bob_progress_args.clone(), "Failure Punish".to_string())
+        .await;
+
     bitcoin_rpc
         .generate_to_address(1, &reusable_btc_address())
         .unwrap();
-    info!("generated 20 bitcoin blocks");
+    info!("generated 1 bitcoin block");
 
     // check that btc was received in the destination address
     let balance = bitcoin_rpc
