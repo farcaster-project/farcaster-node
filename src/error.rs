@@ -74,32 +74,72 @@ pub enum Error {
 
     /// Syncer
     #[display(inner)]
-    #[from(SyncerError)]
+    #[from]
     Syncer(SyncerError),
 
     /// BitcoinHashes
     #[display(inner)]
+    #[from]
     BitcoinHashes(bitcoin::hashes::Error),
 
-    /// Checkpoint
-    #[from(lmdb::Error)]
+    /// LMDB
+    #[display(inner)]
+    #[from]
     Checkpoint(lmdb::Error),
 
     /// BitcoinKey
     #[display(inner)]
-    #[from(bitcoin::util::key::Error)]
+    #[from]
     BitcoinKey(bitcoin::util::key::Error),
 
     /// BitcoinSecp256k1
+    #[display(inner)]
+    #[from]
     BitcoinSecp256k1(bitcoin::secp256k1::Error),
 
+    #[display(inner)]
+    #[from]
+    BitcoinAddress(bitcoin::util::address::Error),
+
+    #[display(inner)]
+    #[from]
+    BitcoinConsensus(bitcoin::consensus::encode::Error),
+
+    #[display(inner)]
+    #[from]
+    BitcoinAmount(bitcoin::util::amount::ParseAmountError),
+
+    #[display(inner)]
+    #[from]
+    MoneroAddress(monero::util::address::Error),
+
+    #[display(inner)]
+    #[from]
+    MoneroAmount(monero::util::amount::ParsingError),
+
+    #[display(inner)]
+    #[from]
+    RustHex(rustc_hex::FromHexError),
+
     /// StrictEncoding
-    #[from(strict_encoding::Error)]
+    #[display(inner)]
+    #[from]
     StrictEncoding(strict_encoding::Error),
 
     /// Uuid
-    #[from(uuid::Error)]
+    #[display(inner)]
+    #[from]
     Uuid(uuid::Error),
+
+    /// Inet2AddrParseError
+    #[display(inner)]
+    #[from]
+    Inet2AddrParseError(internet2::addr::AddrParseError),
+
+    /// TonicTransportError
+    #[display(inner)]
+    #[from]
+    TonicTransportError(tonic::transport::Error),
 }
 
 #[derive(Debug, Display)]
@@ -153,57 +193,9 @@ impl From<farcaster_core::Error> for Error {
     }
 }
 
-impl From<bitcoin::consensus::encode::Error> for Error {
-    fn from(err: bitcoin::consensus::encode::Error) -> Self {
-        Error::Farcaster(err.to_string())
-    }
-}
-
-impl From<monero::util::address::Error> for Error {
-    fn from(err: monero::util::address::Error) -> Self {
-        Error::Farcaster(err.to_string())
-    }
-}
-
-impl From<bitcoin::util::address::Error> for Error {
-    fn from(err: bitcoin::util::address::Error) -> Self {
-        Error::Farcaster(err.to_string())
-    }
-}
-
-impl From<monero::util::amount::ParsingError> for Error {
-    fn from(err: monero::util::amount::ParsingError) -> Self {
-        Error::Farcaster(err.to_string())
-    }
-}
-
-impl From<bitcoin::util::amount::ParseAmountError> for Error {
-    fn from(err: bitcoin::util::amount::ParseAmountError) -> Self {
-        Error::Farcaster(err.to_string())
-    }
-}
-
 impl From<electrum_client::Error> for Error {
     fn from(err: electrum_client::Error) -> Self {
         Error::Syncer(SyncerError::Electrum(err))
-    }
-}
-
-impl From<rustc_hex::FromHexError> for Error {
-    fn from(err: rustc_hex::FromHexError) -> Self {
-        Error::Farcaster(err.to_string())
-    }
-}
-
-impl From<bitcoin::hashes::Error> for Error {
-    fn from(err: bitcoin::hashes::Error) -> Self {
-        Error::BitcoinHashes(err)
-    }
-}
-
-impl From<bitcoin::secp256k1::Error> for Error {
-    fn from(err: bitcoin::secp256k1::Error) -> Self {
-        Error::BitcoinSecp256k1(err)
     }
 }
 
