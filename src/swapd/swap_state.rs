@@ -1209,13 +1209,6 @@ fn try_bob_accordant_lock_final_to_bob_buy_final(
             && runtime.syncer_state.tasks.watched_txs.get(&id) == Some(&TxLabel::Buy)
             && runtime.syncer_state.tasks.txids.contains_key(&TxLabel::Buy) =>
         {
-            runtime.syncer_state.handle_tx_confs(
-                &id,
-                &Some(confirmations),
-                runtime.swap_id(),
-                runtime.temporal_safety.btc_finality_thr,
-                event.endpoints,
-            );
             runtime.log_warn(
                 "Peerd might crash, just ignore it, counterparty closed \
                     connection, because they are done with the swap, but you don't need it anymore either!"
@@ -1305,13 +1298,6 @@ fn try_bob_cancel_final_to_swap_end(
             .final_tx(confirmations, Blockchain::Bitcoin)
             && runtime.syncer_state.tasks.watched_txs.get(&id) == Some(&TxLabel::Refund) =>
         {
-            runtime.syncer_state.handle_tx_confs(
-                &id,
-                &Some(confirmations),
-                runtime.swap_id(),
-                runtime.temporal_safety.btc_finality_thr,
-                event.endpoints,
-            );
             let abort_all = Task::Abort(Abort {
                 task_target: TaskTarget::AllTasks,
                 respond: Boolean::False,
@@ -1354,13 +1340,6 @@ fn try_bob_canceled_to_bob_cancel_final(
             && runtime.syncer_state.tasks.watched_txs.get(&id) == Some(&TxLabel::Cancel)
             && runtime.txs.contains_key(&TxLabel::Refund) =>
         {
-            runtime.syncer_state.handle_tx_confs(
-                &id,
-                &Some(confirmations),
-                runtime.swap_id(),
-                runtime.temporal_safety.btc_finality_thr,
-                event.endpoints,
-            );
             runtime.log_trace("Bob publishes refund tx");
             if !runtime.temporal_safety.safe_refund(confirmations) {
                 runtime.log_warn("Publishing refund tx, but we might already have been punished");
@@ -1752,13 +1731,6 @@ fn try_alice_buy_procedure_signature_to_swap_end(
             .final_tx(confirmations, Blockchain::Bitcoin)
             && runtime.syncer_state.tasks.watched_txs.get(&id) == Some(&TxLabel::Buy) =>
         {
-            runtime.syncer_state.handle_tx_confs(
-                &id,
-                &Some(confirmations),
-                runtime.swap_id(),
-                runtime.temporal_safety.btc_finality_thr,
-                event.endpoints,
-            );
             let abort_all = Task::Abort(Abort {
                 task_target: TaskTarget::AllTasks,
                 respond: Boolean::False,
