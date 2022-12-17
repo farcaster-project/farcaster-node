@@ -172,6 +172,20 @@ pub struct WatchAddress {
     pub lifetime: u64,
     pub addendum: AddressAddendum,
     pub include_tx: Boolean,
+    pub filter: TxFilter,
+}
+
+#[derive(Clone, Debug, Display, StrictEncode, StrictDecode, Eq, PartialEq, Hash)]
+#[cfg_attr(
+    feature = "serde",
+    derive(Serialize, Deserialize),
+    serde(crate = "serde_crate")
+)]
+#[display(Debug)]
+pub enum TxFilter {
+    Incoming,
+    Outgoing,
+    All,
 }
 
 #[derive(Clone, Debug, Display, StrictEncode, StrictDecode, Eq, PartialEq, Hash)]
@@ -315,11 +329,12 @@ pub struct HeightChanged {
 pub struct AddressTransaction {
     pub id: TaskId,
     pub hash: Vec<u8>,
-    pub amount: u64,
+    pub amount: u64, // Only calculated for incoming transactions
     pub block: Vec<u8>,
     // for bitcoin with bitcoin::consensus encoding, chunked into chunks with
     // length < 2^16 as a workaround for the strict encoding length limit
     pub tx: Vec<Vec<u8>>,
+    pub incoming: bool,
 }
 
 #[derive(Clone, Debug, Display, StrictEncode, StrictDecode, Eq, PartialEq, Hash)]

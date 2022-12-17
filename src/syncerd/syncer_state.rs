@@ -71,9 +71,10 @@ pub struct AddressTransactions {
 
 #[derive(Debug, Clone, PartialEq, Hash, Eq)]
 pub struct AddressTx {
-    pub our_amount: u64,
+    pub amount: u64,
     pub tx_id: Vec<u8>,
     pub tx: Vec<u8>,
+    pub incoming: bool,
 }
 
 pub fn create_set<T: std::hash::Hash + Eq>(xs: Vec<T>) -> HashSet<T> {
@@ -493,7 +494,7 @@ impl SyncerState {
                         let address_transaction = AddressTransaction {
                             id: addr.task.id,
                             hash: new_tx.tx_id.clone(),
-                            amount: new_tx.our_amount,
+                            amount: new_tx.amount,
                             block: vec![], // eventually this should be removed from the event
                             tx: new_tx
                                 .tx
@@ -501,6 +502,7 @@ impl SyncerState {
                                 .chunks(STRICT_ENCODE_MAX_ITEMS.into())
                                 .map(|c| c.to_vec())
                                 .collect(), // chunk as a workaround for the strict encoding length limit
+                            incoming: new_tx.incoming,
                         };
                         events.push((
                             Event::AddressTransaction(address_transaction),
@@ -943,12 +945,14 @@ async fn syncer_state_addresses() {
         lifetime: 1,
         addendum: addendum.clone(),
         include_tx: Boolean::False,
+        filter: TxFilter::All,
     };
     let address_task_two = WatchAddress {
         id: TaskId(0),
         lifetime: 1,
         addendum: addendum.clone(),
         include_tx: Boolean::False,
+        filter: TxFilter::All,
     };
     let source1 = ServiceId::Syncer(Blockchain::Bitcoin, Network::Mainnet);
 
@@ -976,24 +980,28 @@ async fn syncer_state_addresses() {
     assert_eq!(state.tasks_sources.len(), 1);
     assert_eq!(state.addresses.len(), 1);
     let address_tx_one = AddressTx {
-        our_amount: 1,
+        amount: 1,
         tx_id: vec![0; 32],
         tx: vec![0],
+        incoming: true,
     };
     let address_tx_two = AddressTx {
-        our_amount: 1,
+        amount: 1,
         tx_id: vec![1; 32],
         tx: vec![0],
+        incoming: true,
     };
     let address_tx_three = AddressTx {
-        our_amount: 1,
+        amount: 1,
         tx_id: vec![2; 32],
         tx: vec![0],
+        incoming: true,
     };
     let address_tx_four = AddressTx {
-        our_amount: 1,
+        amount: 1,
         tx_id: vec![3; 32],
         tx: vec![0],
+        incoming: true,
     };
 
     state
