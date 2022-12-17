@@ -1356,7 +1356,13 @@ fn try_bob_cancel_final_to_swap_end(
             && !incoming =>
         {
             let txid = bitcoin::Txid::from_slice(&hash).expect("should serialize to valid txid");
-            if txid != runtime.txs.get(&TxLabel::Refund).unwrap().txid()
+            if txid
+                != *runtime
+                    .syncer_state
+                    .tasks
+                    .txids
+                    .get(&TxLabel::Refund)
+                    .expect("should be watching Refund on CancelFinal")
                 && Some(txid)
                     != runtime
                         .syncer_state
