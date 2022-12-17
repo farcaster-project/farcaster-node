@@ -109,8 +109,8 @@ use super::{
 ///       |                       |                                   |        |            |
 ///       |                       V                                   |        V            |
 ///       |                 BobBuySweeping                            |   AliceRefund       |
-///       |                       |___________________________________|        |            V
-///       |                                          |                         |       AlicePunish
+///       |                       |___________________________________|        |            |
+///       |                                          |                         |            |
 ///       V                                          |                         V            |
 ///   BobRefund                                      |               AliceRefundSweeping    |
 ///       |                                          |                         |            |
@@ -281,7 +281,7 @@ pub enum SwapStateMachine {
     /*
         Alice Cancel States
     */
-    // AliceCanceled state - transitions to AliceRefund or AlicePunish on event
+    // AliceCanceled state - transitions to AliceRefund or SwapEnd on event
     // TransactionConfirmations. Broadcasts punish transaction or retrieves
     // Refund transaction.
     #[display("Alice Cancel")]
@@ -294,11 +294,6 @@ pub enum SwapStateMachine {
     // Cleans up remaining swap data and reports to Farcasterd.
     #[display("Alice Refund Sweeping")]
     AliceRefundSweeping,
-    // AlicePunish state - transitions to SwapEnd on envet
-    // TransactionConfirmations. Cleans up remaning swap data and reports to
-    // Farcasterd.
-    #[display("Alice Punish")]
-    AlicePunish,
 
     // End state
     #[display("Swap End: {0}")]
@@ -538,8 +533,6 @@ impl StateMachine<Runtime, Error> for SwapStateMachine {
             SwapStateMachine::AliceRefundSweeping => {
                 try_alice_refund_sweeping_to_swap_end(event, runtime)
             }
-            SwapStateMachine::AlicePunish => try_alice_punish_to_swap_end(event, runtime),
-
             SwapStateMachine::SwapEnd(_) => Ok(None),
         }
     }
@@ -1830,8 +1823,32 @@ fn try_alice_canceled_to_alice_refund_or_alice_punish(
                         SyncMsg::Task(task),
                     )?;
                     runtime.broadcast(punish_tx, tx_label, event.endpoints)?;
-                    Ok(Some(SwapStateMachine::AlicePunish))
+                    Ok(Some(SwapStateMachine::AliceCanceled(AliceCanceled {
+                        wallet,
+                    })))
                 }
+                Some(TxLabel::Punish) => {
+                    let abort_all = Task::Abort(Abort {
+                        task_target: TaskTarget::AllTasks,
+                        respond: Boolean::False,
+                    });
+                    event.send_sync_service(
+                        runtime.syncer_state.monero_syncer(),
+                        SyncMsg::Task(abort_all.clone()),
+                    )?;
+                    event.send_sync_service(
+                        runtime.syncer_state.bitcoin_syncer(),
+                        SyncMsg::Task(abort_all),
+                    )?;
+                    // remove txs to invalidate outdated states
+                    runtime.txs.remove(&TxLabel::Cancel);
+                    runtime.txs.remove(&TxLabel::Refund);
+                    runtime.txs.remove(&TxLabel::Buy);
+                    runtime.txs.remove(&TxLabel::Punish);
+                    let outcome = Outcome::FailurePunish;
+                    Ok(Some(SwapStateMachine::SwapEnd(outcome)))
+                }
+
                 // hit this path if Alice overfunded, moved on to AliceCanceled,
                 // but could not broadcast cancel yet since not available,
                 // so broadcast if available now
@@ -1999,44 +2016,6 @@ fn try_alice_refund_sweeping_to_swap_end(
             runtime.txs.remove(&TxLabel::Buy);
             runtime.txs.remove(&TxLabel::Punish);
             Ok(Some(SwapStateMachine::SwapEnd(Outcome::FailureRefund)))
-        }
-        _ => Ok(None),
-    }
-}
-
-fn try_alice_punish_to_swap_end(
-    mut event: Event,
-    runtime: &mut Runtime,
-) -> Result<Option<SwapStateMachine>, Error> {
-    match event.request {
-        BusMsg::Sync(SyncMsg::Event(SyncEvent::TransactionConfirmations(
-            TransactionConfirmations {
-                id,
-                confirmations: Some(confirmations),
-                ..
-            },
-        ))) if runtime.syncer_state.tasks.watched_txs.get(&id) == Some(&TxLabel::Punish)
-            && confirmations >= runtime.temporal_safety.btc_finality_thr =>
-        {
-            let abort_all = Task::Abort(Abort {
-                task_target: TaskTarget::AllTasks,
-                respond: Boolean::False,
-            });
-            event.send_sync_service(
-                runtime.syncer_state.monero_syncer(),
-                SyncMsg::Task(abort_all.clone()),
-            )?;
-            event.send_sync_service(
-                runtime.syncer_state.bitcoin_syncer(),
-                SyncMsg::Task(abort_all),
-            )?;
-            // remove txs to invalidate outdated states
-            runtime.txs.remove(&TxLabel::Cancel);
-            runtime.txs.remove(&TxLabel::Refund);
-            runtime.txs.remove(&TxLabel::Buy);
-            runtime.txs.remove(&TxLabel::Punish);
-            let outcome = Outcome::FailurePunish;
-            Ok(Some(SwapStateMachine::SwapEnd(outcome)))
         }
         _ => Ok(None),
     }
