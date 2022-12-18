@@ -105,7 +105,9 @@ pub fn run(config: ServiceConfig, opts: Opts) -> Result<(), Error> {
         swap_id,
         tasks,
         monero_height: 0,
+        monero_checkpoint_height: None,
         bitcoin_height: 0,
+        bitcoin_checkpoint_height: None,
         confirmation_bound: 50000,
         lock_tx_confs: None,
         cancel_tx_confs: None,
@@ -183,6 +185,8 @@ pub struct CheckpointSwapd {
     pub connected_counterparty_node_id: Option<NodeId>,
     pub deal: Deal,
     pub monero_address_creation_height: Option<u64>,
+    pub bitcoin_checkpoint_height: u64,
+    pub monero_checkpoint_height: u64,
 }
 
 impl CtlServer for Runtime {}
@@ -398,6 +402,8 @@ impl Runtime {
                     xmr_addr_addendum,
                     local_trade_role,
                     monero_address_creation_height,
+                    bitcoin_checkpoint_height,
+                    monero_checkpoint_height,
                     state,
                     ..
                 } = state;
@@ -408,6 +414,8 @@ impl Runtime {
                 self.monero_address_creation_height = monero_address_creation_height;
                 // We need to update the peerd for the pending requests in case of reconnect
                 self.local_trade_role = local_trade_role;
+                self.syncer_state.bitcoin_checkpoint_height = Some(bitcoin_checkpoint_height);
+                self.syncer_state.monero_checkpoint_height = Some(monero_checkpoint_height);
                 self.txs = txs.drain(..).collect();
                 self.syncer_state
                     .watch_height(endpoints, Blockchain::Bitcoin)?;
@@ -870,6 +878,8 @@ impl Runtime {
                     connected_counterparty_node_id: get_node_id(&self.peer_service),
                     deal: self.deal.clone(),
                     monero_address_creation_height: self.monero_address_creation_height.clone(),
+                    bitcoin_checkpoint_height: self.syncer_state.bitcoin_height,
+                    monero_checkpoint_height: self.syncer_state.monero_height,
                 },
             })),
         )?;

@@ -264,7 +264,7 @@ pub enum SwapStateMachine {
     // TransactionConfirmations, or to AliceCanceled on
     // TransactionConfirmations. Completes Funding, watches Monero transaction,
     // aborts watch address.
-    #[display("Alice Abitrating Lock Final")]
+    #[display("Alice Arbitrating Lock Final")]
     AliceArbitratingLockFinal(AliceArbitratingLockFinal),
     // AliceAccordantLock state - transitions to AliceBuyProcedureSignature on
     // message BuyProcedureSignature, or to AliceCanceled on
