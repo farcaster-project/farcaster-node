@@ -327,7 +327,7 @@ impl Wallet {
                     ServiceId::Swap(swap_id),
                     ServiceId::Database,
                     BusMsg::Ctl(CtlMsg::SetAddressSecretKey(AddressSecretKey::Bitcoin {
-                        address: funding_addr.clone(),
+                        address: funding_addr,
                         secret_key_info: BitcoinSecretKeyInfo {
                             swap_id: Some(swap_id),
                             secret_key: key_manager
@@ -339,7 +339,7 @@ impl Wallet {
                 let local_wallet = BobState::new(
                     bob,
                     TradeRole::Taker,
-                    local_params.clone(),
+                    local_params,
                     key_manager,
                     deal.clone(),
                     funding,
@@ -360,7 +360,7 @@ impl Wallet {
                 let local_wallet = AliceState::new(
                     alice,
                     TradeRole::Taker,
-                    local_params.clone(),
+                    local_params,
                     key_manager,
                     deal.clone(),
                     None,
@@ -401,7 +401,7 @@ impl Wallet {
                     ServiceId::Swap(swap_id),
                     ServiceId::Database,
                     BusMsg::Ctl(CtlMsg::SetAddressSecretKey(AddressSecretKey::Bitcoin {
-                        address: funding_addr.clone(),
+                        address: funding_addr,
                         secret_key_info: BitcoinSecretKeyInfo {
                             swap_id: Some(swap_id),
                             secret_key: key_manager
@@ -410,23 +410,22 @@ impl Wallet {
                     })),
                 )?;
                 info!("{} | Loading {}", swap_id.swap_id(), "Wallet::Bob".label());
-                let local_wallet =
-                    if let Commit::AliceParameters(remote_commit) = remote_commit.clone() {
-                        BobState::new(
-                            bob,
-                            TradeRole::Maker,
-                            local_params.clone(),
-                            key_manager,
-                            deal.clone(),
-                            funding,
-                            Some(remote_commit),
-                            target_bitcoin_address,
-                            target_monero_address,
-                        )
-                    } else {
-                        error!("{} | Not Commit::Alice", swap_id.swap_id());
-                        return Err(Error::Farcaster("Not Commit::Alice".to_string()));
-                    };
+                let local_wallet = if let Commit::AliceParameters(remote_commit) = remote_commit {
+                    BobState::new(
+                        bob,
+                        TradeRole::Maker,
+                        local_params,
+                        key_manager,
+                        deal.clone(),
+                        funding,
+                        Some(remote_commit),
+                        target_bitcoin_address,
+                        target_monero_address,
+                    )
+                } else {
+                    error!("{} | Not Commit::Alice", swap_id.swap_id());
+                    return Err(Error::Farcaster("Not Commit::Alice".to_string()));
+                };
                 Ok(Wallet::Bob(local_wallet))
             }
             SwapRole::Alice => {
@@ -442,13 +441,12 @@ impl Wallet {
                     swap_id.swap_id(),
                     "Wallet::Alice".label()
                 );
-                let local_wallet = if let Commit::BobParameters(bob_commit) = remote_commit.clone()
-                {
+                let local_wallet = if let Commit::BobParameters(bob_commit) = remote_commit {
                     let local_trade_role = TradeRole::Maker;
                     AliceState::new(
                         alice,
                         local_trade_role,
-                        local_params.clone(),
+                        local_params,
                         key_manager,
                         deal.clone(),
                         Some(bob_commit),
@@ -580,7 +578,7 @@ impl Wallet {
             let sweep_keys = SweepMoneroAddress {
                 source_view_key: view,
                 source_spend_key: spend,
-                destination_address: target_monero_address.clone(),
+                destination_address: *target_monero_address,
                 minimum_balance: deal.parameters.accordant_amount,
                 from_height: monero_address_creation_height,
             };

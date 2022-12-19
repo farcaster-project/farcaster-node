@@ -100,12 +100,12 @@ impl SyncerStateMachine {
     pub fn task_id(&self) -> Option<TaskId> {
         match self {
             SyncerStateMachine::AwaitingSyncer(AwaitingSyncer { syncer_task_id, .. }) => {
-                Some(syncer_task_id.clone())
+                Some(*syncer_task_id)
             }
             SyncerStateMachine::AwaitingSyncerRequest(AwaitingSyncerRequest {
                 syncer_task_id,
                 ..
-            }) => Some(syncer_task_id.clone()),
+            }) => Some(*syncer_task_id),
             _ => None,
         }
     }
@@ -154,7 +154,7 @@ fn attempt_transition_to_awaiting_syncer_or_awaiting_syncer_request(
 
             let syncer_task_id = TaskId(runtime.syncer_task_counter);
             let syncer_task = Task::SweepAddress(SweepAddress {
-                id: syncer_task_id.clone(),
+                id: syncer_task_id,
                 retry: false,
                 lifetime: u64::MAX,
                 addendum: sweep_address,
@@ -181,7 +181,7 @@ fn attempt_transition_to_awaiting_syncer_or_awaiting_syncer_request(
                 Ok(Some(SyncerStateMachine::AwaitingSyncer(AwaitingSyncer {
                     source,
                     syncer: ServiceId::Syncer(blockchain, network),
-                    syncer_task: syncer_task,
+                    syncer_task,
                     syncer_task_id,
                 })))
             }
@@ -222,7 +222,7 @@ fn attempt_transition_to_awaiting_syncer_or_awaiting_syncer_request(
                 Ok(Some(SyncerStateMachine::AwaitingSyncer(AwaitingSyncer {
                     source,
                     syncer: ServiceId::Syncer(blockchain, network),
-                    syncer_task: syncer_task,
+                    syncer_task,
                     syncer_task_id,
                 })))
             }
@@ -253,7 +253,7 @@ fn attempt_transition_to_awaiting_syncer_or_awaiting_syncer_request(
                 Ok(None) => Ok(Some(SyncerStateMachine::AwaitingSyncer(AwaitingSyncer {
                     source,
                     syncer: ServiceId::Syncer(blockchain, network),
-                    syncer_task: syncer_task,
+                    syncer_task,
                     syncer_task_id,
                 }))),
                 Err(err) => {
@@ -331,12 +331,11 @@ fn attempt_transition_to_end(
         syncer,
     } = awaiting_syncer_request;
     match (event.request.clone(), event.source.clone()) {
-        (BusMsg::Sync(SyncMsg::Event(SyncerEvent::SweepSuccess(success))), syncer_id)
+        (BusMsg::Sync(SyncMsg::Event(SyncerEvent::SweepSuccess(mut success))), syncer_id)
             if syncer == syncer_id && success.id == syncer_task_id =>
         {
             if let Some(Some(txid)) = success
                 .txids
-                .clone()
                 .pop()
                 .map(|txid| bitcoin::Txid::from_slice(&txid).ok())
             {

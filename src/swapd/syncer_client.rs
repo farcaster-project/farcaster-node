@@ -255,7 +255,7 @@ impl SyncerState {
         );
         let viewpair = monero::ViewPair { spend, view };
         let address = monero::Address::from_viewpair(self.network.into(), &viewpair);
-        let from_height = from_height.unwrap_or(self.from_height(Blockchain::Monero, 20));
+        let from_height = from_height.unwrap_or_else(|| self.from_height(Blockchain::Monero, 20));
         let addendum = XmrAddressAddendum {
             spend_key: spend,
             view_key: view,
@@ -291,7 +291,7 @@ impl SyncerState {
         endpoints: &mut Endpoints,
         blockchain: Blockchain,
     ) -> Result<(), Error> {
-        let swap_id = ServiceId::Swap(self.swap_id.clone());
+        let swap_id = ServiceId::Swap(self.swap_id);
         let task_id = self.tasks.new_taskid();
         trace!("Watch height {}", blockchain);
         let task = Task::WatchHeight(WatchHeight {
@@ -301,7 +301,7 @@ impl SyncerState {
         self.tasks.tasks.insert(task_id, task.clone());
         endpoints.send_to(
             ServiceBus::Sync,
-            swap_id.clone(),
+            swap_id,
             match blockchain {
                 Blockchain::Bitcoin => self.bitcoin_syncer(),
                 Blockchain::Monero => self.monero_syncer(),
@@ -440,8 +440,7 @@ impl SyncerState {
                     }
                 }
             }
-            self.confirmations
-                .insert(txlabel.clone(), confirmations.clone());
+            self.confirmations.insert(*txlabel, *confirmations);
         } else {
             error!(
                 "received event with unknown transaction and task id {}",
@@ -450,11 +449,11 @@ impl SyncerState {
         }
     }
     pub fn watch_bitcoin_fee(&mut self, endpoints: &mut Endpoints) -> Result<(), Error> {
-        let identity = ServiceId::Swap(self.swap_id.clone());
+        let identity = ServiceId::Swap(self.swap_id);
         let task = self.estimate_fee_btc();
         endpoints.send_to(
             ServiceBus::Sync,
-            identity.clone(),
+            identity,
             self.bitcoin_syncer(),
             BusMsg::Sync(SyncMsg::Task(task)),
         )?;
@@ -462,7 +461,7 @@ impl SyncerState {
     }
 
     pub fn get_confs(&self, label: TxLabel) -> Option<u32> {
-        self.confirmations.get(&label).map(|c| c.clone()).flatten()
+        self.confirmations.get(&label).copied().flatten()
     }
 }
 

@@ -70,13 +70,13 @@ impl StateReport {
                 .map(|confs| temp_safety.blocks_until_cancel(confs)),
             blocks_until_safe_buy: syncer_state
                 .get_confs(TxLabel::Lock)
-                .map(|c| temp_safety.btc_finality_thr.checked_sub(c).unwrap_or(0)),
+                .map(|c| temp_safety.btc_finality_thr.saturating_sub(c)),
             blocks_until_punish_possible: syncer_state
                 .get_confs(TxLabel::Cancel)
                 .map(|confs| temp_safety.blocks_until_punish_after_cancel(confs)),
             blocks_until_safe_monero_buy_sweep: syncer_state
                 .get_confs(TxLabel::AccLock)
-                .map(|c| temp_safety.sweep_monero_thr.checked_sub(c).unwrap_or(0)),
+                .map(|c| temp_safety.sweep_monero_thr.saturating_sub(c)),
         }
     }
 
