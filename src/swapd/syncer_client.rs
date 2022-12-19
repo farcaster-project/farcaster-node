@@ -161,7 +161,7 @@ impl SyncerState {
         let task = Task::WatchTransaction(WatchTransaction {
             id,
             lifetime: self.task_lifetime(Blockchain::Monero),
-            hash: hash,
+            hash,
             confirmation_bound: self.confirmation_bound,
         });
         self.tasks.tasks.insert(id, task.clone());

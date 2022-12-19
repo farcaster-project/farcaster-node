@@ -254,7 +254,7 @@ impl fmt::Display for BroadcastTransaction {
         let bitcoin_tx_id =
             bitcoin::Transaction::consensus_decode(std::io::Cursor::new(self.tx.clone()))
                 .map(|tx| tx.txid().to_string())
-                .unwrap_or("".to_string());
+                .unwrap_or_default();
 
         write!(
             f,
@@ -447,7 +447,7 @@ impl fmt::Display for TransactionBroadcasted {
         let bitcoin_tx_id =
             bitcoin::Transaction::consensus_decode(std::io::Cursor::new(self.tx.clone()))
                 .map(|tx| tx.txid().to_string())
-                .unwrap_or("".to_string());
+                .unwrap_or_default();
         write!(
             f,
             "TransactionBroadcasted(id: {}, tx_id: {}, error: {:?})",

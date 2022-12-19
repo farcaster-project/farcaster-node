@@ -218,8 +218,8 @@ impl ElectrumRpc {
         } else {
             state_guard
                 .transactions
-                .iter()
-                .map(|(_, watched_tx)| watched_tx.task.hash.clone())
+                .values()
+                .map(|watched_tx| watched_tx.task.hash.clone())
                 .collect()
         };
         drop(state_guard);
@@ -244,7 +244,7 @@ impl ElectrumRpc {
                     let height = match self
                         .client
                         .script_get_history(&tx.output[0].script_pubkey)
-                        .map_err(|err| SyncerError::Electrum(err))
+                        .map_err(SyncerError::Electrum)
                         .and_then(|mut history| {
                             history
                                 .iter()
@@ -261,7 +261,7 @@ impl ElectrumRpc {
                             let mut state_guard = state.lock().await;
                             state_guard
                                 .change_transaction(
-                                    Txid::Bitcoin(tx_id.clone()),
+                                    Txid::Bitcoin(*tx_id),
                                     None,
                                     Some(0),
                                     bitcoin::consensus::serialize(&tx),
@@ -289,7 +289,7 @@ impl ElectrumRpc {
                                     let mut state_guard = state.lock().await;
                                     state_guard
                                         .change_transaction(
-                                            Txid::Bitcoin(tx_id.clone()),
+                                            Txid::Bitcoin(*tx_id),
                                             None,
                                             Some(0),
                                             bitcoin::consensus::serialize(&tx),
@@ -316,7 +316,7 @@ impl ElectrumRpc {
                             let mut state_guard = state.lock().await;
                             state_guard
                                 .change_transaction(
-                                    Txid::Bitcoin(tx_id.clone()),
+                                    Txid::Bitcoin(*tx_id),
                                     None,
                                     Some(0),
                                     bitcoin::consensus::serialize(&tx),
@@ -348,7 +348,7 @@ impl ElectrumRpc {
                     trace!("error getting transaction, treating as not found: {}", err);
                     let mut state_guard = state.lock().await;
                     state_guard
-                        .change_transaction(Txid::Bitcoin(tx_id.clone()), None, None, vec![])
+                        .change_transaction(Txid::Bitcoin(*tx_id), None, None, vec![])
                         .await;
                     drop(state_guard);
                 }
@@ -542,7 +542,7 @@ fn sweep_address(
 
     // 546 is the dust limit for a p2pkh output. This covers both cases for when
     // a users provides a p2wpkh or p2pkh address
-    if in_amount.checked_sub(fee).unwrap_or(0) <= 546 {
+    if in_amount.saturating_sub(fee) <= 546 {
         warn!(
             "Amount is too close to being dust for address: {}, with total in amount {} and total fee {} ({} satoshi/kvb)",
             source_address, in_amount, fee, fee_sat_per_kvb,
