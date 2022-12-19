@@ -474,7 +474,7 @@ impl Exec for Command {
 
                 if !without_validation {
                     println!(
-                        "\nWant to buy {}?\n\nCarefully validate deal!\n",
+                        "\nWant to buy {}?\n\nCarefully validate the deal!\n",
                         deal_buy_information(&deal.parameters)
                     );
                     println!("Trade counterparty: {}@{}\n", &node_id, peer_address);
@@ -635,13 +635,16 @@ impl Exec for Command {
 }
 
 fn take_deal() -> bool {
-    println!("Take it? [y/n]");
+    println!("Deal or No Deal? [y/n]");
     let mut input = [0u8; 1];
     std::io::stdin().read_exact(&mut input).unwrap_or(());
     match std::str::from_utf8(&input[..]) {
-        Ok("y") | Ok("Y") => true,
+        Ok("y") | Ok("Y") => {
+            println!("Deal!");
+            true
+        }
         Ok("n") | Ok("N") => {
-            println!("Rejecting deal");
+            println!("No Deal!");
             false
         }
         _ => take_deal(),
