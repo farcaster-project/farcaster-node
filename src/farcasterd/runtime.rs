@@ -53,11 +53,11 @@ pub fn run(
     _opts: Opts,
     wallet_token: Token,
 ) -> Result<(), Error> {
-    let _walletd = launch("walletd", &["--token", &wallet_token.to_string()])?;
+    let _walletd = launch("walletd", ["--token", &wallet_token.to_string()])?;
     if config.is_grpc_enable() {
         let _grpcd = launch(
             "grpcd",
-            &[
+            [
                 "--grpc-port",
                 &config.grpc.clone().unwrap().bind_port.to_string(),
                 "--grpc-ip",
@@ -354,7 +354,7 @@ impl Runtime {
                     endpoints.send_to(
                         ServiceBus::Ctl,
                         self.identity(),
-                        ServiceId::Swap(swap_id.clone()),
+                        ServiceId::Swap(swap_id),
                         BusMsg::Ctl(req.clone()),
                     )?;
                 }
@@ -465,7 +465,7 @@ impl Runtime {
                             .filter_map(|tsm| tsm.open_deal())
                             .map(|deal| DealInfo {
                                 deal: deal.to_string(),
-                                details: deal.clone(),
+                                details: deal,
                             })
                             .collect();
                         self.send_client_info(endpoints, source, InfoMsg::DealList(open_deals))?;
@@ -533,7 +533,7 @@ impl Runtime {
                             }
                         };
                     }
-                    report_to.push((Some(source.clone()), InfoMsg::SwapProgress(swap_progress)));
+                    report_to.push((Some(source), InfoMsg::SwapProgress(swap_progress)));
                 } else {
                     let info = if self.running_swaps_contain(&swap_id) {
                         s!("No progress made yet on this swap")
@@ -541,7 +541,7 @@ impl Runtime {
                         s!("Unknown swapd")
                     };
                     report_to.push((
-                        Some(source.clone()),
+                        Some(source),
                         InfoMsg::Failure(Failure {
                             code: FailureCode::Unknown,
                             info,
@@ -598,7 +598,7 @@ impl Runtime {
                     }
                     trace!(
                         "{} has been added to {} progress subscription",
-                        source.clone(),
+                        source,
                         swap_id
                     );
                     // send all queued notification to the source to catch up
@@ -617,7 +617,7 @@ impl Runtime {
                 } else {
                     // no swap service exists, terminate
                     report_to.push((
-                        Some(source.clone()),
+                        Some(source),
                         InfoMsg::Failure(Failure {
                             code: FailureCode::Unknown,
                             info: "Unknown swapd".to_string(),
@@ -1122,7 +1122,7 @@ impl Runtime {
         debug!("Instantiating peerd...");
         let child = launch(
             "peerd",
-            &[
+            [
                 "--listen",
                 &format!("{}", address),
                 "--port",
@@ -1188,7 +1188,7 @@ impl Runtime {
         // Start peerd
         let child = launch(
             "peerd",
-            &[
+            [
                 "--connect",
                 &node_addr.to_string(),
                 "--peer-secret-key",
@@ -1279,7 +1279,7 @@ pub fn launch_swapd(
     debug!("Instantiating swapd...");
     let child = launch(
         "swapd",
-        &[
+        [
             "--arb-finality".to_string(),
             swap_config.arbitrating.finality.to_string(),
             "--arb-safety".to_string(),
@@ -1364,30 +1364,30 @@ pub fn launch(
     let matches = app.get_matches();
 
     if let Some(d) = &matches.value_of("data-dir") {
-        cmd.args(&["-d", d]);
+        cmd.args(["-d", d]);
     }
 
     if let Some(m) = &matches.value_of("msg-socket") {
-        cmd.args(&["-m", m]);
+        cmd.args(["-m", m]);
     }
 
     if let Some(x) = &matches.value_of("ctl-socket") {
-        cmd.args(&["-x", x]);
+        cmd.args(["-x", x]);
     }
 
     if let Some(i) = &matches.value_of("info-socket") {
-        cmd.args(&["-i", i]);
+        cmd.args(["-i", i]);
     }
 
     if let Some(s) = &matches.value_of("sync-socket") {
-        cmd.args(&["-S", s]);
+        cmd.args(["-S", s]);
     }
 
     // Forward tor proxy argument
     let parsed = Opts::parse();
     debug!("tor opts: {:?}", parsed.shared.tor_proxy);
     if let Some(t) = &matches.value_of("tor-proxy") {
-        cmd.args(&["-T", *t]);
+        cmd.args(["-T", *t]);
     }
 
     // Given specialized args in launch

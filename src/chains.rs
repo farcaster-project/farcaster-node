@@ -46,9 +46,9 @@ impl FromStr for ArbitratingBlockchain {
     }
 }
 
-impl Into<Blockchain> for ArbitratingBlockchain {
-    fn into(self) -> Blockchain {
-        match self {
+impl From<ArbitratingBlockchain> for Blockchain {
+    fn from(val: ArbitratingBlockchain) -> Self {
+        match val {
             ArbitratingBlockchain::Bitcoin => Blockchain::Bitcoin,
         }
     }
@@ -99,9 +99,9 @@ impl FromStr for AccordantBlockchain {
     }
 }
 
-impl Into<Blockchain> for AccordantBlockchain {
-    fn into(self) -> Blockchain {
-        match self {
+impl From<AccordantBlockchain> for Blockchain {
+    fn from(val: AccordantBlockchain) -> Self {
+        match val {
             AccordantBlockchain::Monero => Blockchain::Monero,
         }
     }

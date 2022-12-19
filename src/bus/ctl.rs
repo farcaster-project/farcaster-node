@@ -231,7 +231,7 @@ pub struct SwapKeys {
 pub struct WrappedKeyManager(pub KeyManager);
 impl Encodable for WrappedKeyManager {
     fn consensus_encode<W: io::Write>(&self, writer: &mut W) -> Result<usize, io::Error> {
-        Ok(self.0.consensus_encode(writer)?)
+        self.0.consensus_encode(writer)
     }
 }
 impl Decodable for WrappedKeyManager {

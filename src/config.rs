@@ -127,7 +127,7 @@ impl Config {
         } else {
             format!("{}:{}", FARCASTER_BIND_IP, FARCASTER_BIND_PORT)
         };
-        Ok(InetSocketAddr::from_str(&addr).map_err(|e| Error::Farcaster(e.to_string()))?)
+        InetSocketAddr::from_str(&addr).map_err(|e| Error::Farcaster(e.to_string()))
     }
 
     /// Returns a syncer configuration, if found in config, for the specified network

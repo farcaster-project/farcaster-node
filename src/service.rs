@@ -180,7 +180,7 @@ impl ServiceId {
 
     pub fn node_addr(&self) -> Option<NodeAddr> {
         if let ServiceId::Peer(_, addr) = self {
-            Some(addr.clone())
+            Some(*addr)
         } else {
             None
         }
