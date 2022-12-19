@@ -678,7 +678,7 @@ impl Wallet {
             let sweep_keys = SweepMoneroAddress {
                 source_view_key: view,
                 source_spend_key: spend,
-                destination_address: target_monero_address.clone(),
+                destination_address: *target_monero_address,
                 minimum_balance: deal.parameters.accordant_amount,
                 from_height: monero_address_creation_height,
             };

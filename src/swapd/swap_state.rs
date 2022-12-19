@@ -4,6 +4,8 @@
 // license that can be found in the LICENSE file or at
 // https://opensource.org/licenses/MIT.
 
+use std::cmp::Ordering;
+
 use bitcoin::psbt::serialize::Deserialize;
 use farcaster_core::{
     blockchain::Blockchain, role::SwapRole, swap::btcxmr::message::BuyProcedureSignature,
@@ -1625,31 +1627,38 @@ fn try_alice_arbitrating_lock_final_to_alice_accordant_lock(
                 )?;
             }
 
-            if amount < required_funding_amount.as_pico() {
-                // Alice still views underfunding as valid in the hope that Bob still passes her BuyProcSig
-                let msg = format!(
-                                "Too small amount funded. Required: {}, Funded: {}. Do not fund this swap anymore, will attempt to refund.",
-                                required_funding_amount,
-                                monero::Amount::from_pico(amount)
-                            );
-                runtime.log_error(&msg);
-                runtime.report_progress_message(event.endpoints, msg)?;
-            } else if amount > required_funding_amount.as_pico() {
-                // Alice overfunded. To ensure that she does not publish the buy transaction
-                // if Bob gives her the BuySig, go straight to AliceCanceled
-                let msg = format!(
-                                "Too big amount funded. Required: {}, Funded: {}. Do not fund this swap anymore, will attempt to refund.",
-                                required_funding_amount,
-                                monero::Amount::from_pico(amount)
-                            );
-                runtime.log_error(&msg);
-                runtime.report_progress_message(event.endpoints, msg)?;
-
-                // Alice moves on to AliceCanceled despite not broadcasting the cancel transaction.
-                return Ok(Some(SwapStateMachine::AliceCanceled(AliceCanceled {
-                    wallet,
-                })));
+            match amount.cmp(&required_funding_amount.as_pico()) {
+                // Underfunding
+                Ordering::Less => {
+                    // Alice still views underfunding as valid in the hope that Bob still passes her BuyProcSig
+                    let msg = format!(
+                                    "Too small amount funded. Required: {}, Funded: {}. Do not fund this swap anymore, will attempt to refund.",
+                                    required_funding_amount,
+                                    monero::Amount::from_pico(amount)
+                                );
+                    runtime.log_error(&msg);
+                    runtime.report_progress_message(event.endpoints, msg)?;
+                }
+                // Overfunding
+                Ordering::Greater => {
+                    // Alice overfunded. To ensure that she does not publish the buy transaction
+                    // if Bob gives her the BuySig, go straight to AliceCanceled
+                    let msg = format!(
+                                    "Too big amount funded. Required: {}, Funded: {}. Do not fund this swap anymore, will attempt to refund.",
+                                    required_funding_amount,
+                                    monero::Amount::from_pico(amount)
+                                );
+                    runtime.log_error(&msg);
+                    runtime.report_progress_message(event.endpoints, msg)?;
+                    // Alice moves on to AliceCanceled despite not broadcasting the cancel transaction.
+                    return Ok(Some(SwapStateMachine::AliceCanceled(AliceCanceled {
+                        wallet,
+                    })));
+                }
+                // Funding Exact
+                Ordering::Equal => {}
             }
+
             Ok(Some(SwapStateMachine::AliceAccordantLock(
                 AliceAccordantLock { wallet },
             )))

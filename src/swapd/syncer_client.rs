@@ -220,6 +220,8 @@ impl SyncerState {
     pub fn is_watched_addr(&self, tx_label: &TxLabel) -> bool {
         self.tasks.watched_addrs.values().any(|tx| tx == tx_label)
     }
+
+    #[allow(clippy::wrong_self_convention)]
     pub fn from_height(&self, blockchain: Blockchain, delta: u64) -> u64 {
         let height = self.height(blockchain);
         let delta = if height > delta { delta } else { height };

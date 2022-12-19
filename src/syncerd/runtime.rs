@@ -218,7 +218,7 @@ impl Runtime {
     ) -> Result<(), Error> {
         match request {
             SyncMsg::Task(task) => {
-                let t = SyncerdTask { task: task, source };
+                let t = SyncerdTask { task, source };
                 self.tasks.insert(t.clone());
                 match self.tx.send(t) {
                     Ok(()) => trace!("Task successfully sent to syncer runtime"),
