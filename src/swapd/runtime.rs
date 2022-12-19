@@ -567,10 +567,10 @@ impl Runtime {
 
                     // This re-triggers the tx fetch event in case the transaction was not detected yet
                     Event::TransactionRetrieved(TransactionRetrieved { id, tx: None })
-                        if self.syncer_state.tasks.retrieving_txs.contains_key(id) =>
+                        if self.syncer_state.tasks.retrieving_txs.contains_key(id)
+                            && self.syncer_state.tasks.tasks.contains_key(id) =>
                     {
-                        let (_tx_label, task) =
-                            self.syncer_state.tasks.retrieving_txs.get(id).unwrap();
+                        let task = self.syncer_state.tasks.tasks.get(id).unwrap();
                         std::thread::sleep(core::time::Duration::from_millis(500));
                         endpoints.send_to(
                             ServiceBus::Sync,
