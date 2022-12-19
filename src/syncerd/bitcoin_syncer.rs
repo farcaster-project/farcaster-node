@@ -381,6 +381,10 @@ fn query_addr_history(
                 output_found = true;
                 in_amount += output.value;
             } else {
+                // since we're filtering for a pubkey's history, if the tx's
+                // output's pubkey is _not_ the pubkey we're filtering for, we can infer
+                // from the fact that the tx is related to the pubkey that the tx
+                // must be spending _from_ the pubkey
                 out_amount += output.value;
             }
         }
