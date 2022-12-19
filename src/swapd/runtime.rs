@@ -10,7 +10,7 @@ use super::{
     temporal_safety::TemporalSafety,
     StateReport,
 };
-use crate::service::Endpoints;
+use crate::service::{Endpoints, Reporter};
 use crate::swapd::Opts;
 use crate::syncerd::bitcoin_syncer::p2wpkh_signed_tx_fee;
 use crate::syncerd::types::{Event, TransactionConfirmations};
@@ -125,8 +125,8 @@ pub fn run(config: ServiceConfig, opts: Opts) -> Result<(), Error> {
         swap_id,
         identity: ServiceId::Swap(swap_id),
         peer_service: ServiceId::dummy_peer_service_id(NodeAddr {
-            id: NodeId::from(deal.node_id.clone()), // node_id is bitcoin::Pubkey
-            addr: deal.peer_address,                // peer_address is InetSocketAddr
+            id: NodeId::from(deal.node_id), // node_id is bitcoin::Pubkey
+            addr: deal.peer_address,        // peer_address is InetSocketAddr
         }),
         connected: false,
         started: SystemTime::now(),
@@ -187,6 +187,11 @@ pub struct CheckpointSwapd {
 }
 
 impl CtlServer for Runtime {}
+impl Reporter for Runtime {
+    fn report_to(&self) -> Option<ServiceId> {
+        self.enquirer.clone()
+    }
+}
 
 impl esb::Handler<ServiceBus> for Runtime {
     type Request = BusMsg;
@@ -372,7 +377,7 @@ impl Runtime {
             // node address is established
             CtlMsg::PeerdReconnected(service_id) => {
                 self.log_info(format!("Peer {} reconnected", service_id));
-                self.peer_service = service_id.clone();
+                self.peer_service = service_id;
                 self.connected = true;
                 for msg in self.pending_peer_request.clone().iter() {
                     self.send_peer(endpoints, msg.clone())?;
@@ -417,9 +422,7 @@ impl Runtime {
 
                 self.log_trace("Watching transactions");
                 for (tx_label, txid) in txids.drain(..) {
-                    let task = self
-                        .syncer_state
-                        .watch_tx_btc(txid.clone(), tx_label.clone());
+                    let task = self.syncer_state.watch_tx_btc(txid, tx_label);
                     endpoints.send_to(
                         ServiceBus::Sync,
                         self.identity(),
@@ -505,7 +508,7 @@ impl Runtime {
             req => {
                 self.log_error(format!(
                     "BusMsg {} is not supported by the INFO interface",
-                    req.to_string()
+                    req
                 ));
             }
         }
@@ -710,12 +713,10 @@ impl Runtime {
                 self.handle_sync(endpoints, source.clone(), lock_tx_confs_req)?;
             }
             if let Some(cancel_tx_confs_req) = self.syncer_state.cancel_tx_confs.clone() {
-                self.handle_sync(endpoints, source.clone(), cancel_tx_confs_req)?;
+                self.handle_sync(endpoints, source, cancel_tx_confs_req)?;
             }
-        } else {
-            if let BusMsg::P2p(peer_msg) = msg {
-                self.unhandled_peer_message = Some(peer_msg);
-            }
+        } else if let BusMsg::P2p(peer_msg) = msg {
+            self.unhandled_peer_message = Some(peer_msg);
         }
         Ok(())
     }
@@ -732,14 +733,7 @@ impl Runtime {
                 .latest_state_report
                 .generate_progress_update_or_transition(&new_state_report);
             self.latest_state_report = new_state_report;
-            if let Some(enquirer) = self.enquirer.clone() {
-                endpoints.send_to(
-                    ServiceBus::Ctl,
-                    self.identity(),
-                    enquirer,
-                    BusMsg::Ctl(CtlMsg::Progress(progress)),
-                )?;
-            }
+            self.report_progress(endpoints, progress)?;
         }
         Ok(())
     }
@@ -793,7 +787,7 @@ impl Runtime {
         );
         // Ignoring possible reporting errors here and after: do not want to
         // halt the swap just because the client disconnected
-        let _ = self.report_progress_message_to(endpoints, &self.enquirer.clone(), msg);
+        let _ = self.report_progress_message(endpoints, msg);
 
         let engine = CommitmentEngine;
         let commitment = match params {
@@ -824,13 +818,12 @@ impl Runtime {
             "Accepting swap {} as Maker from Taker through peerd {}",
             swap_id, self.peer_service
         );
-        let enquirer = self.enquirer.clone();
         // Ignoring possible reporting errors here and after: do not want to
-        // halt the swap just because the client disconnected
-        let _ = self.report_progress_message_to(endpoints, &enquirer, msg);
+        // halt the swap just because the enquirer (farcasterd) disconnected
+        let _ = self.report_progress_message(endpoints, msg);
 
         let engine = CommitmentEngine;
-        let commitment = match params.clone() {
+        let commitment = match params {
             Params::Bob(params) => {
                 Commit::BobParameters(params.commit_bob(self.swap_id(), &engine))
             }
@@ -873,7 +866,7 @@ impl Runtime {
                     local_trade_role: self.local_trade_role,
                     connected_counterparty_node_id: get_node_id(&self.peer_service),
                     deal: self.deal.clone(),
-                    monero_address_creation_height: self.monero_address_creation_height.clone(),
+                    monero_address_creation_height: self.monero_address_creation_height,
                 },
             })),
         )?;
@@ -884,12 +877,7 @@ impl Runtime {
         let acc_confs_needs = self
             .syncer_state
             .get_confs(TxLabel::AccLock)
-            .map(|confs| {
-                self.temporal_safety
-                    .sweep_monero_thr
-                    .checked_sub(confs)
-                    .unwrap_or(0)
-            })
+            .map(|confs| self.temporal_safety.sweep_monero_thr.saturating_sub(confs))
             .unwrap_or(self.temporal_safety.sweep_monero_thr);
         let sweep_block = self.syncer_state.height(Blockchain::Monero) + acc_confs_needs as u64;
         self.log_info(format!(
@@ -986,7 +974,7 @@ pub fn validate_reveal(reveal: &Reveal, remote_commit: Commit) -> Result<Params,
                     remote_commit
                 );
                 error!("{}", err_msg);
-                Err(Error::Farcaster(err_msg.to_string()))
+                Err(Error::Farcaster(err_msg))
             }
         },
         Reveal::Bob { parameters, .. } => match &remote_commit {
@@ -1000,7 +988,7 @@ pub fn validate_reveal(reveal: &Reveal, remote_commit: Commit) -> Result<Params,
                     remote_commit
                 );
                 error!("{}", err_msg);
-                Err(Error::Farcaster(err_msg.to_string()))
+                Err(Error::Farcaster(err_msg))
             }
         },
     }

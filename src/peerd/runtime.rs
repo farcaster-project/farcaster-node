@@ -164,10 +164,10 @@ pub fn run_from_listener(
     // TODO: It is privacy/security critical that once the
     // connection is encrypted, this should be replaced by a proper handshake.
     let unmarshaller: Unmarshaller<PeerMsg> = PeerMsg::create_unmarshaller();
-    let msg: &PeerMsg = &*peer_receiver
+    let msg: Arc<PeerMsg> = peer_receiver
         .recv_message(&unmarshaller)
         .expect("failed to receive identity message from taker");
-    let id = match msg {
+    let id = match *msg {
         PeerMsg::Identity(id) => {
             debug!("Received the following local node id from the taker {}", id);
             Some(id)
@@ -181,7 +181,7 @@ pub fn run_from_listener(
     let internal_identity = ServiceId::Peer(
         peerd_id,
         NodeAddr {
-            id: *id.expect("remote id should always be some in maker's case"),
+            id: id.expect("remote id should always be some in maker's case"),
             addr: local_socket.expect("Checked for listener"),
         },
     );
@@ -298,7 +298,7 @@ impl PeerReceiverRuntime {
         if let Err(err) = self.bridge.send_to(
             ServiceBus::Bridge,
             self.internal_identity.clone(),
-            BusMsg::P2p((&*req).clone()),
+            BusMsg::P2p((*req).clone()),
         ) {
             error!("Error sending over bridge: {}", err);
             Err(err.into())
@@ -401,9 +401,7 @@ impl esb::Handler<ServiceBus> for Runtime {
         // log iff taker
         if !self.forked_from_listener {
             let (peer_sender, thread_flag_tx) = match start_connect_peer_listener_runtime(
-                self.remote_node_addr
-                    .clone()
-                    .expect("Checked for connecter"),
+                self.remote_node_addr.expect("Checked for connecter"),
                 self.local_node,
                 self.identity(),
             ) {
@@ -556,13 +554,7 @@ impl Runtime {
             // First remove any dangling messages with the same type and origin
             self.unchecked_msg_cache
                 .iter()
-                .position(|(key, _)| {
-                    if key.0 == message.swap_id() && key.1 == message.get_type() {
-                        true
-                    } else {
-                        false
-                    }
-                })
+                .position(|(key, _)| key.0 == message.swap_id() && key.1 == message.get_type())
                 .map(|pos| self.unchecked_msg_cache.remove(pos));
             // Then push the message to the back of the vector
             self.unchecked_msg_cache
@@ -610,7 +602,7 @@ impl Runtime {
                     "{} | BusMsg is not supported by the CTL interface",
                     self.identity().label()
                 );
-                return Err(Error::NotSupported(ServiceBus::Ctl, request.to_string()));
+                Err(Error::NotSupported(ServiceBus::Ctl, request.to_string()))
             }
         }
     }
@@ -671,9 +663,7 @@ impl Runtime {
         let mut attempt = 0;
         loop {
             match start_connect_peer_listener_runtime(
-                self.remote_node_addr
-                    .clone()
-                    .expect("Checked for connnecter"),
+                self.remote_node_addr.expect("Checked for connnecter"),
                 self.local_node,
                 self.identity(),
             ) {
@@ -806,13 +796,7 @@ impl Runtime {
 
                 self.unchecked_msg_cache
                     .iter()
-                    .position(|(key, _)| {
-                        if key.0 == receipt.swap_id && key.1 == receipt.msg_type {
-                            true
-                        } else {
-                            false
-                        }
-                    })
+                    .position(|(key, _)| key.0 == receipt.swap_id && key.1 == receipt.msg_type)
                     .map(|pos| self.unchecked_msg_cache.remove(pos));
             }
 

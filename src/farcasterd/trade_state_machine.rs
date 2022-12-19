@@ -259,13 +259,15 @@ impl StateMachine<Runtime, Error> for TradeStateMachine {
     }
 
     fn name(&self) -> String {
-        let trade_id = self.swap_id().map(|s| s.to_string()).unwrap_or(
-            self.open_deal().map(|d| d.id().to_string()).unwrap_or(
-                self.consumed_deal()
-                    .map(|d| d.id().to_string())
-                    .unwrap_or("…".to_string()),
-            ),
-        );
+        let trade_id = self.swap_id().map(|s| s.to_string()).unwrap_or_else(|| {
+            self.open_deal()
+                .map(|d| d.id().to_string())
+                .unwrap_or_else(|| {
+                    self.consumed_deal()
+                        .map(|d| d.id().to_string())
+                        .unwrap_or_else(|| "…".to_string())
+                })
+        });
         format!("{} | Trade", trade_id.swap_id())
     }
 }
@@ -366,7 +368,7 @@ impl TradeStateMachine {
                 ..
             }) => {
                 if *trade_role == TradeRole::Taker && *expect_connection {
-                    Some(node_addr_from_deal(&deal))
+                    Some(node_addr_from_deal(deal))
                 } else {
                     None
                 }
@@ -392,10 +394,8 @@ impl TradeStateMachine {
 
     pub fn needs_funding(&self, blockchain: Blockchain) -> Option<FundingInfo> {
         match blockchain {
-            Blockchain::Monero => self.needs_funding_monero().map(|f| FundingInfo::Monero(f)),
-            Blockchain::Bitcoin => self
-                .needs_funding_bitcoin()
-                .map(|f| FundingInfo::Bitcoin(f)),
+            Blockchain::Monero => self.needs_funding_monero().map(FundingInfo::Monero),
+            Blockchain::Bitcoin => self.needs_funding_bitcoin().map(FundingInfo::Bitcoin),
         }
     }
 
@@ -999,9 +999,9 @@ fn transition_to_swapd_launched_tsm(
     )?;
 
     Ok(TradeStateMachine::SwapdLaunched(SwapdLaunched {
-        peerd: peerd.clone(),
+        peerd,
         swap_id,
-        deal: deal.clone(),
+        deal,
         arbitrating_syncer_up,
         accordant_syncer_up,
         swapd_up: false,
@@ -1086,7 +1086,7 @@ fn attempt_transition_from_swapd_launched_to_swapd_running(
             ConsumedDealRole::Maker(commit) => CtlMsg::MakeSwap(InitMakerSwap {
                 peerd: peerd.clone(),
                 report_to: runtime.identity(),
-                swap_id: swap_id.clone(),
+                swap_id,
                 key_manager,
                 target_bitcoin_address,
                 target_monero_address,
@@ -1095,7 +1095,7 @@ fn attempt_transition_from_swapd_launched_to_swapd_running(
             ConsumedDealRole::Taker => CtlMsg::TakeSwap(InitTakerSwap {
                 peerd: peerd.clone(),
                 report_to: runtime.identity(),
-                swap_id: swap_id.clone(),
+                swap_id,
                 key_manager,
                 target_bitcoin_address,
                 target_monero_address,
@@ -1191,7 +1191,7 @@ fn attempt_transition_from_restoring_swapd_to_swapd_running(
             if Some(node_addr_from_deal(&deal)) == source.node_addr()
                 && trade_role == TradeRole::Taker =>
         {
-            runtime.handle_failed_connection(event.endpoints, source.clone())?;
+            runtime.handle_failed_connection(event.endpoints, source)?;
             expect_connection = false;
         }
         (BusMsg::Ctl(CtlMsg::Hello), source) if trade_role == TradeRole::Maker => {
@@ -1212,7 +1212,7 @@ fn attempt_transition_from_restoring_swapd_to_swapd_running(
         accordant_syncer_up.clone(),
         arbitrating_syncer_up.clone(),
         swapd_up,
-        (!expect_connection || expect_connection && peerd.is_some()), // expect_connection implies connected
+        (!expect_connection || peerd.is_some()), // expect_connection implies connected
     ) {
         info!("{} | Restoring swap", swap_id.swap_id());
         runtime.stats.incr_initiated();
@@ -1279,7 +1279,7 @@ fn attempt_transition_to_end(
     match (event.request.clone(), event.source.clone()) {
         (BusMsg::Ctl(CtlMsg::Hello), source)
             if matches!(source, ServiceId::Peer(..))
-                && source.node_addr() == peerd.as_ref().map(|p| p.node_addr()).flatten() =>
+                && source.node_addr() == peerd.as_ref().and_then(|p| p.node_addr()) =>
         {
             let swap_service_id = ServiceId::Swap(swap_id);
             debug!(
@@ -1369,7 +1369,7 @@ fn attempt_transition_to_end(
                         }.unwrap();
 
                     match bitcoin_rpc
-                        .send_to_address(&address, amount, None, None, None, None, None, None)
+                        .send_to_address(address, amount, None, None, None, None, None, None)
                     {
                         Ok(txid) => {
                             info!(
@@ -1677,7 +1677,7 @@ fn attempt_transition_to_end(
             event.send_ctl_service(
                 ServiceId::Database,
                 CtlMsg::SetDealStatus(DealStatusPair {
-                    deal: deal,
+                    deal,
                     status: DealStatus::Ended(outcome.clone()),
                 }),
             )?;
@@ -1732,7 +1732,7 @@ fn attempt_transition_to_end(
 
 fn node_addr_from_deal(deal: &Deal) -> NodeAddr {
     NodeAddr {
-        id: NodeId::from(deal.node_id.clone()), // node_id is bitcoin::Pubkey
-        addr: deal.peer_address,                // peer_address is InetSocketAddr
+        id: NodeId::from(deal.node_id), // node_id is bitcoin::Pubkey
+        addr: deal.peer_address,        // peer_address is InetSocketAddr
     }
 }

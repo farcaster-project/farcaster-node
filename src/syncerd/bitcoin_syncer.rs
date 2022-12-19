@@ -47,8 +47,8 @@ use tokio::sync::mpsc::Receiver as TokioReceiver;
 use tokio::sync::mpsc::Sender as TokioSender;
 use tokio::sync::Mutex;
 
-use super::GetAddressBalance;
 use super::HealthCheck;
+use super::{GetAddressBalance, TxFilter};
 
 const RETRY_TIMEOUT: u64 = 5;
 const PING_WAIT: u8 = 2;
@@ -57,7 +57,7 @@ pub struct ElectrumRpc {
     client: Client,
     height: u64,
     block_hash: BlockHash,
-    addresses: HashMap<BtcAddressAddendum, Option<Hex32Bytes>>,
+    addresses: HashMap<BtcAddressAddendum, (Option<Hex32Bytes>, TxFilter)>,
     ping_count: u8,
 }
 
@@ -118,6 +118,7 @@ impl ElectrumRpc {
     pub fn script_subscribe(
         &mut self,
         address_addendum: BtcAddressAddendum,
+        filter: TxFilter,
     ) -> Result<AddressNotif, Error> {
         debug!("attempting subscribing to: {:?}", address_addendum);
 
@@ -127,13 +128,13 @@ impl ElectrumRpc {
                 .client
                 .script_subscribe(&address_addendum.address.script_pubkey())?;
             self.addresses
-                .insert(address_addendum.clone(), script_status);
+                .insert(address_addendum.clone(), (script_status, filter.clone()));
             debug!(
                 "registering address {} with script_status {:?}",
                 &address_addendum.address, &script_status
             );
         }
-        let txs = query_addr_history(&mut self.client, &address_addendum)?;
+        let txs = query_addr_history(&mut self.client, &address_addendum, &filter)?;
         logging(&txs, &address_addendum);
         let notif = AddressNotif {
             address: address_addendum,
@@ -160,14 +161,14 @@ impl ElectrumRpc {
     /// check if a subscribed address received a new transaction
     pub fn address_change_check(&mut self) -> Vec<AddressNotif> {
         let mut notifs: Vec<AddressNotif> = vec![];
-        for (address, previous_status) in self.addresses.clone().into_iter() {
+        for (address, (previous_status, filter)) in self.addresses.clone().into_iter() {
             // get pending notifications for this address/script_pubkey
             let script_pubkey = &address.address.script_pubkey();
             while let Ok(Some(script_status)) = self.client.script_pop(script_pubkey) {
                 if Some(script_status) != previous_status {
                     if self
                         .addresses
-                        .insert(address.clone(), Some(script_status))
+                        .insert(address.clone(), (Some(script_status), filter.clone()))
                         .is_some()
                     {
                         debug!(
@@ -180,15 +181,20 @@ impl ElectrumRpc {
                             &address, &script_status
                         );
                     }
-                    if let Ok(txs) = query_addr_history(&mut self.client, &address) {
-                        debug!("creating AddressNotif");
-                        logging(&txs, &address);
-                        let new_notif = AddressNotif {
-                            address: address.clone(),
-                            txs,
-                        };
-                        debug!("creating address notifications");
-                        notifs.push(new_notif);
+                    match query_addr_history(&mut self.client, &address, &filter) {
+                        Ok(txs) => {
+                            debug!("creating AddressNotif");
+                            logging(&txs, &address);
+                            let new_notif = AddressNotif {
+                                address: address.clone(),
+                                txs,
+                            };
+                            debug!("creating address notifications");
+                            notifs.push(new_notif);
+                        }
+                        Err(err) => {
+                            debug!("Error querying address history: {}", err);
+                        }
                     }
                 } else {
                     debug!("state did not change for given address");
@@ -342,6 +348,7 @@ impl ElectrumRpc {
 fn query_addr_history(
     client: &mut Client,
     address: &BtcAddressAddendum,
+    filter: &TxFilter,
 ) -> Result<Vec<AddressTx>, Error> {
     // now that we have established _something_ has changed get the full transaction
     // history of the address
@@ -355,28 +362,85 @@ fn query_addr_history(
         // if it is not in the mempool (0 and -1) and confirmed below a certain
         // block height
         if hist.height > 0 && address.from_height >= hist.height as u64 {
+            trace!(
+                "Skipping old transaction, minimum height: {}, tx height: {}",
+                address.from_height,
+                hist.height
+            );
             continue;
         }
 
-        let mut our_amount: u64 = 0;
         let txid = hist.tx_hash;
-        // get the full transaction to calculate our_amount
         let tx = client.transaction_get(&txid)?;
         let mut output_found = false;
+        let mut input_found = false;
+        let mut in_amount: u64 = 0;
+        let mut out_amount: u64 = 0;
         for output in tx.output.iter() {
             if output.script_pubkey == script_pubkey {
                 output_found = true;
-                our_amount += output.value;
+                in_amount += output.value;
+            } else {
+                out_amount += output.value;
             }
         }
-        if !output_found {
-            trace!("ignoring outgoing transaction in handle address notification, continuing");
-            continue;
+        for input in tx.input.iter() {
+            let prev_tx = match client.transaction_get(&input.previous_output.txid) {
+                Ok(tx) => tx,
+                Err(_) => {
+                    trace!(
+                        "Input transaction not found, this is probably a coinbase tx, skipping."
+                    );
+                    break;
+                }
+            };
+            for output in prev_tx.output.iter() {
+                if output.script_pubkey == script_pubkey {
+                    input_found = true;
+                }
+            }
         }
+
+        let amount = match filter {
+            TxFilter::Incoming => {
+                if output_found {
+                    in_amount
+                } else {
+                    debug!(
+                        "Ignoring outgoing transaction {} in handle address notification, continuing", txid
+                    );
+                    continue;
+                }
+            }
+            TxFilter::Outgoing => {
+                if input_found {
+                    out_amount
+                } else {
+                    debug!(
+                        "Ignoring incoming transaction {} in handle address notification, continuing", txid
+                    );
+                    continue;
+                }
+            }
+            TxFilter::All => {
+                if output_found {
+                    in_amount
+                } else if input_found {
+                    out_amount
+                } else {
+                    debug!(
+                        "Ignoring transaction {} in handle address notifcation, continuing",
+                        txid
+                    );
+                    continue;
+                }
+            }
+        };
         addr_txs.push(AddressTx {
-            our_amount,
+            amount,
             tx_id: txid.to_vec(),
             tx: bitcoin::consensus::serialize(&tx),
+            incoming: output_found && !input_found,
         })
     }
     Ok(addr_txs)
@@ -713,7 +777,9 @@ fn address_polling(
                 for (id, address) in addresses.clone() {
                     if let AddressAddendum::Bitcoin(address_addendum) = address.task.addendum {
                         if !address.subscribed {
-                            match rpc.script_subscribe(address_addendum.clone()) {
+                            match rpc
+                                .script_subscribe(address_addendum.clone(), address.task.filter)
+                            {
                                 Ok(notif) => {
                                     logging(&notif.txs, &address_addendum);
                                     let tx_set = create_set(notif.txs);

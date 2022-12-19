@@ -250,7 +250,7 @@ pub enum HealthCheckSelector {
 impl FromStr for HealthCheckSelector {
     type Err = farcaster_core::consensus::Error;
     fn from_str(input: &str) -> Result<HealthCheckSelector, Self::Err> {
-        match Network::from_str(&input) {
+        match Network::from_str(input) {
             Ok(n) => Ok(HealthCheckSelector::Network(n)),
             Err(err) => {
                 if input == "all" || input == "All" {

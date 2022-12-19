@@ -55,11 +55,11 @@ impl Exec for Command {
                     }
                     1 => {
                         let subj = subject.get(0).expect("vec of lenght 1");
-                        if let Ok(node_addr) = NodeAddr::from_str(&subj) {
+                        if let Ok(node_addr) = NodeAddr::from_str(subj) {
                             runtime
                                 .request_info(ServiceId::Peer(0, node_addr), InfoMsg::GetInfo)?;
                             ServiceId::Peer(0, node_addr)
-                        } else if let Ok(swap_id) = Uuid::from_str(&subj).map(|u| SwapId(u)) {
+                        } else if let Ok(swap_id) = Uuid::from_str(subj).map(SwapId) {
                             runtime.request_info(ServiceId::Swap(swap_id), InfoMsg::GetInfo)?;
                             ServiceId::Swap(swap_id)
                         } else {
@@ -68,8 +68,8 @@ impl Exec for Command {
                     }
                     2 => {
                         let blockchain =
-                            Blockchain::from_str(&subject.get(0).expect("vec of lenght 2"))?;
-                        let network = Network::from_str(&subject.get(1).expect("vec of lenght 2"))?;
+                            Blockchain::from_str(subject.get(0).expect("vec of lenght 2"))?;
+                        let network = Network::from_str(subject.get(1).expect("vec of lenght 2"))?;
                         runtime.request_info(
                             ServiceId::Syncer(blockchain, network),
                             InfoMsg::GetInfo,
@@ -474,7 +474,7 @@ impl Exec for Command {
 
                 if !without_validation {
                     println!(
-                        "\nWant to buy {}?\n\nCarefully validate deal!\n",
+                        "\nWant to buy {}?\n\nCarefully validate the deal!\n",
                         deal_buy_information(&deal.parameters)
                     );
                     println!("Trade counterparty: {}@{}\n", &node_id, peer_address);
@@ -635,13 +635,16 @@ impl Exec for Command {
 }
 
 fn take_deal() -> bool {
-    println!("Take it? [y/n]");
+    println!("Deal or No Deal? [y/n]");
     let mut input = [0u8; 1];
     std::io::stdin().read_exact(&mut input).unwrap_or(());
     match std::str::from_utf8(&input[..]) {
-        Ok("y") | Ok("Y") => true,
+        Ok("y") | Ok("Y") => {
+            println!("Deal!");
+            true
+        }
         Ok("n") | Ok("N") => {
-            println!("Rejecting deal");
+            println!("No Deal!");
             false
         }
         _ => take_deal(),

@@ -1,4 +1,5 @@
-[![GitHub Workflow Status](https://img.shields.io/github/workflow/status/farcaster-project/farcaster-node/Build%20binaries)](https://github.com/farcaster-project/farcaster-node/actions/workflows/binaries.yml)
+[![GitHub Workflow Status: build](https://img.shields.io/github/actions/workflow/status/farcaster-project/farcaster-node/binaries.yml?branch=main)](https://github.com/farcaster-project/farcaster-node/actions/workflows/binaries.yml)
+[![GitHub Workflow Status: test](https://img.shields.io/github/actions/workflow/status/farcaster-project/farcaster-node/test.yml?branch=main&label=tests)](https://github.com/farcaster-project/farcaster-node/actions/workflows/test.yml)
 [![Crates.io](https://img.shields.io/crates/v/farcaster_node.svg)](https://crates.io/crates/farcaster_node)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![MSRV](https://img.shields.io/badge/MSRV-1.59.0-blue)](https://blog.rust-lang.org/2022/02/24/Rust-1.59.0.html)
