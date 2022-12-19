@@ -10,8 +10,8 @@ use crate::{
     syncerd::{
         Abort, AddressAddendum, Boolean, BroadcastTransaction, BtcAddressAddendum, GetTx,
         SweepAddress, SweepAddressAddendum, SweepBitcoinAddress, SweepMoneroAddress, TaskTarget,
-        TransactionBroadcasted, WatchAddress, WatchEstimateFee, WatchHeight, WatchTransaction,
-        XmrAddressAddendum,
+        TransactionBroadcasted, TxFilter, WatchAddress, WatchEstimateFee, WatchHeight,
+        WatchTransaction, XmrAddressAddendum,
     },
     Error,
 };
@@ -200,11 +200,18 @@ impl SyncerState {
             from_height,
             address,
         };
+        let filter = if TxLabel::Cancel == tx_label {
+            // If this is the cancel transaction, only look for outgoing transactions
+            TxFilter::Outgoing
+        } else {
+            TxFilter::Incoming
+        };
         let task = Task::WatchAddress(WatchAddress {
             id,
             lifetime: self.task_lifetime(Blockchain::Bitcoin),
             addendum: AddressAddendum::Bitcoin(addendum),
             include_tx: Boolean::True,
+            filter,
         });
         self.tasks.tasks.insert(id, task.clone());
         task
@@ -272,6 +279,7 @@ impl SyncerState {
             lifetime: self.task_lifetime(Blockchain::Monero),
             addendum: AddressAddendum::Monero(addendum),
             include_tx: Boolean::False,
+            filter: TxFilter::Incoming,
         };
         let task = Task::WatchAddress(watch_addr);
         self.tasks.tasks.insert(id, task.clone());

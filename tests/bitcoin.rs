@@ -12,7 +12,7 @@ use farcaster_node::syncerd::types::{
     SweepAddressAddendum, Task, WatchAddress, WatchEstimateFee, WatchHeight, WatchTransaction,
 };
 use farcaster_node::syncerd::{runtime::Synclet, TaskId, TaskTarget};
-use farcaster_node::syncerd::{GetAddressBalance, SweepBitcoinAddress};
+use farcaster_node::syncerd::{GetAddressBalance, SweepBitcoinAddress, TxFilter};
 use farcaster_node::ServiceId;
 use microservices::ZMQ_CONTEXT;
 use ntest::timeout;
@@ -249,6 +249,7 @@ fn bitcoin_syncer_address_test() {
             lifetime: blocks + 1,
             addendum: addendum_1,
             include_tx: Boolean::True,
+            filter: TxFilter::All,
         }),
         source: SOURCE1.clone(),
     };
@@ -264,6 +265,7 @@ fn bitcoin_syncer_address_test() {
             lifetime: blocks + 2,
             addendum: addendum_2.clone(),
             include_tx: Boolean::True,
+            filter: TxFilter::All,
         }),
         source: SOURCE1.clone(),
     };
@@ -333,6 +335,7 @@ fn bitcoin_syncer_address_test() {
             lifetime: blocks + 2,
             addendum: addendum_2,
             include_tx: Boolean::True,
+            filter: TxFilter::All,
         }),
         source: SOURCE1.clone(),
     };
@@ -368,6 +371,7 @@ fn bitcoin_syncer_address_test() {
                 lifetime: blocks + 5,
                 addendum: addendum_4.clone(),
                 include_tx: Boolean::True,
+                filter: TxFilter::All,
             }),
             source: SOURCE1.clone(),
         })
@@ -411,6 +415,7 @@ fn bitcoin_syncer_address_test() {
             lifetime: blocks + 5,
             addendum: addendum_5,
             include_tx: Boolean::False,
+            filter: TxFilter::All,
         }),
         source: SOURCE1.clone(),
     })
