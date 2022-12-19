@@ -23,8 +23,9 @@ use crate::{
         BusMsg, Failure, FailureCode,
     },
     event::{Event, StateMachine},
+    service::Reporter,
     syncerd::{FeeEstimation, FeeEstimations, SweepAddress, TaskAborted},
-    CtlServer, ServiceId,
+    ServiceId,
 };
 use crate::{
     bus::{
@@ -631,9 +632,8 @@ fn attempt_transition_to_init_taker(
                 .taker_commit(event.endpoints, local_params.clone())
                 .map_err(|err| {
                     runtime.log_error(&err);
-                    runtime.report_failure_to(
+                    runtime.report_failure(
                         event.endpoints,
-                        &runtime.enquirer.clone(),
                         Failure {
                             code: FailureCode::Unknown,
                             info: err.to_string(),
@@ -702,9 +702,8 @@ fn attempt_transition_to_init_maker(
             let local_commit = runtime
                 .maker_commit(event.endpoints, swap_id, local_params.clone())
                 .map_err(|err| {
-                    runtime.report_failure_to(
+                    runtime.report_failure(
                         event.endpoints,
-                        &runtime.enquirer.clone(),
                         Failure {
                             code: FailureCode::Unknown,
                             info: err.to_string(),
@@ -950,7 +949,7 @@ fn try_bob_fee_estimated_to_bob_funded(
                 // incorrect funding, start aborting procedure
                 let msg = format!("Incorrect amount funded. Required: {}, Funded: {}. Do not fund this swap anymore, will abort and atttempt to sweep the Bitcoin to the provided address.", amount, required_funding_amount);
                 runtime.log_error(&msg);
-                runtime.report_progress_message_to(event.endpoints, ServiceId::Farcasterd, msg)?;
+                runtime.report_progress_message(event.endpoints, msg)?;
                 return handle_bob_abort_swap(event, runtime, wallet);
             } else {
                 // funding completed, amount is correct
@@ -1640,11 +1639,7 @@ fn try_alice_arbitrating_lock_final_to_alice_accordant_lock(
                                 monero::Amount::from_pico(amount.clone())
                             );
                 runtime.log_error(&msg);
-                runtime.report_progress_message_to(
-                    event.endpoints,
-                    runtime.enquirer.clone(),
-                    msg,
-                )?;
+                runtime.report_progress_message(event.endpoints, msg)?;
             } else if amount.clone() > required_funding_amount.as_pico() {
                 // Alice overfunded. To ensure that she does not publish the buy transaction
                 // if Bob gives her the BuySig, go straight to AliceCanceled
@@ -1654,11 +1649,7 @@ fn try_alice_arbitrating_lock_final_to_alice_accordant_lock(
                                 monero::Amount::from_pico(amount.clone())
                             );
                 runtime.log_error(&msg);
-                runtime.report_progress_message_to(
-                    event.endpoints,
-                    runtime.enquirer.clone(),
-                    msg,
-                )?;
+                runtime.report_progress_message(event.endpoints, msg)?;
 
                 // Alice moves on to AliceCanceled despite not broadcasting the cancel transaction.
                 return Ok(Some(SwapStateMachine::AliceCanceled(AliceCanceled {

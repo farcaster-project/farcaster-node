@@ -10,7 +10,7 @@ use super::{
     temporal_safety::TemporalSafety,
     StateReport,
 };
-use crate::service::Endpoints;
+use crate::service::{Endpoints, Reporter};
 use crate::swapd::Opts;
 use crate::syncerd::bitcoin_syncer::p2wpkh_signed_tx_fee;
 use crate::syncerd::types::{Event, TransactionConfirmations};
@@ -186,6 +186,11 @@ pub struct CheckpointSwapd {
 }
 
 impl CtlServer for Runtime {}
+impl Reporter for Runtime {
+    fn report_to(&self) -> Option<ServiceId> {
+        self.enquirer.clone()
+    }
+}
 
 impl esb::Handler<ServiceBus> for Runtime {
     type Request = BusMsg;
@@ -728,14 +733,7 @@ impl Runtime {
                 .latest_state_report
                 .generate_progress_update_or_transition(&new_state_report);
             self.latest_state_report = new_state_report;
-            if let Some(enquirer) = self.enquirer.clone() {
-                endpoints.send_to(
-                    ServiceBus::Ctl,
-                    self.identity(),
-                    enquirer,
-                    BusMsg::Ctl(CtlMsg::Progress(progress)),
-                )?;
-            }
+            self.report_progress(endpoints, progress)?;
         }
         Ok(())
     }
@@ -789,7 +787,7 @@ impl Runtime {
         );
         // Ignoring possible reporting errors here and after: do not want to
         // halt the swap just because the client disconnected
-        let _ = self.report_progress_message_to(endpoints, &self.enquirer.clone(), msg);
+        let _ = self.report_progress_message(endpoints, msg);
 
         let engine = CommitmentEngine;
         let commitment = match params {
@@ -820,10 +818,9 @@ impl Runtime {
             "Accepting swap {} as Maker from Taker through peerd {}",
             swap_id, self.peer_service
         );
-        let enquirer = self.enquirer.clone();
         // Ignoring possible reporting errors here and after: do not want to
-        // halt the swap just because the client disconnected
-        let _ = self.report_progress_message_to(endpoints, &enquirer, msg);
+        // halt the swap just because the enquirer (farcasterd) disconnected
+        let _ = self.report_progress_message(endpoints, msg);
 
         let engine = CommitmentEngine;
         let commitment = match params.clone() {
