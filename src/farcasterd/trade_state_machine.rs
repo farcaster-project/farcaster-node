@@ -759,6 +759,15 @@ fn attempt_transition_to_taker_committed(
             debug!("attempting to revoke {}", deal);
             if revoke_deal == deal {
                 info!("Revoked deal {}", deal.label());
+                event.send_ctl_service(
+                    ServiceId::Database,
+                    CtlMsg::SetDealInfo(DealInfo {
+                        deal: deal.clone(),
+                        serialized_deal: deal.to_string(),
+                        status: DealStatus::Revoked,
+                        local_trade_role: TradeRole::Maker,
+                    }),
+                )?;
                 event.complete_client_info(InfoMsg::String(
                     "Successfully revoked deal.".to_string(),
                 ))?;

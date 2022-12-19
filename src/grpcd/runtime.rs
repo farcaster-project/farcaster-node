@@ -207,6 +207,7 @@ impl From<DealStatus> for farcaster::DealStatus {
         match t {
             DealStatus::Open => farcaster::DealStatus::DealOpen,
             DealStatus::InProgress => farcaster::DealStatus::DealInProgress,
+            DealStatus::Revoked => farcaster::DealStatus::DealRevoked,
             DealStatus::Ended(outcome) => match outcome {
                 Outcome::SuccessSwap => farcaster::DealStatus::DealEndedSuccessSwap,
                 Outcome::FailureAbort => farcaster::DealStatus::DealEndedFailureAbort,

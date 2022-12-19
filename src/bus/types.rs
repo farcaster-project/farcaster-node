@@ -98,6 +98,8 @@ pub enum DealStatus {
     Open,
     #[display("In Progress")]
     InProgress,
+    #[display("Revoked")]
+    Revoked,
     #[display("Ended({0})")]
     Ended(Outcome),
 }
