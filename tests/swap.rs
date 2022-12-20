@@ -2020,14 +2020,6 @@ async fn run_punish_swap_kill_bob_before_monero_funding(
     // wait a bit for Bob to get up to speed
     tokio::time::sleep(time::Duration::from_secs(5)).await;
 
-    bitcoin_rpc
-        .generate_to_address(10, &reusable_btc_address())
-        .unwrap();
-    info!("generated 10 bitcoin blocks");
-
-    // wait a bit for Bob to get up to speed
-    tokio::time::sleep(time::Duration::from_secs(5)).await;
-
     // run until the FailurePunish is received for Bob
     retry_until_finish_transition(cli_bob_progress_args.clone(), "Failure Punish".to_string())
         .await;
