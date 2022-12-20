@@ -1340,21 +1340,11 @@ fn try_bob_cancel_final_to_swap_end(
         }))) if runtime.syncer_state.tasks.watched_addrs.get(&id) == Some(&TxLabel::Cancel)
             && !incoming =>
         {
-            let txid = bitcoin::Txid::from_slice(hash).expect("should serialize to valid txid");
-            if txid
-                != *runtime
-                    .syncer_state
-                    .tasks
-                    .txids
-                    .get(&TxLabel::Refund)
-                    .expect("should be watching Refund on CancelFinal")
-                && Some(txid)
-                    != runtime
-                        .syncer_state
-                        .tasks
-                        .txids
-                        .get(&TxLabel::Punish)
-                        .copied()
+            let txid = bitcoin::Txid::from_slice(hash)?;
+            let tasks = &runtime.syncer_state.tasks.txids;
+            debug_assert!(tasks.get(&TxLabel::Refund).is_some());
+            if Some(&txid) != tasks.get(&TxLabel::Refund)
+                && Some(&txid) != tasks.get(&TxLabel::Punish)
             {
                 let watch_punish_task = runtime.syncer_state.watch_tx_btc(txid, TxLabel::Punish);
                 event.send_sync_service(
