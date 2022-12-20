@@ -224,6 +224,8 @@ impl SyncerState {
     pub fn is_watched_addr(&self, tx_label: &TxLabel) -> bool {
         self.tasks.watched_addrs.values().any(|tx| tx == tx_label)
     }
+
+    #[allow(clippy::wrong_self_convention)]
     pub fn from_checkpoint_or_current_height(&self, blockchain: Blockchain) -> u64 {
         let checkpoint_height = match blockchain {
             Blockchain::Bitcoin => self.bitcoin_checkpoint_height,
@@ -261,8 +263,8 @@ impl SyncerState {
         );
         let viewpair = monero::ViewPair { spend, view };
         let address = monero::Address::from_viewpair(self.network.into(), &viewpair);
-        let from_height =
-            from_height.unwrap_or(self.from_checkpoint_or_current_height(Blockchain::Monero));
+        let from_height = from_height
+            .unwrap_or_else(|| self.from_checkpoint_or_current_height(Blockchain::Monero));
         let addendum = XmrAddressAddendum {
             spend_key: spend,
             view_key: view,
