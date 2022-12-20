@@ -20,7 +20,7 @@ use crate::{
     bus::p2p::{Commit, PeerMsg, Reveal},
     bus::sync::SyncMsg,
     bus::{BusMsg, Outcome, ServiceBus},
-    syncerd::{HeightChanged, TransactionRetrieved, XmrAddressAddendum},
+    syncerd::{HeightChanged, Task, TransactionRetrieved, XmrAddressAddendum},
 };
 use crate::{CtlServer, Error, LogStyle, Service, ServiceConfig, ServiceId};
 
@@ -877,6 +877,30 @@ impl Runtime {
             })),
         )?;
         Ok(())
+    }
+
+    pub fn bob_watch_cancel_output_task(&mut self) -> Option<Task> {
+        // add a watch for the cancel tx output address. This is necessary so Bob can detect punish:
+        // Since Alice can craft the punish tx at her leisure and Bob won't know its txid in advance,
+        // Bob needs to watch the address of the cancel script to detect the punish tx.
+        if let Some(cancel_tx) = self.txs.get(&TxLabel::Cancel) {
+            let cancel_script = &cancel_tx.output[0].script_pubkey;
+            let cancel_address =
+                bitcoin::Address::from_script(cancel_script, self.syncer_state.network.into())
+                    .expect("cancel script is valid");
+            self.log_debug(format!(
+                "Watching cancel address {}",
+                cancel_address.clone()
+            ));
+            let watch_addr_task = self
+                .syncer_state
+                .watch_addr_btc(cancel_address.clone(), TxLabel::Cancel);
+            Some(watch_addr_task)
+        } else {
+            let msg = "Cancel tx not found - Bob already broadcasted".to_string();
+            self.log_debug(&msg);
+            None
+        }
     }
 
     pub fn log_monero_maturity(&self, address: monero::Address) {

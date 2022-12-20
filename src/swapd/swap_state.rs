@@ -2194,30 +2194,6 @@ fn attempt_transition_to_alice_reveal(
     }
 }
 
-fn bob_watch_cancel_output_task(runtime: &mut Runtime) -> Option<Task> {
-    // add a watch for the cancel tx output address. This is necessary so Bob can detect punish:
-    // Since Alice can craft the punish tx at her leisure and Bob won't know its txid in advance,
-    // Bob needs to watch the address of the cancel script to detect the punish tx.
-    if let Some(cancel_tx) = runtime.txs.get(&TxLabel::Cancel) {
-        let cancel_script = &cancel_tx.output[0].script_pubkey;
-        let cancel_address =
-            bitcoin::Address::from_script(cancel_script, runtime.syncer_state.network.into())
-                .expect("cancel script is valid");
-        runtime.log_debug(format!(
-            "Watching cancel address {}",
-            cancel_address.clone()
-        ));
-        let watch_addr_task = runtime
-            .syncer_state
-            .watch_addr_btc(cancel_address.clone(), TxLabel::Cancel);
-        Some(watch_addr_task)
-    } else {
-        let msg = "Cancel tx not found - Bob already broadcasted".to_string();
-        runtime.log_debug(&msg);
-        None
-    }
-}
-
 /// Checks whether Bob can cancel the swap and does so if possible.
 /// Throws a warning if Bob tries to abort since swap already locked in.
 fn handle_bob_swap_interrupt_after_lock(
@@ -2240,8 +2216,9 @@ fn handle_bob_swap_interrupt_after_lock(
             && runtime.temporal_safety.valid_cancel(confirmations)
             && runtime.txs.contains_key(&TxLabel::Cancel) =>
         {
-            let watch_addr_task =
-                bob_watch_cancel_output_task(runtime).expect("just checked TxLabel::Cancel exists");
+            let watch_addr_task = runtime
+                .bob_watch_cancel_output_task()
+                .expect("just checked TxLabel::Cancel exists");
             event.send_sync_service(
                 runtime.syncer_state.bitcoin_syncer(),
                 SyncMsg::Task(watch_addr_task),
@@ -2259,7 +2236,7 @@ fn handle_bob_swap_interrupt_after_lock(
                 ..
             },
         ))) if runtime.syncer_state.tasks.watched_txs.get(&id) == Some(&TxLabel::Cancel) => {
-            if let Some(watch_addr_task) = bob_watch_cancel_output_task(runtime) {
+            if let Some(watch_addr_task) = runtime.bob_watch_cancel_output_task() {
                 event.send_sync_service(
                     runtime.syncer_state.bitcoin_syncer(),
                     SyncMsg::Task(watch_addr_task),
