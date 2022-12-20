@@ -888,17 +888,13 @@ impl Runtime {
             let cancel_address =
                 bitcoin::Address::from_script(cancel_script, self.syncer_state.network.into())
                     .expect("cancel script is valid");
-            self.log_debug(format!(
-                "Watching cancel address {}",
-                cancel_address.clone()
-            ));
+            self.log_debug(format!("Watching cancel address {}", cancel_address));
             let watch_addr_task = self
                 .syncer_state
-                .watch_addr_btc(cancel_address.clone(), TxLabel::Cancel);
+                .watch_addr_btc(cancel_address, TxLabel::Cancel);
             Some(watch_addr_task)
         } else {
-            let msg = "Cancel tx not found - Bob already broadcasted".to_string();
-            self.log_debug(&msg);
+            self.log_debug("Cancel tx not found - Bob already broadcasted".to_string());
             None
         }
     }

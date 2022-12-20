@@ -1350,7 +1350,7 @@ fn try_bob_cancel_final_to_swap_end(
         }))) if runtime.syncer_state.tasks.watched_addrs.get(&id) == Some(&TxLabel::Cancel)
             && !incoming =>
         {
-            let txid = bitcoin::Txid::from_slice(&hash).expect("should serialize to valid txid");
+            let txid = bitcoin::Txid::from_slice(hash).expect("should serialize to valid txid");
             if txid
                 != *runtime
                     .syncer_state

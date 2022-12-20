@@ -231,7 +231,7 @@ impl SyncerState {
             Blockchain::Bitcoin => self.bitcoin_checkpoint_height,
             Blockchain::Monero => self.monero_checkpoint_height,
         };
-        checkpoint_height.unwrap_or(self.height(blockchain))
+        checkpoint_height.unwrap_or_else(|| self.height(blockchain))
     }
 
     /// Watches an xmr address. If no `from_height` is provided, it will be set to current_height - 20.
