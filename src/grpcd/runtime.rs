@@ -204,7 +204,7 @@ impl From<Deal> for DealInfo {
 
 impl From<StateReport> for farcaster::State {
     fn from(state_report: StateReport) -> farcaster::State {
-        let state = farcaster::State {
+        farcaster::State {
             state: state_report.state,
             arb_block_height: state_report.arb_block_height,
             acc_block_height: state_report.acc_block_height,
@@ -216,27 +216,26 @@ impl From<StateReport> for farcaster::State {
             overfunded: state_report.overfunded,
             arb_lock_confirmations: state_report
                 .arb_lock_confirmations
-                .map(|c| farcaster::state::ArbLockConfirmations::ArbConfs(c)),
+                .map(farcaster::state::ArbLockConfirmations::ArbConfs),
             acc_lock_confirmations: state_report
                 .acc_lock_confirmations
-                .map(|c| farcaster::state::AccLockConfirmations::AccConfs(c)),
+                .map(farcaster::state::AccLockConfirmations::AccConfs),
             cancel_confirmations: state_report
                 .cancel_confirmations
-                .map(|c| farcaster::state::CancelConfirmations::CancelConfs(c)),
+                .map(farcaster::state::CancelConfirmations::CancelConfs),
             blocks_until_cancel_possible: state_report
                 .blocks_until_cancel_possible
-                .map(|b| farcaster::state::BlocksUntilCancelPossible::CancelBlocks(b)),
+                .map(farcaster::state::BlocksUntilCancelPossible::CancelBlocks),
             blocks_until_punish_possible: state_report
                 .blocks_until_punish_possible
-                .map(|b| farcaster::state::BlocksUntilPunishPossible::PunishBlocks(b)),
+                .map(farcaster::state::BlocksUntilPunishPossible::PunishBlocks),
             blocks_until_safe_buy: state_report
                 .blocks_until_safe_buy
-                .map(|b| farcaster::state::BlocksUntilSafeBuy::BuyBlocks(b)),
+                .map(farcaster::state::BlocksUntilSafeBuy::BuyBlocks),
             blocks_until_safe_monero_buy_sweep: state_report
                 .blocks_until_safe_monero_buy_sweep
-                .map(|b| farcaster::state::BlocksUntilSafeMoneroBuySweep::BuyMoneroBlocks(b)),
-        };
-        state
+                .map(farcaster::state::BlocksUntilSafeMoneroBuySweep::BuyMoneroBlocks),
+        }
     }
 }
 
@@ -371,7 +370,7 @@ impl Farcaster for FarcasterService {
             swap_id: string_swap_id,
         } = request.into_inner();
         let swap_id = SwapId::from_str(&string_swap_id)
-            .map_err(|_| Status::invalid_argument(format!("Invalid or malformed swap id")))?;
+            .map_err(|_| Status::invalid_argument("Invalid or malformed swap id".to_string()))?;
         let oneshot_rx = self
             .process_request(BusMsg::Bridge(BridgeMsg::Info {
                 request: InfoMsg::GetInfo,
@@ -393,16 +392,18 @@ impl Farcaster for FarcasterService {
             }))) => {
                 let reply = SwapInfoResponse {
                     id,
-                    connection: connection.map(|p| p.to_string()).unwrap_or("".to_string()),
+                    connection: connection
+                        .map(|p| p.to_string())
+                        .unwrap_or_else(|| "".to_string()),
                     connected,
                     uptime: uptime.as_secs(),
-                    since: since,
+                    since,
                     deal: Some(deal.into()),
                     trade_role: farcaster::TradeRole::from(local_trade_role).into(),
                     swap_role: farcaster::SwapRole::from(local_swap_role).into(),
                     connected_counterparty_node_id: connected_counterparty_node_id
                         .map(|n| n.to_string())
-                        .unwrap_or("".to_string()),
+                        .unwrap_or_else(|| "".to_string()),
                     state: state.to_string(),
                 };
                 Ok(GrpcResponse::new(reply))
@@ -422,11 +423,11 @@ impl Farcaster for FarcasterService {
             network_selector: grpc_network_selector,
         } = request.into_inner();
         let deal_selector = farcaster::DealSelector::from_i32(grpc_deal_selector)
-            .ok_or(Status::invalid_argument("offer_selector"))?
+            .ok_or_else(|| Status::invalid_argument("offer_selector"))?
             .into();
         let network_selector: NetworkSelector =
             farcaster::NetworkSelector::from_i32(grpc_network_selector)
-                .ok_or(Status::invalid_argument("network_selector"))?;
+                .ok_or_else(|| Status::invalid_argument("network_selector"))?;
         let oneshot_rx = self
             .process_request(BusMsg::Bridge(BridgeMsg::Info {
                 request: InfoMsg::ListDeals(deal_selector),
@@ -492,12 +493,11 @@ impl Farcaster for FarcasterService {
         } = request.into_inner();
 
         let checkpoint_selector = farcaster::CheckpointSelector::from_i32(grpc_checkpoint_selector)
-            .ok_or(Status::invalid_argument("checkpoint_selector"))?
-            .into();
+            .ok_or_else(|| Status::invalid_argument("checkpoint_selector"))?;
 
         let network_selector: NetworkSelector =
             farcaster::NetworkSelector::from_i32(grpc_network_selector)
-                .ok_or(Status::invalid_argument("network_selector"))?;
+                .ok_or_else(|| Status::invalid_argument("network_selector"))?;
 
         let oneshot_rx = match checkpoint_selector {
             farcaster::CheckpointSelector::AllCheckpoints => {
@@ -570,7 +570,7 @@ impl Farcaster for FarcasterService {
         let swap_id = match SwapId::from_str(&string_swap_id) {
             Ok(swap_id) => swap_id,
             Err(_) => {
-                return Err(Status::invalid_argument(format!("Invalid swap id")));
+                return Err(Status::invalid_argument("Invalid swap id".to_string()));
             }
         };
         let oneshot_rx = self
@@ -613,12 +613,12 @@ impl Farcaster for FarcasterService {
         } = request.into_inner();
 
         let blockchain: Blockchain = farcaster::Blockchain::from_i32(grpc_blockchain)
-            .ok_or(Status::invalid_argument("arbitrating blockchain"))?
+            .ok_or_else(|| Status::invalid_argument("arbitrating blockchain"))?
             .into();
 
         let network_selector: NetworkSelector =
             farcaster::NetworkSelector::from_i32(grpc_network_selector)
-                .ok_or(Status::invalid_argument("network_selector"))?;
+                .ok_or_else(|| Status::invalid_argument("network_selector"))?;
 
         let oneshot_rx = self
             .process_request(BusMsg::Bridge(BridgeMsg::Info {
@@ -649,7 +649,7 @@ impl Farcaster for FarcasterService {
                 Ok(GrpcResponse::new(reply))
             }
             Ok(BusMsg::Ctl(CtlMsg::Failure(Failure { info, .. }))) => Err(Status::internal(info)),
-            _ => Err(Status::internal(format!("Received invalid response"))),
+            _ => Err(Status::internal("Received invalid response".to_string())),
         }
     }
 
@@ -676,14 +676,14 @@ impl Farcaster for FarcasterService {
         } = request.into_inner();
 
         let network: Network = farcaster::Network::from_i32(grpc_network)
-            .ok_or(Status::invalid_argument("network"))?
+            .ok_or_else(|| Status::invalid_argument("network"))?
             .into();
         let arbitrating_blockchain: Blockchain =
             farcaster::Blockchain::from_i32(grpc_arb_blockchain)
-                .ok_or(Status::invalid_argument("arbitrating blockchain"))?
+                .ok_or_else(|| Status::invalid_argument("arbitrating blockchain"))?
                 .into();
         let accordant_blockchain: Blockchain = farcaster::Blockchain::from_i32(grpc_acc_blockchain)
-            .ok_or(Status::invalid_argument("accordant blockchain"))?
+            .ok_or_else(|| Status::invalid_argument("accordant blockchain"))?
             .into();
         let arbitrating_amount = bitcoin::Amount::from_sat(int_arb_amount);
         let accordant_amount = monero::Amount::from_pico(int_acc_amount);
@@ -694,7 +694,7 @@ impl Farcaster for FarcasterService {
         let cancel_timelock = CSVTimelock::new(int_cancel_timelock);
         let punish_timelock = CSVTimelock::new(int_punish_timelock);
         let maker_role: SwapRole = farcaster::SwapRole::from_i32(grpc_swap_role)
-            .ok_or(Status::invalid_argument("maker role"))?
+            .ok_or_else(|| Status::invalid_argument("maker role"))?
             .into();
         let public_ip_addr = IpAddr::from_str(&str_public_ip_addr)
             .map_err(|_| Status::invalid_argument("public ip address"))?;
@@ -853,9 +853,7 @@ impl Farcaster for FarcasterService {
                         .drain(..)
                         .map(|p| match p {
                             ProgressEvent::Message(m) => farcaster::Progress {
-                                progress: Some(farcaster::progress::Progress::Message(
-                                    m.to_string(),
-                                )),
+                                progress: Some(farcaster::progress::Progress::Message(m)),
                             },
                             ProgressEvent::StateUpdate(su) => farcaster::Progress {
                                 progress: Some(farcaster::progress::Progress::StateUpdate(
@@ -871,13 +869,11 @@ impl Farcaster for FarcasterService {
                                 )),
                             },
                             ProgressEvent::Failure(Failure { info, .. }) => farcaster::Progress {
-                                progress: Some(farcaster::progress::Progress::Failure(
-                                    info.to_string(),
-                                )),
+                                progress: Some(farcaster::progress::Progress::Failure(info)),
                             },
                             ProgressEvent::Success(OptionDetails(s)) => farcaster::Progress {
                                 progress: Some(farcaster::progress::Progress::Success(
-                                    s.unwrap_or("".to_string()),
+                                    s.unwrap_or_default(),
                                 )),
                             },
                         })
@@ -917,7 +913,7 @@ impl Farcaster for FarcasterService {
             Ok(BusMsg::Ctl(CtlMsg::Failure(Failure { info, code: _ }))) => {
                 Err(Status::internal(info))
             }
-            _ => Err(Status::internal(format!("Received invalid response"))),
+            _ => Err(Status::internal("Received invalid response".to_string())),
         }
     }
 
@@ -933,12 +929,12 @@ impl Farcaster for FarcasterService {
         } = request.into_inner();
 
         let blockchain: Blockchain = farcaster::Blockchain::from_i32(int_blockchain)
-            .ok_or(Status::invalid_argument("blockchain"))?
+            .ok_or_else(|| Status::invalid_argument("blockchain"))?
             .into();
 
         let network_selector: NetworkSelector =
             farcaster::NetworkSelector::from_i32(grpc_network_selector)
-                .ok_or(Status::invalid_argument("network_selector"))?;
+                .ok_or_else(|| Status::invalid_argument("network_selector"))?;
 
         let oneshot_rx = self
             .process_request(BusMsg::Bridge(BridgeMsg::Info {
@@ -986,7 +982,7 @@ impl Farcaster for FarcasterService {
         } = request.into_inner();
 
         let selector: HealthCheckSelector = farcaster::NetworkSelector::from_i32(grpc_selector)
-            .ok_or(Status::invalid_argument("selector"))?
+            .ok_or_else(|| Status::invalid_argument("selector"))?
             .into();
 
         match selector {
@@ -1189,7 +1185,7 @@ impl Farcaster for FarcasterService {
             let oneshot_rx = self
                 .process_request(BusMsg::Bridge(BridgeMsg::Info {
                     service_id: ServiceId::Database,
-                    request: InfoMsg::GetAddressSecretKey(Address::Monero(source_address.clone())),
+                    request: InfoMsg::GetAddressSecretKey(Address::Monero(source_address)),
                 }))
                 .await?;
             match oneshot_rx.await {
@@ -1222,7 +1218,7 @@ impl Farcaster for FarcasterService {
                 res => process_error_response(res),
             }
         } else {
-            Err(Status::invalid_argument(format!("address malformed")))
+            Err(Status::invalid_argument("address malformed".to_string()))
         }
     }
 
@@ -1294,8 +1290,8 @@ impl Farcaster for FarcasterService {
             .process_request(BusMsg::Bridge(BridgeMsg::Ctl {
                 request: CtlMsg::TakeDeal(PubDeal {
                     deal,
-                    bitcoin_address: bitcoin_address,
-                    monero_address: monero_address,
+                    bitcoin_address,
+                    monero_address,
                 }),
                 service_id: ServiceId::Farcasterd,
             }))
@@ -1612,7 +1608,7 @@ impl Runtime {
                 tx_request.connect("inproc://grpcdbridge")?;
 
                 let mut server = GrpcServer {
-                    grpc_port: self.grpc_port.clone(),
+                    grpc_port: self.grpc_port,
                     grpc_ip: self.grpc_ip.clone(),
                 };
                 server.run(rx_response, tx_request)?;

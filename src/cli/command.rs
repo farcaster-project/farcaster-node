@@ -55,11 +55,11 @@ impl Exec for Command {
                     }
                     1 => {
                         let subj = subject.get(0).expect("vec of lenght 1");
-                        if let Ok(node_addr) = NodeAddr::from_str(&subj) {
+                        if let Ok(node_addr) = NodeAddr::from_str(subj) {
                             runtime
                                 .request_info(ServiceId::Peer(0, node_addr), InfoMsg::GetInfo)?;
                             ServiceId::Peer(0, node_addr)
-                        } else if let Ok(swap_id) = Uuid::from_str(&subj).map(|u| SwapId(u)) {
+                        } else if let Ok(swap_id) = Uuid::from_str(subj).map(SwapId) {
                             runtime.request_info(ServiceId::Swap(swap_id), InfoMsg::GetInfo)?;
                             ServiceId::Swap(swap_id)
                         } else {
@@ -68,8 +68,8 @@ impl Exec for Command {
                     }
                     2 => {
                         let blockchain =
-                            Blockchain::from_str(&subject.get(0).expect("vec of lenght 2"))?;
-                        let network = Network::from_str(&subject.get(1).expect("vec of lenght 2"))?;
+                            Blockchain::from_str(subject.get(0).expect("vec of lenght 2"))?;
+                        let network = Network::from_str(subject.get(1).expect("vec of lenght 2"))?;
                         runtime.request_info(
                             ServiceId::Syncer(blockchain, network),
                             InfoMsg::GetInfo,

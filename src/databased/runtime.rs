@@ -90,8 +90,8 @@ impl Runtime {
                 let info = CheckpointEntry {
                     swap_id,
                     deal: state.deal.clone(),
-                    trade_role: state.local_trade_role.clone(),
-                    expected_counterparty_node_id: state.connected_counterparty_node_id.clone(),
+                    trade_role: state.local_trade_role,
+                    expected_counterparty_node_id: state.connected_counterparty_node_id,
                 };
                 debug!("{} | setting checkpoint info entry", swap_id.swap_id());
                 self.database.set_checkpoint_info(&swap_id, &info)?;
@@ -188,11 +188,10 @@ impl Runtime {
                             None
                         }
                     })
-                    .map(|deal| {
+                    .try_for_each(|deal| {
                         self.database
                             .set_deal_status(&deal, &DealStatus::Ended(Outcome::FailureAbort))
-                    })
-                    .collect::<Result<_, _>>()?;
+                    })?;
             }
 
             _ => {
@@ -441,7 +440,7 @@ impl Database {
                             deal,
                             status: filtered_status,
                         })
-                        .map_err(|err| Error::from(err)),
+                        .map_err(Error::from),
                 )
             })
             .collect()
@@ -569,7 +568,7 @@ impl Database {
         if tx.get(db, &key).is_ok() {
             tx.del(db, &key, None)?;
         }
-        tx.put(db, &Vec::from(key.clone()), &val, lmdb::WriteFlags::empty())?;
+        tx.put(db, &key.clone(), &val, lmdb::WriteFlags::empty())?;
         tx.commit()?;
         Ok(())
     }
