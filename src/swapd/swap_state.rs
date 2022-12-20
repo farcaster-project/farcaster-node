@@ -1070,7 +1070,9 @@ fn try_bob_funded_to_bob_refund_procedure_signature(
                 });
             runtime.log_debug("Checkpointing bob refund signature swapd state.");
             // manually add lock_tx to pending broadcasts to ensure it's checkpointed
-            runtime.syncer_state.broadcast(lock_tx.clone());
+            runtime
+                .syncer_state
+                .broadcast(lock_tx.clone(), TxLabel::Lock);
             runtime.checkpoint_state(event.endpoints, None, new_ssm.clone())?;
             runtime.broadcast(lock_tx, TxLabel::Lock, event.endpoints)?;
             Ok(Some(new_ssm))
@@ -1197,12 +1199,6 @@ fn try_bob_accordant_lock_final_to_bob_buy_final(
             && runtime.syncer_state.tasks.watched_txs.get(&id) == Some(&TxLabel::Buy)
             && runtime.syncer_state.tasks.txids.contains_key(&TxLabel::Buy) =>
         {
-            runtime.syncer_state.handle_tx_confs(
-                &id,
-                &Some(confirmations),
-                runtime.swap_id(),
-                runtime.temporal_safety.btc_finality_thr,
-            );
             runtime.log_warn(
                 "Peerd might crash, just ignore it, counterparty closed \
                     connection, because they are done with the swap, but you don't need it anymore either!"
@@ -1293,12 +1289,6 @@ fn try_bob_cancel_final_to_swap_end(
         {
             match runtime.syncer_state.tasks.watched_txs.get(&id) {
                 Some(&TxLabel::Refund) => {
-                    runtime.syncer_state.handle_tx_confs(
-                        &id,
-                        &Some(confirmations),
-                        runtime.swap_id(),
-                        runtime.temporal_safety.btc_finality_thr,
-                    );
                     let abort_all = Task::Abort(Abort {
                         task_target: TaskTarget::AllTasks,
                         respond: Boolean::False,
@@ -1397,12 +1387,6 @@ fn try_bob_canceled_to_bob_cancel_final(
             && runtime.syncer_state.tasks.watched_txs.get(&id) == Some(&TxLabel::Cancel)
             && runtime.txs.contains_key(&TxLabel::Refund) =>
         {
-            runtime.syncer_state.handle_tx_confs(
-                &id,
-                &Some(confirmations),
-                runtime.swap_id(),
-                runtime.temporal_safety.btc_finality_thr,
-            );
             runtime.log_trace("Bob publishes refund tx");
             if !runtime.temporal_safety.safe_refund(confirmations) {
                 runtime.log_warn("Publishing refund tx, but we might already have been punished");
@@ -1796,12 +1780,6 @@ fn try_alice_buy_procedure_signature_to_swap_end(
             .final_tx(confirmations, Blockchain::Bitcoin)
             && runtime.syncer_state.tasks.watched_txs.get(&id) == Some(&TxLabel::Buy) =>
         {
-            runtime.syncer_state.handle_tx_confs(
-                &id,
-                &Some(confirmations),
-                runtime.swap_id(),
-                runtime.temporal_safety.btc_finality_thr,
-            );
             let abort_all = Task::Abort(Abort {
                 task_target: TaskTarget::AllTasks,
                 respond: Boolean::False,
