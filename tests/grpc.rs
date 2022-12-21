@@ -90,21 +90,26 @@ async fn grpc_server_functional_test() {
     };
     let request = tonic::Request::new(make_request.clone());
     let response = farcaster_client_1.make(request).await;
-    let MakeResponse { id, deal } = response.unwrap().into_inner();
+    let MakeResponse {
+        id,
+        deal,
+        deserialized_deal: _,
+    } = response.unwrap().into_inner();
     assert_eq!(id, 3);
 
     // Test revoke deal
-    let request = tonic::Request::new(RevokeDealRequest {
-        id: 4,
-        deal: deal.unwrap().encoded_deal,
-    });
+    let request = tonic::Request::new(RevokeDealRequest { id: 4, deal });
     let response = farcaster_client_1.revoke_deal(request).await;
     assert_eq!(response.unwrap().into_inner().id, 4);
 
     // Test make another deal
     let request = tonic::Request::new(make_request.clone());
     let response = farcaster_client_1.make(request).await;
-    let MakeResponse { id, deal } = response.unwrap().into_inner();
+    let MakeResponse {
+        id,
+        deal,
+        deserialized_deal: _,
+    } = response.unwrap().into_inner();
     assert_eq!(id, 3);
 
     let (xmr_address, _xmr_address_wallet_name) =
@@ -114,7 +119,7 @@ async fn grpc_server_functional_test() {
     // Test Deal info
     let deal_info_request = tonic::Request::new(DealInfoRequest {
         id: 21,
-        deal: deal.clone().unwrap().encoded_deal,
+        deal: deal.clone(),
     });
     let response = farcaster_client_2.deal_info(deal_info_request).await;
     assert_eq!(response.unwrap().into_inner().id, 21);
@@ -131,7 +136,7 @@ async fn grpc_server_functional_test() {
     // Test take deal
     let take_request = TakeRequest {
         id: 5,
-        deal: deal.unwrap().encoded_deal,
+        deal: deal,
         bitcoin_address: btc_address.to_string(),
         monero_address: xmr_address.to_string(),
     };
@@ -187,7 +192,7 @@ async fn grpc_server_functional_test() {
     let btc_address = bitcoin_rpc.get_new_address(None, None).unwrap();
     let take_request = TakeRequest {
         id: 5,
-        deal: deal.unwrap().encoded_deal,
+        deal: deal,
         bitcoin_address: btc_address.to_string(),
         monero_address: xmr_address.to_string(),
     };

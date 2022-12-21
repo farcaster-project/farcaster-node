@@ -8,9 +8,9 @@ use crate::bus::ctl::{
     BitcoinFundingInfo, CtlMsg, FundingInfo, InitMakerSwap, InitTakerSwap, MoneroFundingInfo,
     ProtoDeal, PubDeal, SwapKeys, WrappedKeyManager,
 };
-use crate::bus::info::{DealInfo, InfoMsg, MadeDeal, TookDeal};
+use crate::bus::info::{InfoMsg, MadeDeal, TookDeal, ViewableDeal};
 use crate::bus::p2p::{Commit, PeerMsg};
-use crate::bus::{CheckpointEntry, DealStatus, DealStatusPair, Failure, FailureCode};
+use crate::bus::{CheckpointEntry, DealInfo, DealStatus, Failure, FailureCode};
 use crate::farcasterd::runtime::{launch_swapd, syncer_up, Runtime};
 use crate::LogStyle;
 use crate::{
@@ -264,7 +264,7 @@ impl StateMachine<Runtime, Error> for TradeStateMachine {
                 .map(|d| d.id().to_string())
                 .unwrap_or_else(|| {
                     self.consumed_deal()
-                        .map(|d| d.id().to_string())
+                        .map(|(d, _)| d.id().to_string())
                         .unwrap_or_else(|| "…".to_string())
                 })
         });
@@ -284,14 +284,28 @@ impl TradeStateMachine {
         }
     }
 
-    pub fn consumed_deal(&self) -> Option<Deal> {
+    pub fn consumed_deal(&self) -> Option<(Deal, TradeRole)> {
         match self {
-            TradeStateMachine::TakeDeal(TakeDeal { deal, .. }) => Some(deal.clone()),
-            TradeStateMachine::TakerCommit(TakerCommit { deal, .. }) => Some(deal.clone()),
-            TradeStateMachine::TakerConnect(TakerConnect { deal, .. }) => Some(deal.clone()),
-            TradeStateMachine::SwapdLaunched(SwapdLaunched { deal, .. }) => Some(deal.clone()),
-            TradeStateMachine::RestoringSwapd(RestoringSwapd { deal, .. }) => Some(deal.clone()),
-            TradeStateMachine::SwapdRunning(SwapdRunning { deal, .. }) => Some(deal.clone()),
+            TradeStateMachine::TakeDeal(TakeDeal { deal, .. }) => {
+                Some((deal.clone(), TradeRole::Taker))
+            }
+            TradeStateMachine::TakerCommit(TakerCommit { deal, .. }) => {
+                Some((deal.clone(), TradeRole::Taker))
+            }
+            TradeStateMachine::TakerConnect(TakerConnect { deal, .. }) => {
+                Some((deal.clone(), TradeRole::Taker))
+            }
+            TradeStateMachine::SwapdLaunched(SwapdLaunched {
+                deal,
+                consumed_deal_role,
+                ..
+            }) => Some((deal.clone(), consumed_deal_role.clone().into())),
+            TradeStateMachine::RestoringSwapd(RestoringSwapd {
+                deal, trade_role, ..
+            }) => Some((deal.clone(), *trade_role)),
+            TradeStateMachine::SwapdRunning(SwapdRunning {
+                deal, trade_role, ..
+            }) => Some((deal.clone(), *trade_role)),
             _ => None,
         }
     }
@@ -464,14 +478,16 @@ fn attempt_transition_to_make_deal(
                     );
                     event.send_ctl_service(
                         ServiceId::Database,
-                        CtlMsg::SetDealStatus(DealStatusPair {
+                        CtlMsg::SetDealInfo(DealInfo {
                             deal: deal.clone(),
+                            serialized_deal: deal.to_string(),
                             status: DealStatus::Open,
+                            local_trade_role: TradeRole::Maker,
                         }),
                     )?;
                     event.complete_client_info(InfoMsg::MadeDeal(MadeDeal {
                         message: msg,
-                        deal_info: DealInfo {
+                        viewable_deal: ViewableDeal {
                             deal: deal.to_string(),
                             details: deal.clone(),
                         },
@@ -716,9 +732,11 @@ fn attempt_transition_to_taker_committed(
                 )?;
                 event.complete_ctl_service(
                     ServiceId::Database,
-                    CtlMsg::SetDealStatus(DealStatusPair {
+                    CtlMsg::SetDealInfo(DealInfo {
                         deal: deal.clone(),
+                        serialized_deal: deal.to_string(),
                         status: DealStatus::InProgress,
+                        local_trade_role: TradeRole::Maker,
                     }),
                 )?;
                 Ok(Some(TradeStateMachine::TakerCommit(TakerCommit {
@@ -741,6 +759,15 @@ fn attempt_transition_to_taker_committed(
             debug!("attempting to revoke {}", deal);
             if revoke_deal == deal {
                 info!("Revoked deal {}", deal.label());
+                event.send_ctl_service(
+                    ServiceId::Database,
+                    CtlMsg::SetDealInfo(DealInfo {
+                        deal: deal.clone(),
+                        serialized_deal: deal.to_string(),
+                        status: DealStatus::Revoked,
+                        local_trade_role: TradeRole::Maker,
+                    }),
+                )?;
                 event.complete_client_info(InfoMsg::String(
                     "Successfully revoked deal.".to_string(),
                 ))?;
@@ -906,7 +933,7 @@ fn attempt_transition_to_take_deal(
 }
 
 fn attempt_transition_from_take_deal_to_swapd_launched(
-    event: Event,
+    mut event: Event,
     runtime: &mut Runtime,
     take_deal: TakeDeal,
 ) -> Result<Option<TradeStateMachine>, Error> {
@@ -916,19 +943,28 @@ fn attempt_transition_from_take_deal_to_swapd_launched(
         acc_addr,
         peerd,
     } = take_deal;
-    match event.request {
+    match &event.request {
         BusMsg::Ctl(CtlMsg::SwapKeys(swap_keys)) => {
             let swap_id: SwapId = deal.id().into(); // The deal id is now used to track a swap
             info!("{} | Creating new swap.", swap_id.swap_id());
             let tsm = transition_to_swapd_launched_tsm(
                 runtime,
                 ConsumedDealRole::Taker,
-                swap_keys,
+                swap_keys.clone(),
                 peerd,
-                deal,
+                deal.clone(),
                 arb_addr,
                 acc_addr,
                 swap_id,
+            )?;
+            event.send_ctl_service(
+                ServiceId::Database,
+                CtlMsg::SetDealInfo(DealInfo {
+                    serialized_deal: deal.to_string(),
+                    deal,
+                    status: DealStatus::InProgress,
+                    local_trade_role: TradeRole::Taker,
+                }),
             )?;
             Ok(Some(tsm))
         }
@@ -1676,9 +1712,11 @@ fn attempt_transition_to_end(
         {
             event.send_ctl_service(
                 ServiceId::Database,
-                CtlMsg::SetDealStatus(DealStatusPair {
+                CtlMsg::SetDealInfo(DealInfo {
+                    serialized_deal: deal.to_string(),
                     deal,
                     status: DealStatus::Ended(outcome.clone()),
+                    local_trade_role: trade_role,
                 }),
             )?;
             runtime.clean_up_after_swap(&swap_id, event.endpoints)?;
