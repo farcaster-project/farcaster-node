@@ -449,7 +449,9 @@ impl Database {
                     DealStatus::InProgress if selector == DealStatusSelector::InProgress => {
                         Some(status)
                     }
+                    // match all ended and revoked deals on Ended selector
                     DealStatus::Ended(_) if selector == DealStatusSelector::Ended => Some(status),
+                    DealStatus::Revoked if selector == DealStatusSelector::Ended => Some(status),
                     _ if selector == DealStatusSelector::All => Some(status),
                     _ => None,
                 }?;
