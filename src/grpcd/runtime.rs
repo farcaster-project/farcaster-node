@@ -1352,10 +1352,9 @@ fn response_loop(
                     if let Some(sender) = pending_requests.remove(&id) {
                         if let Err(err) = sender.send(request) {
                             error!(
-                                "Error encountered while sending response to Grpc server: {}",
+                                "Error {} encountered while sending response to Grpc server handle: The client probably disconnected.",
                                 err
                             );
-                            break;
                         }
                     } else {
                         error!("id {} not found in pending grpc requests", id);
@@ -1371,7 +1370,6 @@ fn response_loop(
                 }
             };
         }
-        Ok(())
     })
 }
 
