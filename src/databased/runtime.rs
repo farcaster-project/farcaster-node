@@ -178,9 +178,11 @@ impl Runtime {
                     .drain(..)
                     .map(|info| info.deal)
                     .collect();
+                let mut in_progress = self.database.get_deals(DealStatusSelector::InProgress)?;
                 self.database
-                    .get_deals(DealStatusSelector::InProgress)?
+                    .get_deals(DealStatusSelector::Open)?
                     .drain(..)
+                    .chain(in_progress.drain(..))
                     .filter_map(|o| {
                         if !checkpointed_pub_deals.contains(&o.deal) {
                             Some(o.deal)
