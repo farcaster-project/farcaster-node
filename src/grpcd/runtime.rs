@@ -60,6 +60,7 @@ use tonic::{transport::Server, Request as GrpcRequest, Response as GrpcResponse,
 
 use self::farcaster::*;
 
+#[allow(clippy::all)]
 pub mod farcaster {
     tonic::include_proto!("farcaster");
 }
@@ -1506,8 +1507,10 @@ impl GrpcServer {
     }
 }
 
+type IdBusMsgPair = (u64, BusMsg);
+
 pub fn run(config: ServiceConfig, grpc_port: u16, grpc_ip: String) -> Result<(), Error> {
-    let (tx_response, rx_response): (Sender<(u64, BusMsg)>, Receiver<(u64, BusMsg)>) =
+    let (tx_response, rx_response): (Sender<IdBusMsgPair>, Receiver<IdBusMsgPair>) =
         std::sync::mpsc::channel();
 
     let tx_request = ZMQ_CONTEXT.socket(zmq::PUSH)?;
@@ -1639,7 +1642,7 @@ impl Runtime {
             }) => endpoints.send_to(ServiceBus::Info, source, service_id, BusMsg::Info(request))?,
             BusMsg::Bridge(BridgeMsg::GrpcServerTerminated) => {
                 // Re-create the grpc server runtime.
-                let (tx_response, rx_response): (Sender<(u64, BusMsg)>, Receiver<(u64, BusMsg)>) =
+                let (tx_response, rx_response): (Sender<IdBusMsgPair>, Receiver<IdBusMsgPair>) =
                     std::sync::mpsc::channel();
 
                 let tx_request = ZMQ_CONTEXT.socket(zmq::PUSH)?;

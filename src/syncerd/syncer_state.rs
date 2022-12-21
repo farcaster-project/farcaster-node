@@ -16,6 +16,10 @@ use crate::service::LogStyle;
 use crate::syncerd::*;
 use hex;
 
+pub type BalanceServiceIdPair = (GetAddressBalance, ServiceId);
+pub type TransactionServiceIdPair = (BroadcastTransaction, ServiceId);
+pub type GetTxServiceIdPair = (GetTx, ServiceId);
+
 #[derive(Debug, Clone, Copy, Eq, PartialEq, PartialOrd, Hash, Display)]
 #[display(Debug)]
 pub struct InternalId(u32);

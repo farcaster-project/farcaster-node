@@ -15,6 +15,7 @@ use utils::{config, fc::*};
 
 mod utils;
 
+#[allow(clippy::all)]
 pub mod farcaster {
     tonic::include_proto!("farcaster");
 }
@@ -136,7 +137,7 @@ async fn grpc_server_functional_test() {
     // Test take deal
     let take_request = TakeRequest {
         id: 5,
-        deal: deal,
+        deal,
         bitcoin_address: btc_address.to_string(),
         monero_address: xmr_address.to_string(),
     };
@@ -192,7 +193,7 @@ async fn grpc_server_functional_test() {
     let btc_address = bitcoin_rpc.get_new_address(None, None).unwrap();
     let take_request = TakeRequest {
         id: 5,
-        deal: deal,
+        deal,
         bitcoin_address: btc_address.to_string(),
         monero_address: xmr_address.to_string(),
     };

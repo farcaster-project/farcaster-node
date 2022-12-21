@@ -11,8 +11,8 @@ use crate::error::SyncerError;
 use crate::syncerd::opts::Opts;
 use crate::syncerd::runtime::SyncerdTask;
 use crate::syncerd::runtime::Synclet;
-use crate::syncerd::syncer_state::AddressTx;
-use crate::syncerd::syncer_state::SyncerState;
+use crate::syncerd::syncer_state::{AddressTx, BalanceServiceIdPair, TransactionServiceIdPair};
+use crate::syncerd::syncer_state::{GetTxServiceIdPair, SyncerState};
 use crate::syncerd::types::{AddressAddendum, Boolean, SweepAddressAddendum, Task};
 use crate::syncerd::BtcAddressAddendum;
 use crate::syncerd::Event;
@@ -48,7 +48,7 @@ use tokio::sync::mpsc::Sender as TokioSender;
 use tokio::sync::Mutex;
 
 use super::HealthCheck;
-use super::{GetAddressBalance, TxFilter};
+use super::TxFilter;
 
 const RETRY_TIMEOUT: u64 = 5;
 const PING_WAIT: u8 = 2;
@@ -215,8 +215,8 @@ impl ElectrumRpc {
         } else {
             state_guard
                 .transactions
-                .iter()
-                .map(|(_, watched_tx)| watched_tx.task.hash.clone())
+                .values()
+                .map(|watched_tx| watched_tx.task.hash.clone())
                 .collect()
         };
         drop(state_guard);
@@ -232,7 +232,7 @@ impl ElectrumRpc {
                     let height = match self
                         .client
                         .script_get_history(&tx.output[0].script_pubkey)
-                        .map_err(|err| SyncerError::Electrum(err))
+                        .map_err(SyncerError::Electrum)
                         .and_then(|mut history| {
                             history
                                 .iter()
@@ -530,7 +530,7 @@ fn sweep_address(
 
     // 546 is the dust limit for a p2pkh output. This covers both cases for when
     // a users provides a p2wpkh or p2pkh address
-    if in_amount.checked_sub(fee).unwrap_or(0) <= 546 {
+    if in_amount.saturating_sub(fee) <= 546 {
         warn!(
             "Amount is too close to being dust for address: {}, with total in amount {} and total fee {} ({} satoshi/kvb)",
             source_address, in_amount, fee, fee_sat_per_kvb,
@@ -602,7 +602,7 @@ async fn run_syncerd_task_receiver(
     state: Arc<Mutex<SyncerState>>,
     transaction_broadcast_tx: TokioSender<(BroadcastTransaction, ServiceId)>,
     transaction_get_tx: TokioSender<(GetTx, ServiceId)>,
-    balance_get_tx: TokioSender<(GetAddressBalance, ServiceId)>,
+    balance_get_tx: TokioSender<BalanceServiceIdPair>,
     terminate_tx: TokioSender<()>,
 ) {
     tokio::spawn(async move {
@@ -1139,7 +1139,7 @@ fn sweep_polling(
 fn transaction_fetcher(
     electrum_server: String,
     proxy_address: Option<String>,
-    mut transaction_get_rx: TokioReceiver<(GetTx, ServiceId)>,
+    mut transaction_get_rx: TokioReceiver<GetTxServiceIdPair>,
     tx_event: TokioSender<BridgeEvent>,
 ) -> tokio::task::JoinHandle<()> {
     tokio::task::spawn(async move {
@@ -1190,7 +1190,7 @@ fn transaction_fetcher(
 fn balance_fetcher(
     electrum_server: String,
     proxy_address: Option<String>,
-    mut balance_get_rx: TokioReceiver<(GetAddressBalance, ServiceId)>,
+    mut balance_get_rx: TokioReceiver<BalanceServiceIdPair>,
     tx_event: TokioSender<BridgeEvent>,
 ) -> tokio::task::JoinHandle<()> {
     tokio::task::spawn(async move {
@@ -1299,16 +1299,16 @@ impl Synclet for BitcoinSyncer {
                         TokioReceiver<BridgeEvent>,
                     ) = tokio::sync::mpsc::channel(200);
                     let (transaction_broadcast_tx, transaction_broadcast_rx): (
-                        TokioSender<(BroadcastTransaction, ServiceId)>,
-                        TokioReceiver<(BroadcastTransaction, ServiceId)>,
+                        TokioSender<TransactionServiceIdPair>,
+                        TokioReceiver<TransactionServiceIdPair>,
                     ) = tokio::sync::mpsc::channel(200);
                     let (transaction_get_tx, transaction_get_rx): (
-                        TokioSender<(GetTx, ServiceId)>,
-                        TokioReceiver<(GetTx, ServiceId)>,
+                        TokioSender<GetTxServiceIdPair>,
+                        TokioReceiver<GetTxServiceIdPair>,
                     ) = tokio::sync::mpsc::channel(200);
                     let (balance_get_tx, balance_get_rx): (
-                        TokioSender<(GetAddressBalance, ServiceId)>,
-                        TokioReceiver<(GetAddressBalance, ServiceId)>,
+                        TokioSender<BalanceServiceIdPair>,
+                        TokioReceiver<BalanceServiceIdPair>,
                     ) = tokio::sync::mpsc::channel(200);
                     let (terminate_tx, terminate_rx): (TokioSender<()>, TokioReceiver<()>) =
                         tokio::sync::mpsc::channel(1);

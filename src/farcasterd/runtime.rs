@@ -1119,9 +1119,9 @@ impl Runtime {
         );
 
         let address = bind_addr.address();
-        let port = bind_addr.port().ok_or(Error::Farcaster(
-            "listen requires the port to listen on".to_string(),
-        ))?;
+        let port = bind_addr
+            .port()
+            .ok_or_else(|| Error::Farcaster("listen requires the port to listen on".to_string()))?;
 
         debug!("Instantiating peerd...");
         let child = launch(

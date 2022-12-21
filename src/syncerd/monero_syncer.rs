@@ -21,7 +21,6 @@ use crate::syncerd::TransactionBroadcasted;
 use crate::syncerd::XmrAddressAddendum;
 use crate::syncerd::{AddressBalance, TxFilter};
 use crate::syncerd::{Event, Health};
-use crate::ServiceId;
 use farcaster_core::blockchain::{Blockchain, Network};
 use hex;
 use internet2::session::LocalSession;
@@ -42,7 +41,7 @@ use tokio::sync::mpsc::Receiver as TokioReceiver;
 use tokio::sync::mpsc::Sender as TokioSender;
 use tokio::sync::Mutex;
 
-use super::GetAddressBalance;
+use super::syncer_state::BalanceServiceIdPair;
 use super::HealthCheck;
 
 #[derive(Debug, Clone)]
@@ -458,7 +457,7 @@ async fn run_syncerd_task_receiver(
     syncer_servers: MoneroSyncerServers,
     receive_task_channel: Receiver<SyncerdTask>,
     state: Arc<Mutex<SyncerState>>,
-    balance_get_tx: TokioSender<(GetAddressBalance, ServiceId)>,
+    balance_get_tx: TokioSender<BalanceServiceIdPair>,
     tx_event: TokioSender<BridgeEvent>,
     proxy_address: Option<String>,
 ) {
@@ -934,7 +933,7 @@ async fn fetch_balance(
 fn balance_fetcher(
     wallet_mutex: Arc<Mutex<monero_rpc::WalletClient>>,
     wallet_dir_path: Option<PathBuf>,
-    mut balance_get_rx: TokioReceiver<(GetAddressBalance, ServiceId)>,
+    mut balance_get_rx: TokioReceiver<BalanceServiceIdPair>,
     tx_event: TokioSender<BridgeEvent>,
 ) -> tokio::task::JoinHandle<()> {
     tokio::task::spawn(async move {
@@ -1059,8 +1058,8 @@ impl Synclet for MoneroSyncer {
                             .wallet(),
                         ));
                         let (balance_get_tx, balance_get_rx): (
-                            TokioSender<(GetAddressBalance, ServiceId)>,
-                            TokioReceiver<(GetAddressBalance, ServiceId)>,
+                            TokioSender<BalanceServiceIdPair>,
+                            TokioReceiver<BalanceServiceIdPair>,
                         ) = tokio::sync::mpsc::channel(200);
 
                         let (event_tx, event_rx): (
