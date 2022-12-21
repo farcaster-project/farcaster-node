@@ -7,6 +7,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- Swapd: Logging improvements by @TheCharlatan in <https://github.com/farcaster-project/farcaster-node/pull/850>
+- Deps: Run cargo update by @TheCharlatan in <https://github.com/farcaster-project/farcaster-node/pull/849>
+- Bob verifies Alice's Reveal eagerly by @Lederstrumpf in <https://github.com/farcaster-project/farcaster-node/pull/841>
+- Feat: log errors outside of farcaster too by @h4sh3d in <https://github.com/farcaster-project/farcaster-node/pull/858>
+- Syncer health patch by @TheCharlatan in <https://github.com/farcaster-project/farcaster-node/pull/859>
+- Swap state: Don't emit Bob aborted swap message twice by @TheCharlatan in <https://github.com/farcaster-project/farcaster-node/pull/844>
+- Syncer State Machine: Handle Task Aborted by @TheCharlatan in <https://github.com/farcaster-project/farcaster-node/pull/831>
+- Syncer: Support Incoming and Outgoing AddressTransaction events by @TheCharlatan in <https://github.com/farcaster-project/farcaster-node/pull/855>
+- Swap State Machine: Remove Alice Punish state by @TheCharlatan in <https://github.com/farcaster-project/farcaster-node/pull/863>
+- Service: Implement Reporter trait by @TheCharlatan in <https://github.com/farcaster-project/farcaster-node/pull/848>
+- Deal or No Deal? by @TheCharlatan in <https://github.com/farcaster-project/farcaster-node/pull/852>
+- Chore: fix url for ci badge by @h4sh3d in <https://github.com/farcaster-project/farcaster-node/pull/867>
+- Chore: Handle some clippy findings by @TheCharlatan in <https://github.com/farcaster-project/farcaster-node/pull/869>
+- Swapd: Handle re-orgs and possible mempool drops of broadcasted txs. by @TheCharlatan in <https://github.com/farcaster-project/farcaster-node/pull/865>
+- Grpc: Add deal suffix to selector by @TheCharlatan in <https://github.com/farcaster-project/farcaster-node/pull/871>
+- Grpc: Handle handler drops (usually on client disconnect) by @TheCharlatan in <https://github.com/farcaster-project/farcaster-node/pull/872>
+- Database: Cleanup Open Deals as well on CleanDanglingDeals by @TheCharlatan in <https://github.com/farcaster-project/farcaster-node/pull/851>
+- Feature: Add and consume trade role and status in deal history by @TheCharlatan in <https://github.com/farcaster-project/farcaster-node/pull/861>
+
 ## [0.8.0] - 2022-12-15
 
 ### Changed
