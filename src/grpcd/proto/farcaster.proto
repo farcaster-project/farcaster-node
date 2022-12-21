@@ -146,10 +146,10 @@ message ListDealsRequest {
 }
 
 enum DealSelector {
-    OPEN = 0;
-    IN_PROGRESS = 1;
-    ENDED = 2;
-    ALL = 3;
+    OPEN_DEALS = 0;
+    IN_PROGRESS_DEALS = 1;
+    ENDED_DEALS = 2;
+    ALL_DEALS = 3;
 }
 
 message ListDealsResponse {

@@ -143,10 +143,10 @@ impl From<Blockchain> for farcaster::Blockchain {
 impl From<farcaster::DealSelector> for DealStatusSelector {
     fn from(t: farcaster::DealSelector) -> DealStatusSelector {
         match t {
-            farcaster::DealSelector::All => DealStatusSelector::All,
-            farcaster::DealSelector::Open => DealStatusSelector::Open,
-            farcaster::DealSelector::InProgress => DealStatusSelector::InProgress,
-            farcaster::DealSelector::Ended => DealStatusSelector::Ended,
+            farcaster::DealSelector::AllDeals => DealStatusSelector::All,
+            farcaster::DealSelector::OpenDeals => DealStatusSelector::Open,
+            farcaster::DealSelector::InProgressDeals => DealStatusSelector::InProgress,
+            farcaster::DealSelector::EndedDeals => DealStatusSelector::Ended,
         }
     }
 }
@@ -1392,10 +1392,9 @@ fn response_loop(
                     if let Some(sender) = pending_requests.remove(&id) {
                         if let Err(err) = sender.send(request) {
                             error!(
-                                "Error encountered while sending response to Grpc server: {}",
+                                "Error {} encountered while sending response to Grpc server handle: The client probably disconnected.",
                                 err
                             );
-                            break;
                         }
                     } else {
                         error!("id {} not found in pending grpc requests", id);
@@ -1411,7 +1410,6 @@ fn response_loop(
                 }
             };
         }
-        Ok(())
     })
 }
 

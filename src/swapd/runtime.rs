@@ -116,6 +116,7 @@ pub fn run(config: ServiceConfig, opts: Opts) -> Result<(), Error> {
         awaiting_funding: false,
         xmr_addr_addendum: None,
         confirmations: none!(),
+        broadcasted_txs: none!(),
     };
 
     let state_report = StateReport::new("Start".to_string(), &temporal_safety, &syncer_state);
@@ -178,7 +179,7 @@ pub struct CheckpointSwapd {
     pub temporal_safety: TemporalSafety,
     pub txs: Vec<(TxLabel, bitcoin::Transaction)>,
     pub txids: Vec<(TxLabel, Txid)>,
-    pub pending_broadcasts: Vec<bitcoin::Transaction>,
+    pub pending_broadcasts: Vec<(bitcoin::Transaction, TxLabel)>,
     pub local_trade_role: TradeRole,
     pub connected_counterparty_node_id: Option<NodeId>,
     pub deal: Deal,
@@ -289,7 +290,7 @@ impl Runtime {
             tx_label.label(),
             tx.txid().tx_hash()
         ));
-        let task = self.syncer_state.broadcast(tx);
+        let task = self.syncer_state.broadcast(tx, tx_label);
         Ok(endpoints.send_to(
             ServiceBus::Sync,
             self.identity(),
@@ -398,8 +399,8 @@ impl Runtime {
                     enquirer,
                     temporal_safety,
                     mut txs,
-                    txids,
-                    pending_broadcasts,
+                    mut txids,
+                    mut pending_broadcasts,
                     xmr_addr_addendum,
                     local_trade_role,
                     monero_address_creation_height,
@@ -420,8 +421,8 @@ impl Runtime {
                     .watch_height(endpoints, Blockchain::Monero)?;
 
                 self.log_trace("Watching transactions");
-                for (tx_label, txid) in txids.iter() {
-                    let task = self.syncer_state.watch_tx_btc(*txid, *tx_label);
+                for (tx_label, txid) in txids.drain(..) {
+                    let task = self.syncer_state.watch_tx_btc(txid, tx_label);
                     endpoints.send_to(
                         ServiceBus::Sync,
                         self.identity(),
@@ -431,8 +432,8 @@ impl Runtime {
                 }
 
                 self.log_trace("Broadcasting txs pending broadcast");
-                for tx in pending_broadcasts.iter() {
-                    let task = self.syncer_state.broadcast(tx.clone());
+                for (tx, label) in pending_broadcasts.drain(..) {
+                    let task = self.syncer_state.broadcast(tx.clone(), label);
                     endpoints.send_to(
                         ServiceBus::Sync,
                         self.identity(),
@@ -539,6 +540,7 @@ impl Runtime {
                             confirmations,
                             self.swap_id(),
                             self.temporal_safety.xmr_finality_thr,
+                            endpoints,
                         );
                     }
 
@@ -592,6 +594,7 @@ impl Runtime {
                             &Some(*confirmations),
                             self.swap_id(),
                             self.temporal_safety.btc_finality_thr,
+                            endpoints,
                         );
                         let txlabel = self.syncer_state.tasks.watched_txs.get(id);
                         // saving requests of interest for later replaying latest event
@@ -619,11 +622,12 @@ impl Runtime {
                             confirmations,
                             self.swap_id(),
                             self.temporal_safety.btc_finality_thr,
+                            endpoints,
                         );
                     }
 
                     Event::TransactionBroadcasted(event) => {
-                        self.syncer_state.transaction_broadcasted(event)
+                        self.syncer_state.transaction_broadcasted(event);
                     }
 
                     Event::AddressTransaction(_) => {}
