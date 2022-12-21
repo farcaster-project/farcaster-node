@@ -122,7 +122,7 @@ async fn grpc_server_functional_test() {
     // Test List deals
     let list_deals_request = tonic::Request::new(ListDealsRequest {
         id: 22,
-        deal_selector: DealSelector::All.into(),
+        deal_selector: DealSelector::AllDeals.into(),
         network_selector: NetworkSelector::AllNetworks.into(),
     });
     let response = farcaster_client_1.list_deals(list_deals_request).await;
