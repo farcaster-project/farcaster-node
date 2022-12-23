@@ -70,7 +70,7 @@ fn bitcoin_syncer_retrieve_transaction_test() {
     let task = SyncerdTask {
         task: Task::GetTx(GetTx {
             id: TaskId(1),
-            hash: txid.to_vec(),
+            hash: txid.into(),
         }),
         source: SOURCE1.clone(),
     };
@@ -284,7 +284,7 @@ fn bitcoin_syncer_address_test() {
     let message = rx_event.recv_multipart(0).unwrap();
     info!("received address transaction message");
     let request = misc::get_request_from_message(message);
-    assert::address_transaction(request, amount.as_sat(), vec![txid.to_vec()]);
+    assert::address_transaction(request, amount.as_sat(), vec![txid.into()]);
 
     // now generate a block for address1, then wait for the response and test it
     let block_hash = bitcoin_rpc.generate_to_address(1, &address1).unwrap();
@@ -298,7 +298,7 @@ fn bitcoin_syncer_address_test() {
     assert::address_transaction(
         request,
         address_transaction_amount,
-        vec![address_txid.to_vec()],
+        vec![address_txid.into()],
     );
 
     // then send a transaction to the other address we are watching
@@ -312,21 +312,13 @@ fn bitcoin_syncer_address_test() {
     let message = rx_event.recv_multipart(0).unwrap();
     info!("received address transaction message");
     let request = misc::get_request_from_message(message);
-    assert::address_transaction(
-        request,
-        amount.as_sat(),
-        vec![txid_1.to_vec(), txid_2.to_vec()],
-    );
+    assert::address_transaction(request, amount.as_sat(), vec![txid_1.into(), txid_2.into()]);
 
     info!("waiting for address transaction message");
     let message = rx_event.recv_multipart(0).unwrap();
     info!("received address transaction message");
     let request = misc::get_request_from_message(message);
-    assert::address_transaction(
-        request,
-        amount.as_sat(),
-        vec![txid_1.to_vec(), txid_2.to_vec()],
-    );
+    assert::address_transaction(request, amount.as_sat(), vec![txid_1.into(), txid_2.into()]);
 
     // watch for the same address, it should already contain transactions
     let watch_address_task_3 = SyncerdTask {
@@ -344,20 +336,12 @@ fn bitcoin_syncer_address_test() {
     let message = rx_event.recv_multipart(0).unwrap();
     info!("received address transaction message");
     let request = misc::get_request_from_message(message);
-    assert::address_transaction(
-        request,
-        amount.as_sat(),
-        vec![txid_1.to_vec(), txid_2.to_vec()],
-    );
+    assert::address_transaction(request, amount.as_sat(), vec![txid_1.into(), txid_2.into()]);
     info!("waiting for address transaction message");
     let message = rx_event.recv_multipart(0).unwrap();
     info!("received address transaction message");
     let request = misc::get_request_from_message(message);
-    assert::address_transaction(
-        request,
-        amount.as_sat(),
-        vec![txid_1.to_vec(), txid_2.to_vec()],
-    );
+    assert::address_transaction(request, amount.as_sat(), vec![txid_1.into(), txid_2.into()]);
 
     let address4 = bitcoin_rpc.get_new_address(None, None).unwrap();
     let addendum_4 = AddressAddendum::Bitcoin(BtcAddressAddendum {
@@ -395,7 +379,7 @@ fn bitcoin_syncer_address_test() {
         let message = rx_event.recv_multipart(0).unwrap();
         info!("received repeated address transaction message");
         let request = misc::get_request_from_message(message);
-        assert::address_transaction(request, amount.as_sat(), vec![txid.to_vec()]);
+        assert::address_transaction(request, amount.as_sat(), vec![txid.into()]);
     }
 
     let address5 = bitcoin_rpc.get_new_address(None, None).unwrap();
@@ -435,7 +419,7 @@ fn bitcoin_syncer_address_test() {
     let message = rx_event.recv_multipart(0).unwrap();
     info!("received address transaction message");
     let request = misc::get_request_from_message(message);
-    assert::address_transaction(request, amount.as_sat(), vec![txid.to_vec()]);
+    assert::address_transaction(request, amount.as_sat(), vec![txid.into()]);
 
     tx.send(SyncerdTask {
         task: Task::Terminate,
@@ -491,7 +475,7 @@ fn bitcoin_syncer_transaction_test() {
         task: Task::WatchTransaction(WatchTransaction {
             id: TaskId(1),
             lifetime: blocks + 5,
-            hash: txid_1.to_vec(),
+            hash: txid_1.into(),
             confirmation_bound: 0,
         }),
         source: SOURCE1.clone(),
@@ -507,7 +491,7 @@ fn bitcoin_syncer_transaction_test() {
         task: Task::WatchTransaction(WatchTransaction {
             id: TaskId(1),
             lifetime: blocks + 5,
-            hash: txid_1.to_vec(),
+            hash: txid_1.into(),
             confirmation_bound: 2,
         }),
         source: SOURCE1.clone(),
@@ -549,7 +533,7 @@ fn bitcoin_syncer_transaction_test() {
         task: Task::WatchTransaction(WatchTransaction {
             id: TaskId(1),
             lifetime: blocks + 5,
-            hash: address_txid.to_vec(),
+            hash: address_txid.into(),
             confirmation_bound: 2,
         }),
         source: SOURCE1.clone(),
@@ -585,7 +569,7 @@ fn bitcoin_syncer_transaction_test() {
         task: Task::WatchTransaction(WatchTransaction {
             id: TaskId(1),
             lifetime: blocks + 5,
-            hash: txid_2.to_vec(),
+            hash: txid_2.into(),
             confirmation_bound: 2,
         }),
         source: SOURCE1.clone(),
@@ -595,7 +579,7 @@ fn bitcoin_syncer_transaction_test() {
         task: Task::WatchTransaction(WatchTransaction {
             id: TaskId(1),
             lifetime: blocks + 5,
-            hash: txid_3.to_vec(),
+            hash: txid_3.into(),
             confirmation_bound: 2,
         }),
         source: SOURCE1.clone(),
@@ -650,7 +634,7 @@ fn bitcoin_syncer_transaction_test() {
         task: Task::WatchTransaction(WatchTransaction {
             id: TaskId(1),
             lifetime: blocks + 5,
-            hash: txid.to_vec(),
+            hash: txid.into(),
             confirmation_bound: 2,
         }),
         source: SOURCE1.clone(),
@@ -708,7 +692,7 @@ fn bitcoin_syncer_abort_test() {
         task: Task::WatchTransaction(WatchTransaction {
             id: TaskId(0),
             lifetime: blocks + 10,
-            hash: vec![0; 32],
+            hash: bitcoin::Txid::from_slice(&vec![0; 32]).unwrap().into(),
             confirmation_bound: 2,
         }),
         source: SOURCE1.clone(),
@@ -756,7 +740,7 @@ fn bitcoin_syncer_abort_test() {
         task: Task::WatchTransaction(WatchTransaction {
             id: TaskId(0),
             lifetime: blocks + 10,
-            hash: vec![0; 32],
+            hash: bitcoin::Txid::from_slice(&vec![0; 32]).unwrap().into(),
             confirmation_bound: 2,
         }),
         source: SOURCE1.clone(),
@@ -771,7 +755,7 @@ fn bitcoin_syncer_abort_test() {
         task: Task::WatchTransaction(WatchTransaction {
             id: TaskId(1),
             lifetime: blocks + 10,
-            hash: vec![0; 32],
+            hash: bitcoin::Txid::from_slice(&vec![0; 32]).unwrap().into(),
             confirmation_bound: 2,
         }),
         source: SOURCE1.clone(),

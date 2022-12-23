@@ -25,7 +25,7 @@ use crate::syncerd::TransactionRetrieved;
 use crate::syncerd::{AddressBalance, BroadcastTransaction};
 use crate::{error::Error, syncerd::syncer_state::create_set};
 use crate::{LogStyle, ServiceId};
-use bitcoin::hashes::{hex::ToHex, Hash};
+use bitcoin::hashes::hex::ToHex;
 use bitcoin::BlockHash;
 use bitcoin::Script;
 use electrum_client::{
@@ -48,7 +48,7 @@ use tokio::sync::mpsc::Sender as TokioSender;
 use tokio::sync::Mutex;
 
 use super::HealthCheck;
-use super::{GetAddressBalance, TxFilter};
+use super::{GetAddressBalance, TxFilter, Txid};
 
 const RETRY_TIMEOUT: u64 = 5;
 const PING_WAIT: u8 = 2;
@@ -95,7 +95,7 @@ impl ElectrumRpc {
         debug!("creating ElectrumRpc client");
         let client = create_electrum_client(electrum_server, proxy_address)?;
         let header = client.block_headers_subscribe()?;
-        debug!("New ElectrumRpc at height {:?}", header.height);
+        debug!("New ElectrumRpc at height {}", header.height);
 
         Ok(Self {
             client,
@@ -120,10 +120,10 @@ impl ElectrumRpc {
         address_addendum: BtcAddressAddendum,
         filter: TxFilter,
     ) -> Result<AddressNotif, Error> {
-        debug!("attempting subscribing to: {:?}", address_addendum);
+        debug!("attempting subscribing to: {}", address_addendum.address);
 
         if !self.addresses.contains_key(&address_addendum) {
-            debug!("subscribing to: {:?}", address_addendum);
+            debug!("subscribing to: {}", address_addendum.address);
             let script_status = self
                 .client
                 .script_subscribe(&address_addendum.address.script_pubkey())?;
@@ -131,7 +131,8 @@ impl ElectrumRpc {
                 .insert(address_addendum.clone(), (script_status, filter.clone()));
             debug!(
                 "registering address {} with script_status {:?}",
-                &address_addendum.address, &script_status
+                &address_addendum.address,
+                &script_status.map(|h| hex::encode(h.to_vec()))
             );
         }
         let txs = query_addr_history(&mut self.client, &address_addendum, &filter)?;
@@ -149,7 +150,7 @@ impl ElectrumRpc {
         {
             self.height = height as u64;
             self.block_hash = header.block_hash();
-            trace!("new height received: {:?}", self.height);
+            trace!("new height received: {}", self.height);
             blocks.push(Block {
                 height: self.height,
                 block_hash: self.block_hash,
@@ -172,13 +173,15 @@ impl ElectrumRpc {
                         .is_some()
                     {
                         debug!(
-                            "updated address {:?} with script_status {:?}",
-                            &address, &script_status
+                            "updated address {} with script_status {}",
+                            address.address,
+                            hex::encode(script_status.to_vec())
                         );
                     } else {
                         debug!(
-                            "registering address {:?} with script_status {:?}",
-                            &address, &script_status
+                            "registering address {} with script_status {}",
+                            address.address,
+                            hex::encode(script_status.to_vec())
                         );
                     }
                     match query_addr_history(&mut self.client, &address, &filter) {
@@ -206,26 +209,35 @@ impl ElectrumRpc {
 
     async fn query_transactions(&self, state: Arc<Mutex<SyncerState>>, unseen: bool) {
         let state_guard = state.lock().await;
-        let txids: Vec<Vec<u8>> = if unseen {
+        let txids: Vec<Txid> = if unseen {
             state_guard
                 .unseen_transactions
                 .iter()
-                .map(|task_id| state_guard.transactions[task_id].task.hash.clone())
+                .map(|task_id| state_guard.transactions[task_id].task.hash)
                 .collect()
         } else {
             state_guard
                 .transactions
-                .iter()
-                .map(|(_, watched_tx)| watched_tx.task.hash.clone())
+                .values()
+                .map(|watched_tx| watched_tx.task.hash)
                 .collect()
         };
         drop(state_guard);
         for tx_id in txids.iter() {
-            let tx_id = bitcoin::Txid::from_slice(tx_id).expect("invalid txid");
+            let tx_id = match tx_id {
+                Txid::Bitcoin(tx_id) => tx_id,
+                Txid::Monero(tx_id) => {
+                    error!(
+                        "This is Monero txid, but expected a Bitcoin txid: {}",
+                        tx_id
+                    );
+                    continue;
+                }
+            };
             // Get the full transaction
-            match self.client.transaction_get(&tx_id) {
+            match self.client.transaction_get(tx_id) {
                 Ok(tx) => {
-                    debug!("Updated tx: {}", &tx_id);
+                    debug!("Updated tx: {}", tx_id);
                     // Look for history of the first output (maybe last is generally less likely
                     // to be used multiple times, so more efficient?!). If the history call
                     // fails or the transaction is not found in the history it is treated as unconfirmed.
@@ -236,7 +248,7 @@ impl ElectrumRpc {
                         .and_then(|mut history| {
                             history
                                 .iter()
-                                .position(|history_entry| history_entry.tx_hash == tx_id)
+                                .position(|history_entry| history_entry.tx_hash == *tx_id)
                                 .map(|pos| history.remove(pos))
                                 .ok_or(SyncerError::TxNotInHistory)
                         }) {
@@ -249,7 +261,7 @@ impl ElectrumRpc {
                             let mut state_guard = state.lock().await;
                             state_guard
                                 .change_transaction(
-                                    tx_id.to_vec(),
+                                    (*tx_id).into(),
                                     None,
                                     Some(0),
                                     bitcoin::consensus::serialize(&tx),
@@ -277,7 +289,7 @@ impl ElectrumRpc {
                                     let mut state_guard = state.lock().await;
                                     state_guard
                                         .change_transaction(
-                                            tx_id.to_vec(),
+                                            (*tx_id).into(),
                                             None,
                                             Some(0),
                                             bitcoin::consensus::serialize(&tx),
@@ -304,7 +316,7 @@ impl ElectrumRpc {
                             let mut state_guard = state.lock().await;
                             state_guard
                                 .change_transaction(
-                                    tx_id.to_vec(),
+                                    (*tx_id).into(),
                                     None,
                                     Some(0),
                                     bitcoin::consensus::serialize(&tx),
@@ -324,7 +336,7 @@ impl ElectrumRpc {
                     let mut state_guard = state.lock().await;
                     state_guard
                         .change_transaction(
-                            tx.txid().to_vec(),
+                            tx.txid().into(),
                             blockhash,
                             Some(confs),
                             bitcoin::consensus::serialize(&tx),
@@ -336,7 +348,7 @@ impl ElectrumRpc {
                     trace!("error getting transaction, treating as not found: {}", err);
                     let mut state_guard = state.lock().await;
                     state_guard
-                        .change_transaction(tx_id.to_vec(), None, None, vec![])
+                        .change_transaction((*tx_id).into(), None, None, vec![])
                         .await;
                     drop(state_guard);
                 }
@@ -438,7 +450,7 @@ fn query_addr_history(
         };
         addr_txs.push(AddressTx {
             amount,
-            tx_id: txid.to_vec(),
+            tx_id: txid.into(),
             tx: bitcoin::consensus::serialize(&tx),
             incoming: output_found && !input_found,
         })
@@ -467,7 +479,7 @@ fn sweep_address(
     dest_address: bitcoin::Address,
     client: &Client,
     network: bitcoin::Network,
-) -> Result<Vec<Vec<u8>>, Error> {
+) -> Result<Vec<Txid>, Error> {
     match source_address.address_type() {
         Some(bitcoin::AddressType::P2wpkh) => {}
         Some(address_type) => {
@@ -530,7 +542,7 @@ fn sweep_address(
 
     // 546 is the dust limit for a p2pkh output. This covers both cases for when
     // a users provides a p2wpkh or p2pkh address
-    if in_amount.checked_sub(fee).unwrap_or(0) <= 546 {
+    if in_amount.saturating_sub(fee) <= 546 {
         warn!(
             "Amount is too close to being dust for address: {}, with total in amount {} and total fee {} ({} satoshi/kvb)",
             source_address, in_amount, fee, fee_sat_per_kvb,
@@ -570,7 +582,7 @@ fn sweep_address(
     let tx_hash =
         client.transaction_broadcast_raw(&bitcoin::consensus::serialize(&finalized_signed_tx))?;
 
-    Ok(vec![tx_hash.to_vec()])
+    Ok(vec![tx_hash.into()])
 }
 
 async fn run_syncerd_bridge_event_sender(
@@ -582,7 +594,7 @@ async fn run_syncerd_bridge_event_sender(
         let mut session = LocalSession::with_zmq_socket(ZmqSocketType::Push, tx);
         while let Some(event) = event_rx.recv().await {
             let request = BusMsg::Sync(SyncMsg::BridgeEvent(event));
-            trace!("sending request over syncerd bridge: {:?}", request);
+            trace!("sending request over syncerd bridge: {}", request);
             session
                 .send_routed_message(
                     &syncer_address,
@@ -656,7 +668,7 @@ async fn run_syncerd_task_receiver(
                             drop(state_guard);
                         }
                         Task::BroadcastTransaction(task) => {
-                            debug!("trying to broadcast tx: {:?}", task.tx.to_hex());
+                            debug!("trying to broadcast tx: {}", task.tx.to_hex());
                             if let Some(height) = task.broadcast_after_height {
                                 let mut state_guard = state.lock().await;
                                 // If we already surpassed the height, immediately broadcast it. Otherwise queue the broadcast
@@ -700,7 +712,7 @@ async fn run_syncerd_task_receiver(
                             drop(state_guard);
                         }
                         Task::WatchTransaction(task) => {
-                            debug!("received new task: {:?}", task);
+                            debug!("received new watch tx task for txid: {}", task.hash);
                             let mut state_guard = state.lock().await;
                             state_guard.watch_transaction(task, syncerd_task.source);
                             drop(state_guard);
@@ -755,7 +767,7 @@ fn address_polling(
                 Ok(client) => client,
                 Err(err) => {
                     error!(
-                        "failed to spawn electrum rpc client ({}) t in address polling: {:?}",
+                        "failed to spawn electrum rpc client {} in address polling: {}",
                         &electrum_server, err
                     );
                     // wait a bit before retrying the connection
@@ -766,7 +778,7 @@ fn address_polling(
 
             loop {
                 if let Err(err) = rpc.ping() {
-                    error!("error ping electrum client in address polling: {:?}", err);
+                    error!("error ping electrum client in address polling: {}", err);
                     // break this loop and retry, since the electrum rpc client is probably
                     // broken
                     break;
@@ -842,7 +854,7 @@ fn height_polling(
                 Ok(client) => client,
                 Err(err) => {
                     error!(
-                        "failed to spawn electrum rpc client ({}) in height polling: {:?}",
+                        "failed to spawn electrum rpc client {} in height polling: {}",
                         &electrum_server, err
                     );
                     // wait a bit before retrying the connection
@@ -859,7 +871,7 @@ fn height_polling(
             // inner loop actually polls
             loop {
                 if let Err(err) = rpc.ping() {
-                    error!("error ping electrum client in height polling: {:?}", err);
+                    error!("error ping electrum client in height polling: {}", err);
                     // break this loop and retry, since the electrum rpc client is probably
                     // broken
                     break;
@@ -867,7 +879,7 @@ fn height_polling(
                 let mut blocks = match rpc.new_block_check() {
                     Ok(blks) => blks,
                     Err(err) => {
-                        error!("error polling bitcoin block height: {:?}", err);
+                        error!("error polling bitcoin block height: {}", err);
                         // break this loop and retry, since the electrum rpc client is probably
                         // broken
                         break;
@@ -932,7 +944,7 @@ fn unseen_transaction_polling(
                 Ok(client) => client,
                 Err(err) => {
                     error!(
-                        "failed to spawn electrum rpc client ({}) in transaction polling: {:?}",
+                        "failed to spawn electrum rpc client ({}) in transaction polling: {}",
                         &electrum_server, err
                     );
                     // wait a bit before retrying the connection
@@ -1105,7 +1117,7 @@ fn sweep_polling(
                             if let SweepAddressAddendum::Bitcoin(addendum) =
                                 sweep_address_task.addendum.clone()
                             {
-                                let sweep_address_txs = sweep_address(
+                                let sweep_address_txids = sweep_address(
                                     addendum.source_secret_key,
                                     addendum.source_address,
                                     addendum.destination_address,
@@ -1113,13 +1125,16 @@ fn sweep_polling(
                                     network,
                                 )
                                 .unwrap_or_else(|err| {
-                                    warn!("error polling sweep address {:?}, retrying", err);
+                                    warn!("error polling sweep address {}, retrying", err);
                                     vec![]
                                 });
-                                debug!("sweep address transaction: {:?}", sweep_address_txs);
+                                debug!(
+                                    "sweep address transaction: {:?}",
+                                    sweep_address_txids.iter().map(|txid| txid.to_string())
+                                );
                                 let mut state_guard = state.lock().await;
-                                if !sweep_address_txs.is_empty() {
-                                    state_guard.success_sweep(id, sweep_address_txs).await;
+                                if !sweep_address_txids.is_empty() {
+                                    state_guard.success_sweep(id, sweep_address_txids).await;
                                 } else if !sweep_address_task.retry {
                                     state_guard.fail_sweep(id).await;
                                 }
@@ -1144,15 +1159,20 @@ fn transaction_fetcher(
 ) -> tokio::task::JoinHandle<()> {
     tokio::task::spawn(async move {
         while let Some((get_transaction, source)) = transaction_get_rx.recv().await {
+            let tx_id = match get_transaction.hash {
+                Txid::Bitcoin(tx_id) => tx_id,
+                Txid::Monero(tx_id) => {
+                    error!(
+                        "This is a Monero txid, but expected a Bitcoin txid: {}",
+                        tx_id
+                    );
+                    continue;
+                }
+            };
             debug!("creating transaction fetcher electrum client");
-            match create_electrum_client(&electrum_server, proxy_address.clone()).and_then(
-                |transaction_client| {
-                    transaction_client.transaction_get(
-                        &bitcoin::Txid::from_slice(&get_transaction.hash)
-                            .expect("invalid txid in transaction_get"),
-                    )
-                },
-            ) {
+            match create_electrum_client(&electrum_server, proxy_address.clone())
+                .and_then(|transaction_client| transaction_client.transaction_get(&tx_id))
+            {
                 Ok(tx) => {
                     tx_event
                         .send(BridgeEvent {
@@ -1164,10 +1184,7 @@ fn transaction_fetcher(
                         })
                         .await
                         .expect("error sending transaction retrieved event");
-                    debug!(
-                        "successfully retrieved tx: {:?}",
-                        hex::encode(get_transaction.hash)
-                    );
+                    debug!("successfully retrieved tx: {}", get_transaction.hash);
                 }
                 Err(e) => {
                     tx_event
@@ -1180,7 +1197,7 @@ fn transaction_fetcher(
                         })
                         .await
                         .expect("error sending transaction retrieved event");
-                    debug!("failed to retrieve tx: {:?}", e);
+                    debug!("Error while retrieving tx {}: {}", get_transaction.hash, e);
                 }
             }
         }
@@ -1229,7 +1246,7 @@ fn balance_fetcher(
                         .send(BridgeEvent {
                             event: Event::AddressBalance(AddressBalance {
                                 id: get_balance.id,
-                                address: Address::Bitcoin(address),
+                                address: Address::Bitcoin(address.clone()),
                                 balance: balance.unconfirmed.unsigned_abs(),
                                 err: None,
                             }),
@@ -1237,14 +1254,18 @@ fn balance_fetcher(
                         })
                         .await
                         .expect("error sending address balance event");
-                    debug!("successfully retrieved address balance: {:?}", balance);
+                    debug!(
+                        "successfully retrieved balance: {} for address {}.",
+                        balance.unconfirmed.unsigned_abs(),
+                        address
+                    );
                 }
                 Err(e) => {
                     tx_event
                         .send(BridgeEvent {
                             event: Event::AddressBalance(AddressBalance {
                                 id: get_balance.id,
-                                address: Address::Bitcoin(address),
+                                address: Address::Bitcoin(address.clone()),
                                 balance: 0,
                                 err: Some(e.to_string()),
                             }),
@@ -1252,7 +1273,7 @@ fn balance_fetcher(
                         })
                         .await
                         .expect("error sending address balance event");
-                    debug!("failed to retrieve address balance: {}", e);
+                    debug!("failed to retrieve balance for address {}: {}", address, e);
                 }
             }
         }
@@ -1414,9 +1435,7 @@ fn logging(txs: &[AddressTx], address: &BtcAddressAddendum) {
         trace!(
             "processing address {} notification txid {}",
             address.address,
-            bitcoin::Txid::from_slice(&tx.tx_id)
-                .expect("invalid txid")
-                .addr()
+            tx.tx_id.addr()
         );
     });
 }
