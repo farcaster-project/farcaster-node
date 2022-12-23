@@ -28,22 +28,22 @@ use farcaster_core::{
         FullySignedPunish, TxSignatures,
     },
     swap::btcxmr::{
-        message::{RefundProcedureSignatures, RevealProof},
+        message::{
+            RefundProcedureSignatures, RevealAliceParameters, RevealBobParameters, RevealProof,
+        },
         Alice, Bob, Deal, EncryptedSignature, KeyManager, Parameters,
     },
     transaction::{Broadcastable, Fundable, Transaction, Witnessable},
 };
 
-use strict_encoding::{StrictDecode, StrictEncode};
-
 use crate::{
     bus::{
-        self,
         ctl::{CtlMsg, Tx},
-        p2p::{Commit, Reveal},
+        p2p::Reveal,
         AddressSecretKey, BitcoinSecretKeyInfo, MoneroSecretKeyInfo,
     },
     event::Event,
+    service::Reporter,
     syncerd::{SweepBitcoinAddress, SweepMoneroAddress},
     Error, LogStyle, ServiceId,
 };
@@ -68,16 +68,9 @@ pub struct HandleBuyProcedureSignatureRes {
     pub buy_tx: bitcoin::Transaction,
 }
 
-#[derive(Clone, Display, Debug, StrictEncode, StrictDecode)]
-pub enum Wallet {
-    #[display("Alice's wallet")]
-    Alice(AliceState),
-    #[display("Bob's wallet")]
-    Bob(BobState),
-}
-
-#[derive(Clone, Debug)]
-pub struct AliceState {
+#[derive(Display, Clone, Debug)]
+#[display("Alice's Wallet")]
+pub struct AliceWallet {
     pub alice: Alice,
     pub local_trade_role: TradeRole,
     pub local_params: Parameters,
@@ -92,7 +85,7 @@ pub struct AliceState {
     pub target_monero_address: monero::Address,
 }
 
-impl Encodable for AliceState {
+impl Encodable for AliceWallet {
     fn consensus_encode<W: io::Write>(&self, writer: &mut W) -> Result<usize, io::Error> {
         let mut len = self.alice.consensus_encode(writer)?;
         len += self.local_trade_role.consensus_encode(writer)?;
@@ -119,9 +112,9 @@ impl Encodable for AliceState {
     }
 }
 
-impl Decodable for AliceState {
+impl Decodable for AliceWallet {
     fn consensus_decode<D: io::Read>(d: &mut D) -> Result<Self, consensus::Error> {
-        Ok(AliceState {
+        Ok(AliceWallet {
             alice: Decodable::consensus_decode(d)?,
             local_trade_role: Decodable::consensus_decode(d)?,
             local_params: Decodable::consensus_decode(d)?,
@@ -144,9 +137,9 @@ impl Decodable for AliceState {
     }
 }
 
-impl_strict_encoding!(AliceState);
+impl_strict_encoding!(AliceWallet);
 
-impl AliceState {
+impl AliceWallet {
     pub fn new(
         alice: Alice,
         local_trade_role: TradeRole,
@@ -173,8 +166,9 @@ impl AliceState {
     }
 }
 
-#[derive(Clone, Debug)]
-pub struct BobState {
+#[derive(Display, Clone, Debug)]
+#[display("Bob's Wallet")]
+pub struct BobWallet {
     pub bob: Bob,
     pub local_trade_role: TradeRole,
     pub local_params: Parameters,
@@ -189,7 +183,7 @@ pub struct BobState {
     pub target_monero_address: monero::Address,
 }
 
-impl Encodable for BobState {
+impl Encodable for BobWallet {
     fn consensus_encode<W: io::Write>(&self, writer: &mut W) -> Result<usize, io::Error> {
         let mut len = self.bob.consensus_encode(writer)?;
         len += self.local_trade_role.consensus_encode(writer)?;
@@ -213,9 +207,9 @@ impl Encodable for BobState {
     }
 }
 
-impl Decodable for BobState {
+impl Decodable for BobWallet {
     fn consensus_decode<D: io::Read>(d: &mut D) -> Result<Self, consensus::Error> {
-        Ok(BobState {
+        Ok(BobWallet {
             bob: Decodable::consensus_decode(d)?,
             local_trade_role: Decodable::consensus_decode(d)?,
             local_params: Decodable::consensus_decode(d)?,
@@ -236,7 +230,7 @@ impl Decodable for BobState {
     }
 }
 
-impl BobState {
+impl BobWallet {
     pub fn new(
         bob: Bob,
         local_trade_role: TradeRole,
@@ -264,290 +258,196 @@ impl BobState {
     }
 }
 
-impl_strict_encoding!(BobState);
+impl_strict_encoding!(BobWallet);
 
-impl Wallet {
-    pub fn local_params(&self) -> bus::ctl::Params {
-        match self {
-            Wallet::Alice(AliceState { local_params, .. }) => {
-                bus::ctl::Params::Alice(local_params.clone())
-            }
-            Wallet::Bob(BobState { local_params, .. }) => {
-                bus::ctl::Params::Bob(local_params.clone())
-            }
-        }
+impl AliceWallet {
+    pub fn local_params(&self) -> Parameters {
+        self.local_params.clone()
     }
 
-    pub fn funding_address(&self) -> Option<bitcoin::Address> {
-        match self {
-            Wallet::Alice(..) => None,
-            Wallet::Bob(BobState { funding_tx, .. }) => funding_tx.get_address().ok(),
-        }
-    }
-
-    pub fn new_taker(
-        event: &mut Event,
+    pub fn new_taker_alice(
         runtime: &mut Runtime,
         target_bitcoin_address: bitcoin::Address,
         target_monero_address: monero::Address,
         mut key_manager: KeyManager,
     ) -> Result<Self, Error> {
-        let Deal {
-            parameters: deal_parameters,
-            ..
-        } = runtime.deal.clone();
-
         // since we're takers, we are on the other side of the trade
-        let taker_role = deal_parameters.maker_role.other();
-        match taker_role {
-            SwapRole::Bob => {
-                let bob = Bob::new(
-                    BitcoinSegwitV0::new(),
-                    Monero,
-                    target_bitcoin_address.clone(),
-                    FeePriority::Low,
-                );
-                let local_params = bob.generate_parameters(&mut key_manager, &runtime.deal)?;
-                let funding = create_funding(&mut key_manager, deal_parameters.network)?;
-                let funding_addr = funding.get_address()?;
-                event.send_ctl_service(
-                    ServiceId::Database,
-                    CtlMsg::SetAddressSecretKey(AddressSecretKey::Bitcoin {
-                        address: funding_addr,
-                        secret_key_info: BitcoinSecretKeyInfo {
-                            swap_id: Some(runtime.swap_id),
-                            secret_key: key_manager
-                                .get_or_derive_bitcoin_key(ArbitratingKeyId::Lock)?,
-                        },
-                    }),
-                )?;
-                runtime.log_info(format!("Loading {}", "Wallet::Bob".label()));
-                let local_wallet = BobState::new(
-                    bob,
-                    TradeRole::Taker,
-                    local_params,
-                    key_manager,
-                    funding,
-                    None,
-                    target_bitcoin_address,
-                    target_monero_address,
-                );
-                Ok(Wallet::Bob(local_wallet))
-            }
-            SwapRole::Alice => {
-                let alice = Alice::new(
-                    BitcoinSegwitV0::new(),
-                    Monero,
-                    target_bitcoin_address.clone(),
-                    FeePriority::Low,
-                );
-                let local_params = alice.generate_parameters(&mut key_manager, &runtime.deal)?;
-                let local_wallet = AliceState::new(
-                    alice,
-                    TradeRole::Taker,
-                    local_params,
-                    key_manager,
-                    None,
-                    target_bitcoin_address,
-                    target_monero_address,
-                );
-                Ok(Wallet::Alice(local_wallet))
-            }
-        }
-    }
-
-    pub fn new_maker(
-        event: &mut Event,
-        runtime: &mut Runtime,
-        target_bitcoin_address: bitcoin::Address,
-        target_monero_address: monero::Address,
-        mut key_manager: KeyManager,
-        remote_commit: Commit,
-    ) -> Result<Self, Error> {
-        let Deal {
-            parameters: deal_parameters,
-            ..
-        } = runtime.deal.clone();
-        match deal_parameters.maker_role {
-            SwapRole::Bob => {
-                let bob = Bob::new(
-                    BitcoinSegwitV0::new(),
-                    Monero,
-                    target_bitcoin_address.clone(),
-                    FeePriority::Low,
-                );
-                let local_params = bob.generate_parameters(&mut key_manager, &runtime.deal)?;
-                let funding = create_funding(&mut key_manager, deal_parameters.network)?;
-                let funding_addr = funding.get_address()?;
-                event.send_ctl_service(
-                    ServiceId::Database,
-                    CtlMsg::SetAddressSecretKey(AddressSecretKey::Bitcoin {
-                        address: funding_addr,
-                        secret_key_info: BitcoinSecretKeyInfo {
-                            swap_id: Some(runtime.swap_id),
-                            secret_key: key_manager
-                                .get_or_derive_bitcoin_key(ArbitratingKeyId::Lock)?,
-                        },
-                    }),
-                )?;
-                runtime.log_info(format!("Loading {}", "Wallet::Bob".label()));
-                let local_wallet = if let Commit::AliceParameters(remote_commit) = remote_commit {
-                    BobState::new(
-                        bob,
-                        TradeRole::Maker,
-                        local_params,
-                        key_manager,
-                        funding,
-                        Some(remote_commit),
-                        target_bitcoin_address,
-                        target_monero_address,
-                    )
-                } else {
-                    runtime.log_error("Not Commit::Alice");
-                    return Err(Error::Farcaster("Not Commit::Alice".to_string()));
-                };
-                Ok(Wallet::Bob(local_wallet))
-            }
-            SwapRole::Alice => {
-                let alice = Alice::new(
-                    BitcoinSegwitV0::new(),
-                    Monero,
-                    target_bitcoin_address.clone(),
-                    FeePriority::Low,
-                );
-                let local_params = alice.generate_parameters(&mut key_manager, &runtime.deal)?;
-                runtime.log_info(format!("Loading {}", "Wallet::Alice".label()));
-                let local_wallet = if let Commit::BobParameters(bob_commit) = remote_commit {
-                    let local_trade_role = TradeRole::Maker;
-                    AliceState::new(
-                        alice,
-                        local_trade_role,
-                        local_params,
-                        key_manager,
-                        Some(bob_commit),
-                        target_bitcoin_address,
-                        target_monero_address,
-                    )
-                } else {
-                    runtime.log_error("Not Commit::Bob");
-                    return Err(Error::Farcaster("Not Commit::Bob".to_string()));
-                };
-                Ok(Wallet::Alice(local_wallet))
-            }
-        }
-    }
-
-    pub fn process_funding_tx(&mut self, runtime: &mut Runtime, tx: Tx) -> Result<(), Error> {
-        if let Tx::Funding(tx) = tx {
-            if let Wallet::Bob(BobState { funding_tx, .. }) = self {
-                if funding_tx.was_seen() {
-                    runtime.log_warn("Funding was previously updated, ignoring");
-                    return Err(Error::Farcaster("Funding already updated".to_string()));
-                }
-                funding_update(funding_tx, tx)?;
-                runtime
-                    .log_debug("Bob's wallet informs swapd that funding was successfully updated");
-                Ok(())
-            } else {
-                Err(Error::Farcaster(
-                    "Processing funding tx requires a Bob wallet".to_string(),
-                ))
-            }
-        } else {
-            Err(Error::Farcaster(
-                "Process funding tx only processes funding transactions".to_string(),
-            ))
-        }
-    }
-
-    pub fn process_buy_tx(
-        &mut self,
-        runtime: &mut Runtime,
-        buy_tx: bitcoin::Transaction,
-        event: &mut Event,
-    ) -> Result<SweepMoneroAddress, Error> {
-        if let Wallet::Bob(BobState {
-            bob,
+        let alice = Alice::new(
+            BitcoinSegwitV0::new(),
+            Monero,
+            target_bitcoin_address.clone(),
+            FeePriority::Low,
+        );
+        let local_params = alice.generate_parameters(&mut key_manager, &runtime.deal)?;
+        Ok(AliceWallet::new(
+            alice,
+            TradeRole::Taker,
             local_params,
             key_manager,
-            remote_params: Some(alice_params),
-            adaptor_buy: Some(adaptor_buy),
+            None,
+            target_bitcoin_address,
             target_monero_address,
+        ))
+    }
+
+    pub fn taker_commit(
+        &mut self,
+        event: &mut Event,
+        runtime: &mut Runtime,
+    ) -> Result<CommitAliceParameters, Error> {
+        let AliceWallet { local_params, .. } = self;
+        runtime.log_info(format!(
+            "{} to Maker remote peer",
+            "Proposing to take swap".bright_white_bold(),
+        ));
+
+        let msg = format!(
+            "Proposing to take swap {} to Maker remote peer",
+            runtime.swap_id.swap_id()
+        );
+        // Ignoring possible reporting errors here and after: do not want to
+        // halt the swap just because the client disconnected
+        let _ = runtime.report_progress_message(event.endpoints, msg);
+
+        let engine = CommitmentEngine;
+        Ok(local_params.commit_alice(runtime.swap_id, &engine))
+    }
+
+    pub fn new_maker_alice(
+        runtime: &mut Runtime,
+        target_bitcoin_address: bitcoin::Address,
+        target_monero_address: monero::Address,
+        mut key_manager: KeyManager,
+        remote_commit: CommitBobParameters,
+    ) -> Result<Self, Error> {
+        let alice = Alice::new(
+            BitcoinSegwitV0::new(),
+            Monero,
+            target_bitcoin_address.clone(),
+            FeePriority::Low,
+        );
+        let local_params = alice.generate_parameters(&mut key_manager, &runtime.deal)?;
+        runtime.log_info(format!("Loading {}", "Wallet::Alice".label()));
+        let local_trade_role = TradeRole::Maker;
+        Ok(AliceWallet::new(
+            alice,
+            local_trade_role,
+            local_params,
+            key_manager,
+            Some(remote_commit),
+            target_bitcoin_address,
+            target_monero_address,
+        ))
+    }
+
+    pub fn maker_commit(
+        &mut self,
+        event: &mut Event,
+        runtime: &mut Runtime,
+    ) -> Result<CommitAliceParameters, Error> {
+        let AliceWallet { local_params, .. } = self;
+        runtime.log_info(format!(
+            "{} as Maker from Taker through peerd {}",
+            "Accepting swap".bright_white_bold(),
+            runtime.peer_service.bright_blue_italic()
+        ));
+
+        let msg = format!(
+            "Accepting swap {} as Maker from Taker through peerd {}",
+            runtime.swap_id, runtime.peer_service
+        );
+        // Ignoring possible reporting errors here and after: do not want to
+        // halt the swap just because the enquirer (farcasterd) disconnected
+        let _ = runtime.report_progress_message(event.endpoints, msg);
+
+        let engine = CommitmentEngine;
+        Ok(local_params.commit_alice(runtime.swap_id, &engine))
+    }
+
+    pub fn handle_bob_reveals(
+        &mut self,
+        runtime: &mut Runtime,
+        parameters: RevealBobParameters,
+        proof: RevealProof,
+    ) -> Result<(Option<Reveal>, Parameters), Error> {
+        let AliceWallet {
+            local_params,
+            key_manager,
+            remote_commit,
+            remote_params, // None
+            remote_proof,  // None
             ..
-        }) = self
-        {
-            let sk_a_btc = bob.recover_accordant_key(
-                key_manager,
-                alice_params,
-                adaptor_buy.buy_adaptor_sig.clone(),
-                buy_tx,
-            );
-            let mut sk_a_btc_buf: Vec<u8> = (*sk_a_btc.as_ref()).into();
-            sk_a_btc_buf.reverse();
-            let sk_a = monero::PrivateKey::from_slice(sk_a_btc_buf.as_ref())
-                .expect("Valid Monero Private Key");
-            runtime.log_info(format!(
-                "Extracted monero key from Buy tx: {}",
-                sk_a.label()
+        } = self;
+        let remote_commit = if let Some(remote_commit) = remote_commit {
+            remote_commit
+        } else {
+            return Err(Error::Farcaster(
+                "Expected remote commit to be set".to_string(),
             ));
-            let sk_b = key_manager.get_or_derive_monero_spend_key()?;
-            let spend = sk_a + sk_b;
-            runtime.log_info(format!(
-                "Full secret monero spending key: {}",
-                spend.bright_green_bold()
+        };
+        if remote_params.is_some() || remote_proof.is_some() {
+            runtime.log_error("Bob params or proof already set");
+            return Err(Error::Farcaster(
+                "Bob params or proof already set".to_string(),
             ));
-            let view_key_alice = *alice_params
-                .accordant_shared_keys
-                .clone()
-                .into_iter()
-                .find(|vk| vk.tag() == &SharedKeyId::new(SHARED_VIEW_KEY_ID))
-                .unwrap()
-                .elem();
-
-            let view_key_bob = *local_params
-                .accordant_shared_keys
-                .clone()
-                .into_iter()
-                .find(|vk| vk.tag() == &SharedKeyId::new(SHARED_VIEW_KEY_ID))
-                .unwrap()
-                .elem();
-            let view = view_key_alice + view_key_bob;
-            runtime.log_info(format!(
-                "Full secret monero view key: {}",
-                view.bright_green_bold()
-            ));
-            let network = runtime.deal.parameters.network.into();
-            let keypair = monero::KeyPair { view, spend };
-            let corresponding_address = monero::Address::from_keypair(network, &keypair);
-            runtime.log_info(format!(
-                "Corresponding address: {}",
-                corresponding_address.addr()
-            ));
-
-            event.send_ctl_service(
-                ServiceId::Database,
-                CtlMsg::SetAddressSecretKey(AddressSecretKey::Monero {
-                    address: corresponding_address,
-                    secret_key_info: MoneroSecretKeyInfo {
-                        swap_id: Some(runtime.swap_id),
-                        view: keypair.view.as_bytes().try_into().unwrap(),
-                        spend: keypair.spend.as_bytes().try_into().unwrap(),
-                        creation_height: runtime.monero_address_creation_height,
+        }
+        runtime.log_trace(format!("Setting Bob params: {}", parameters));
+        runtime.log_trace(format!("Setting Bob proof: {}", proof));
+        remote_commit.verify_with_reveal(&CommitmentEngine, parameters.clone())?;
+        let remote_params_candidate: Parameters = parameters.into_parameters();
+        let proof_verification = key_manager.verify_proof(
+            &remote_params_candidate.spend,
+            &remote_params_candidate.adaptor,
+            proof.proof.clone(),
+        );
+        if proof_verification.is_err() {
+            runtime.log_error("DLEQ proof invalid");
+            return Err(Error::Farcaster("DLEQ invalid".to_string()));
+        }
+        runtime.log_info("Proof successfully verified");
+        *remote_params = Some(remote_params_candidate.clone());
+        *remote_proof = Some(proof.proof);
+        // if we're maker, send Reveal back to counterparty
+        if runtime.deal.swap_role(&TradeRole::Maker) == SwapRole::Alice {
+            Ok((
+                Some(Reveal::Alice {
+                    parameters: local_params.clone().reveal_alice(runtime.swap_id),
+                    proof: RevealProof {
+                        swap_id: runtime.swap_id,
+                        proof: local_params.proof.clone().expect("local always some"),
                     },
                 }),
-            )?;
-
-            let sweep_keys = SweepMoneroAddress {
-                source_view_key: view,
-                source_spend_key: spend,
-                destination_address: *target_monero_address,
-                minimum_balance: runtime.deal.parameters.accordant_amount,
-                from_height: runtime.monero_address_creation_height,
-            };
-            Ok(sweep_keys)
+                remote_params_candidate,
+            ))
         } else {
-            Err(Error::Farcaster("Wallet in invalid state".to_string()))
+            Ok((None, remote_params_candidate))
         }
+        // Nothing to do yet, waiting for Msg CoreArbitratingSetup to proceed
+    }
+
+    pub fn handle_maker_commit(
+        &mut self,
+        runtime: &mut Runtime,
+        commit: CommitBobParameters,
+    ) -> Result<Reveal, Error> {
+        let AliceWallet {
+            remote_commit, // None
+            local_params,
+            ..
+        } = self;
+        if remote_commit.is_some() {
+            runtime.log_error("Bob Commit (remote) already set");
+        } else {
+            runtime.log_trace("Setting Bob Commit");
+            *remote_commit = Some(commit);
+        }
+        Ok(Reveal::Alice {
+            parameters: local_params.clone().reveal_alice(runtime.swap_id),
+            proof: RevealProof {
+                swap_id: runtime.swap_id,
+                proof: local_params.proof.clone().expect("local always some"),
+            },
+        })
     }
 
     pub fn process_refund_tx(
@@ -556,329 +456,612 @@ impl Wallet {
         runtime: &mut Runtime,
         refund_tx: bitcoin::Transaction,
     ) -> Result<SweepMoneroAddress, Error> {
-        if let Wallet::Alice(AliceState {
+        let AliceWallet {
             alice,
             local_params,
             key_manager,
-            remote_params: Some(bob_params), //remote
-            adaptor_refund: Some(adaptor_refund),
+            remote_params,
+            adaptor_refund,
             target_monero_address,
             ..
-        }) = self
-        {
-            let sk_b_btc = alice.recover_accordant_key(
-                key_manager,
-                bob_params,
-                adaptor_refund.clone(),
-                refund_tx,
-            );
-            let mut sk_b_btc_buf: Vec<u8> = (*sk_b_btc.as_ref()).into();
-            sk_b_btc_buf.reverse();
-            let sk_b = monero::PrivateKey::from_slice(sk_b_btc_buf.as_ref())
-                .expect("Valid Monero Private Key");
+        } = self;
 
-            runtime.log_info(format!(
-                "Extracted monero key from Refund tx: {}",
-                sk_b.label()
-            ));
-
-            let sk_a = key_manager.get_or_derive_monero_spend_key()?;
-            let spend = sk_a + sk_b;
-            runtime.log_info(format!(
-                "Full secret monero spending key: {}",
-                spend.bright_green_bold()
-            ));
-
-            let view_key_bob = *bob_params
-                .accordant_shared_keys
-                .clone()
-                .into_iter()
-                .find(|vk| vk.tag() == &SharedKeyId::new(SHARED_VIEW_KEY_ID))
-                .unwrap()
-                .elem();
-
-            let view_key_alice = *local_params
-                .accordant_shared_keys
-                .clone()
-                .into_iter()
-                .find(|vk| vk.tag() == &SharedKeyId::new(SHARED_VIEW_KEY_ID))
-                .unwrap()
-                .elem();
-            let view = view_key_alice + view_key_bob;
-            runtime.log_info(format!(
-                "Full secret monero view key: {}",
-                view.bright_green_bold()
-            ));
-            let network = runtime.deal.parameters.network.into();
-            let keypair = monero::KeyPair { view, spend };
-            let corresponding_address = monero::Address::from_keypair(network, &keypair);
-            runtime.log_info(format!(
-                "Corresponding address: {}",
-                corresponding_address.addr()
-            ));
-
-            event.send_ctl_service(
-                ServiceId::Database,
-                CtlMsg::SetAddressSecretKey(AddressSecretKey::Monero {
-                    address: corresponding_address,
-                    secret_key_info: MoneroSecretKeyInfo {
-                        swap_id: Some(runtime.swap_id),
-                        view: keypair.view.as_bytes().try_into().unwrap(),
-                        spend: keypair.spend.as_bytes().try_into().unwrap(),
-                        creation_height: runtime.monero_address_creation_height,
-                    },
-                }),
-            )?;
-
-            let sweep_keys = SweepMoneroAddress {
-                source_view_key: view,
-                source_spend_key: spend,
-                destination_address: *target_monero_address,
-                minimum_balance: runtime.deal.parameters.accordant_amount,
-                from_height: runtime.monero_address_creation_height,
+        let (bob_params, adaptor_refund) =
+            if let (Some(bob_params), Some(adaptor_refund)) = (remote_params, adaptor_refund) {
+                (bob_params, adaptor_refund)
+            } else {
+                return Err(Error::Farcaster(
+                    "Expected remote params and adaptor refund to be set".to_string(),
+                ));
             };
-            Ok(sweep_keys)
+        let sk_b_btc =
+            alice.recover_accordant_key(key_manager, bob_params, adaptor_refund.clone(), refund_tx);
+        let mut sk_b_btc_buf: Vec<u8> = (*sk_b_btc.as_ref()).into();
+        sk_b_btc_buf.reverse();
+        let sk_b = monero::PrivateKey::from_slice(sk_b_btc_buf.as_ref())
+            .expect("Valid Monero Private Key");
+
+        runtime.log_info(format!(
+            "Extracted monero key from Refund tx: {}",
+            sk_b.label()
+        ));
+
+        let sk_a = key_manager.get_or_derive_monero_spend_key()?;
+        let spend = sk_a + sk_b;
+        runtime.log_info(format!(
+            "Full secret monero spending key: {}",
+            spend.bright_green_bold()
+        ));
+
+        let view_key_bob = *bob_params
+            .accordant_shared_keys
+            .clone()
+            .into_iter()
+            .find(|vk| vk.tag() == &SharedKeyId::new(SHARED_VIEW_KEY_ID))
+            .unwrap()
+            .elem();
+
+        let view_key_alice = *local_params
+            .accordant_shared_keys
+            .clone()
+            .into_iter()
+            .find(|vk| vk.tag() == &SharedKeyId::new(SHARED_VIEW_KEY_ID))
+            .unwrap()
+            .elem();
+        let view = view_key_alice + view_key_bob;
+        runtime.log_info(format!(
+            "Full secret monero view key: {}",
+            view.bright_green_bold()
+        ));
+        let network = runtime.deal.parameters.network.into();
+        let keypair = monero::KeyPair { view, spend };
+        let corresponding_address = monero::Address::from_keypair(network, &keypair);
+        runtime.log_info(format!(
+            "Corresponding address: {}",
+            corresponding_address.addr()
+        ));
+
+        event.send_ctl_service(
+            ServiceId::Database,
+            CtlMsg::SetAddressSecretKey(AddressSecretKey::Monero {
+                address: corresponding_address,
+                secret_key_info: MoneroSecretKeyInfo {
+                    swap_id: Some(runtime.swap_id),
+                    view: keypair.view.as_bytes().try_into().unwrap(),
+                    spend: keypair.spend.as_bytes().try_into().unwrap(),
+                    creation_height: runtime.monero_address_creation_height,
+                },
+            }),
+        )?;
+
+        Ok(SweepMoneroAddress {
+            source_view_key: view,
+            source_spend_key: spend,
+            destination_address: *target_monero_address,
+            minimum_balance: runtime.deal.parameters.accordant_amount,
+            from_height: runtime.monero_address_creation_height,
+        })
+    }
+
+    pub fn handle_core_arbitrating_setup(
+        &mut self,
+        runtime: &mut Runtime,
+        core_arbitrating_setup: CoreArbitratingSetup,
+    ) -> Result<HandleCoreArbitratingSetupRes, Error> {
+        let AliceWallet {
+            alice,
+            local_params,
+            key_manager,
+            remote_params,
+            core_arb_setup,         // None
+            alice_cancel_signature, // None
+            adaptor_refund,         // None
+            ..
+        } = self;
+        let bob_parameters = if let Some(bob_parameters) = remote_params {
+            bob_parameters
         } else {
-            runtime.log_error("Call to refund transaction expects an Alice wallet");
+            return Err(Error::Farcaster(
+                "Expected remote params to be set".to_string(),
+            ));
+        };
+        if core_arb_setup.is_some() {
+            runtime.log_error("core_arb_txs already set for alice.");
+            return Err(Error::Farcaster("Core arb already set".to_string()));
+        }
+        if alice_cancel_signature.is_some() {
+            runtime.log_error("alice_cancel_sig already set for alice");
+            return Err(Error::Farcaster("Alice cancel sig already set".to_string()));
+        }
+        *core_arb_setup = Some(core_arbitrating_setup.clone());
+        let core_arb_txs = core_arbitrating_setup.into_arbitrating_tx();
+        let signed_adaptor_refund = alice.sign_adaptor_refund(
+            key_manager,
+            local_params,
+            bob_parameters,
+            &core_arb_txs,
+            runtime.deal.to_arbitrating_params(),
+        )?;
+        *adaptor_refund = Some(signed_adaptor_refund.clone());
+        let cosigned_arb_cancel = alice.cosign_arbitrating_cancel(
+            key_manager,
+            local_params,
+            bob_parameters,
+            &core_arb_txs,
+            runtime.deal.to_arbitrating_params(),
+        )?;
+        let refund_proc_signatures = RefundProcedureSignatures {
+            swap_id: runtime.swap_id,
+            cancel_sig: cosigned_arb_cancel,
+            refund_adaptor_sig: signed_adaptor_refund,
+        };
+        *alice_cancel_signature = Some(refund_proc_signatures.cancel_sig);
+
+        // cancel
+        let partial_cancel_tx = core_arb_setup.as_ref().unwrap().cancel.clone();
+        let mut cancel_tx = CancelTx::from_partial(partial_cancel_tx);
+        cancel_tx.add_witness(local_params.cancel, alice_cancel_signature.unwrap())?;
+        cancel_tx.add_witness(
+            bob_parameters.cancel,
+            core_arb_setup.as_ref().unwrap().cancel_sig,
+        )?;
+        let finalized_cancel_tx =
+            Broadcastable::<bitcoin::Transaction>::finalize_and_extract(&mut cancel_tx)?;
+
+        // punish
+        let FullySignedPunish { punish, punish_sig } = alice.fully_sign_punish(
+            key_manager,
+            local_params,
+            bob_parameters,
+            &core_arb_txs,
+            runtime.deal.to_arbitrating_params(),
+        )?;
+        let mut punish_tx = PunishTx::from_partial(punish);
+        punish_tx.add_witness(
+            local_params.punish.expect("Alice has punish key"),
+            punish_sig,
+        )?;
+        let finalized_punish_tx =
+            Broadcastable::<bitcoin::Transaction>::finalize_and_extract(&mut punish_tx)?;
+
+        Ok(HandleCoreArbitratingSetupRes {
+            refund_procedure_signatures: refund_proc_signatures,
+            cancel_tx: finalized_cancel_tx,
+            punish_tx: finalized_punish_tx,
+        })
+    }
+
+    pub fn handle_buy_procedure_signature(
+        &mut self,
+        runtime: &mut Runtime,
+        buy_procedure_signature: BuyProcedureSignature,
+    ) -> Result<HandleBuyProcedureSignatureRes, Error> {
+        runtime.log_trace("wallet received buyproceduresignature");
+        let AliceWallet {
+            alice,
+            local_params: alice_params,
+            key_manager,
+            remote_params,
+            core_arb_setup,
+            alice_cancel_signature,
+            ..
+        } = self;
+        let (bob_parameters, core_arb_setup, alice_cancel_signature) =
+            if let (Some(remote_params), Some(core_arb_setup), Some(alice_cancel_signature)) =
+                (remote_params, core_arb_setup, alice_cancel_signature)
+            {
+                (remote_params, core_arb_setup, alice_cancel_signature)
+            } else {
+                return Err(Error::Farcaster(
+                    "Expected remote_params, core_arb_setup and alice_cancel_signature to be set"
+                        .to_string(),
+                ));
+            };
+
+        let core_arb_txs = core_arb_setup.clone().into_arbitrating_tx();
+
+        // cancel
+        let tx = core_arb_setup.cancel.clone();
+        let mut cancel_tx = CancelTx::from_partial(tx);
+        cancel_tx.add_witness(alice_params.cancel, *alice_cancel_signature)?;
+        cancel_tx.add_witness(bob_parameters.cancel, core_arb_setup.cancel_sig)?;
+        let finalized_cancel_tx =
+            Broadcastable::<bitcoin::Transaction>::finalize_and_extract(&mut cancel_tx)?;
+
+        // buy
+        let mut buy_tx = BuyTx::from_partial(buy_procedure_signature.buy.clone());
+        alice.validate_adaptor_buy(
+            key_manager,
+            alice_params,
+            bob_parameters,
+            &core_arb_txs,
+            runtime.deal.to_arbitrating_params(),
+            &buy_procedure_signature,
+        )?;
+        let TxSignatures { sig, adapted_sig } = alice.fully_sign_buy(
+            key_manager,
+            alice_params,
+            bob_parameters,
+            &core_arb_txs,
+            runtime.deal.to_arbitrating_params(),
+            &buy_procedure_signature,
+        )?;
+        buy_tx.add_witness(key_manager.get_pubkey(ArbitratingKeyId::Buy)?, sig)?;
+        buy_tx.add_witness(bob_parameters.buy, adapted_sig)?;
+        let finalized_buy_tx =
+            Broadcastable::<bitcoin::Transaction>::finalize_and_extract(&mut buy_tx)?;
+        runtime.log_trace("wallet sends fullysignedbuy");
+        Ok(HandleBuyProcedureSignatureRes {
+            cancel_tx: finalized_cancel_tx,
+            buy_tx: finalized_buy_tx,
+        })
+        // buy_adaptor_sig
+    }
+}
+
+impl BobWallet {
+    pub fn local_params(&self) -> Parameters {
+        self.local_params.clone()
+    }
+
+    pub fn process_funding_tx(&mut self, runtime: &mut Runtime, tx: Tx) -> Result<(), Error> {
+        if let Tx::Funding(tx) = tx {
+            if self.funding_tx.was_seen() {
+                runtime.log_warn("Funding was previously updated, ignoring");
+                return Err(Error::Farcaster("Funding already updated".to_string()));
+            }
+            funding_update(&mut self.funding_tx, tx)?;
+            runtime.log_debug("Bob's wallet informs swapd that funding was successfully updated");
+            Ok(())
+        } else {
             Err(Error::Farcaster(
-                "Refund transaction requires an Alice wallet".to_string(),
+                "Process funding tx only processes funding transactions".to_string(),
             ))
         }
     }
 
+    pub fn funding_address(&self) -> Option<bitcoin::Address> {
+        self.funding_tx.get_address().ok()
+    }
+
     pub fn process_get_sweep_bitcoin_address(
         &mut self,
-        runtime: &mut Runtime,
         source_address: bitcoin::Address,
     ) -> Result<SweepBitcoinAddress, Error> {
-        if let Wallet::Bob(BobState {
+        let BobWallet {
             key_manager, bob, ..
-        }) = self
-        {
-            let source_secret_key =
-                key_manager.get_or_derive_bitcoin_key(ArbitratingKeyId::Lock)?;
-            let destination_address = bob.refund_address.clone();
-            Ok(SweepBitcoinAddress {
-                source_secret_key,
-                source_address,
-                destination_address,
-            })
-        } else {
-            runtime.log_error("Get funding key requires a bob wallet");
-            Err(Error::Farcaster(
-                "Funding key requires a Bob wallet".to_string(),
-            ))
-        }
+        } = self;
+        let source_secret_key = key_manager.get_or_derive_bitcoin_key(ArbitratingKeyId::Lock)?;
+        let destination_address = bob.refund_address.clone();
+        Ok(SweepBitcoinAddress {
+            source_secret_key,
+            source_address,
+            destination_address,
+        })
+    }
+
+    pub fn new_taker_bob(
+        event: &mut Event,
+        runtime: &mut Runtime,
+        target_bitcoin_address: bitcoin::Address,
+        target_monero_address: monero::Address,
+        mut key_manager: KeyManager,
+    ) -> Result<Self, Error> {
+        let Deal {
+            parameters: deal_parameters,
+            ..
+        } = runtime.deal.clone();
+
+        let bob = Bob::new(
+            BitcoinSegwitV0::new(),
+            Monero,
+            target_bitcoin_address.clone(),
+            FeePriority::Low,
+        );
+        let local_params = bob.generate_parameters(&mut key_manager, &runtime.deal)?;
+        let funding = create_funding(&mut key_manager, deal_parameters.network)?;
+        let funding_addr = funding.get_address()?;
+        event.send_ctl_service(
+            ServiceId::Database,
+            CtlMsg::SetAddressSecretKey(AddressSecretKey::Bitcoin {
+                address: funding_addr,
+                secret_key_info: BitcoinSecretKeyInfo {
+                    swap_id: Some(runtime.swap_id),
+                    secret_key: key_manager.get_or_derive_bitcoin_key(ArbitratingKeyId::Lock)?,
+                },
+            }),
+        )?;
+        runtime.log_info(format!("Loading {}", "Wallet::Bob".label()));
+        Ok(BobWallet::new(
+            bob,
+            TradeRole::Taker,
+            local_params,
+            key_manager,
+            funding,
+            None,
+            target_bitcoin_address,
+            target_monero_address,
+        ))
+    }
+
+    pub fn taker_commit(
+        &mut self,
+        event: &mut Event,
+        runtime: &mut Runtime,
+    ) -> Result<CommitBobParameters, Error> {
+        let BobWallet { local_params, .. } = self;
+        runtime.log_info(format!(
+            "{} to Maker remote peer",
+            "Proposing to take swap".bright_white_bold(),
+        ));
+
+        let msg = format!(
+            "Proposing to take swap {} to Maker remote peer",
+            runtime.swap_id.swap_id()
+        );
+        // Ignoring possible reporting errors here and after: do not want to
+        // halt the swap just because the client disconnected
+        let _ = runtime.report_progress_message(event.endpoints, msg);
+
+        let engine = CommitmentEngine;
+        Ok(local_params.commit_bob(runtime.swap_id, &engine))
+    }
+
+    pub fn new_maker_bob(
+        event: &mut Event,
+        runtime: &mut Runtime,
+        target_bitcoin_address: bitcoin::Address,
+        target_monero_address: monero::Address,
+        mut key_manager: KeyManager,
+        remote_commit: CommitAliceParameters,
+    ) -> Result<Self, Error> {
+        let Deal {
+            parameters: deal_parameters,
+            ..
+        } = runtime.deal.clone();
+        let bob = Bob::new(
+            BitcoinSegwitV0::new(),
+            Monero,
+            target_bitcoin_address.clone(),
+            FeePriority::Low,
+        );
+        let local_params = bob.generate_parameters(&mut key_manager, &runtime.deal)?;
+        let funding = create_funding(&mut key_manager, deal_parameters.network)?;
+        let funding_addr = funding.get_address()?;
+        event.send_ctl_service(
+            ServiceId::Database,
+            CtlMsg::SetAddressSecretKey(AddressSecretKey::Bitcoin {
+                address: funding_addr,
+                secret_key_info: BitcoinSecretKeyInfo {
+                    swap_id: Some(runtime.swap_id),
+                    secret_key: key_manager.get_or_derive_bitcoin_key(ArbitratingKeyId::Lock)?,
+                },
+            }),
+        )?;
+        runtime.log_info(format!("Loading {}", "Wallet::Bob".label()));
+        Ok(BobWallet::new(
+            bob,
+            TradeRole::Maker,
+            local_params,
+            key_manager,
+            funding,
+            Some(remote_commit),
+            target_bitcoin_address,
+            target_monero_address,
+        ))
+    }
+
+    pub fn maker_commit(
+        &mut self,
+        event: &mut Event,
+        runtime: &mut Runtime,
+    ) -> Result<CommitBobParameters, Error> {
+        let BobWallet { local_params, .. } = self;
+        runtime.log_info(format!(
+            "{} as Maker from Taker through peerd {}",
+            "Accepting swap".bright_white_bold(),
+            runtime.peer_service.bright_blue_italic()
+        ));
+
+        let msg = format!(
+            "Accepting swap {} as Maker from Taker through peerd {}",
+            runtime.swap_id, runtime.peer_service
+        );
+        // Ignoring possible reporting errors here and after: do not want to
+        // halt the swap just because the enquirer (farcasterd) disconnected
+        let _ = runtime.report_progress_message(event.endpoints, msg);
+
+        let engine = CommitmentEngine;
+        Ok(local_params.commit_bob(runtime.swap_id, &engine))
     }
 
     pub fn handle_maker_commit(
         &mut self,
         runtime: &mut Runtime,
-        commit: Commit,
+        commit: CommitAliceParameters,
     ) -> Result<Reveal, Error> {
-        match commit {
-            Commit::BobParameters(commit) => {
-                if let Wallet::Alice(AliceState {
-                    remote_commit, // None
-                    ..
-                }) = self
-                {
-                    if remote_commit.is_some() {
-                        runtime.log_error("Bob Commit (remote) already set");
-                    } else {
-                        runtime.log_trace("Setting Bob Commit");
-                        *remote_commit = Some(commit);
-                    }
-                } else {
-                    runtime.log_error("Wallet not found or not on correct state");
-                    return Err(Error::Farcaster(
-                        "Needs to be an Alice wallet to process Bob Commit".to_string(),
-                    ));
-                }
-            }
-            Commit::AliceParameters(commit) => {
-                if let Wallet::Bob(BobState {
-                    remote_commit, // None
-                    ..
-                }) = self
-                {
-                    if remote_commit.is_some() {
-                        runtime.log_error("Alice Commit (remote) already set");
-                    } else {
-                        trace!("Setting Alice Commit");
-                        *remote_commit = Some(commit);
-                    }
-                } else {
-                    runtime.log_error(format!(
-                        "Not correct wallet, should be Bob's wallet: {}",
-                        self
-                    ));
-                    return Err(Error::Farcaster(
-                        "Needs to be a Bob wallet to process Alice Commit".to_string(),
-                    ));
-                }
-            }
+        let BobWallet {
+            remote_commit, // None
+            local_params,
+            ..
+        } = self;
+        if remote_commit.is_some() {
+            runtime.log_error("Alice Commit (remote) already set");
+        } else {
+            trace!("Setting Alice Commit");
+            *remote_commit = Some(commit);
         }
         // craft the correct reveal depending on role
-        let reveal = match self {
-            Wallet::Alice(AliceState { local_params, .. }) => Reveal::Alice {
-                parameters: local_params.clone().reveal_alice(runtime.swap_id),
-                proof: RevealProof {
-                    swap_id: runtime.swap_id,
-                    proof: local_params.proof.clone().expect("local always some"),
-                },
+        Ok(Reveal::Bob {
+            parameters: local_params.clone().reveal_bob(runtime.swap_id),
+            proof: RevealProof {
+                swap_id: runtime.swap_id,
+                proof: local_params.proof.clone().expect("local always some"),
             },
-            Wallet::Bob(BobState { local_params, .. }) => Reveal::Bob {
-                parameters: local_params.clone().reveal_bob(runtime.swap_id),
-                proof: RevealProof {
-                    swap_id: runtime.swap_id,
-                    proof: local_params.proof.clone().expect("local always some"),
-                },
-            },
-        };
-        Ok(reveal)
+        })
     }
 
-    pub fn handle_bob_reveals(
+    pub fn process_buy_tx(
         &mut self,
         runtime: &mut Runtime,
-        reveal: Reveal,
-    ) -> Result<Option<Reveal>, Error> {
-        match reveal {
-            // receiving from counterparty Bob, thus wallet is acting as Alice (Maker or
-            // Taker)
-            Reveal::Bob { parameters, proof } => {
-                if let Wallet::Alice(AliceState {
-                    local_params,
-                    key_manager,
-                    remote_commit: Some(remote_commit),
-                    remote_params, // None
-                    remote_proof,  // None
-                    ..
-                }) = self
-                {
-                    if remote_params.is_some() || remote_proof.is_some() {
-                        runtime.log_error("Bob params or proof already set");
-                        return Err(Error::Farcaster(
-                            "Bob params or proof already set".to_string(),
-                        ));
-                    }
+        buy_tx: bitcoin::Transaction,
+        event: &mut Event,
+    ) -> Result<SweepMoneroAddress, Error> {
+        let BobWallet {
+            bob,
+            local_params,
+            key_manager,
+            remote_params,
+            adaptor_buy,
+            target_monero_address,
+            ..
+        } = self;
+        let (alice_params, adaptor_buy) =
+            if let (Some(remote_params), Some(adaptor_buy)) = (remote_params, adaptor_buy) {
+                (remote_params, adaptor_buy)
+            } else {
+                return Err(Error::Farcaster(
+                    "Expected remote params and adaptor buy to be set".to_string(),
+                ));
+            };
+        let sk_a_btc = bob.recover_accordant_key(
+            key_manager,
+            alice_params,
+            adaptor_buy.buy_adaptor_sig.clone(),
+            buy_tx,
+        );
+        let mut sk_a_btc_buf: Vec<u8> = (*sk_a_btc.as_ref()).into();
+        sk_a_btc_buf.reverse();
+        let sk_a = monero::PrivateKey::from_slice(sk_a_btc_buf.as_ref())
+            .expect("Valid Monero Private Key");
+        runtime.log_info(format!(
+            "Extracted monero key from Buy tx: {}",
+            sk_a.label()
+        ));
+        let sk_b = key_manager.get_or_derive_monero_spend_key()?;
+        let spend = sk_a + sk_b;
+        runtime.log_info(format!(
+            "Full secret monero spending key: {}",
+            spend.bright_green_bold()
+        ));
+        let view_key_alice = *alice_params
+            .accordant_shared_keys
+            .clone()
+            .into_iter()
+            .find(|vk| vk.tag() == &SharedKeyId::new(SHARED_VIEW_KEY_ID))
+            .unwrap()
+            .elem();
 
-                    runtime.log_trace(format!("Setting Bob params: {}", parameters));
-                    runtime.log_trace(format!("Setting Bob proof: {}", proof));
-                    remote_commit.verify_with_reveal(&CommitmentEngine, parameters.clone())?;
-                    let remote_params_candidate: Parameters = parameters.into_parameters();
-                    let proof_verification = key_manager.verify_proof(
-                        &remote_params_candidate.spend,
-                        &remote_params_candidate.adaptor,
-                        proof.proof.clone(),
-                    );
-                    if proof_verification.is_err() {
-                        runtime.log_error("DLEQ proof invalid");
-                        return Err(Error::Farcaster("DLEQ invalid".to_string()));
-                    }
-                    runtime.log_info("Proof successfully verified");
-                    *remote_params = Some(remote_params_candidate);
-                    *remote_proof = Some(proof.proof);
-                    // if we're maker, send Reveal back to counterparty
-                    if runtime.deal.swap_role(&TradeRole::Maker) == SwapRole::Alice {
-                        Ok(Some(Reveal::Alice {
-                            parameters: local_params.clone().reveal_alice(runtime.swap_id),
-                            proof: RevealProof {
-                                swap_id: runtime.swap_id,
-                                proof: local_params.proof.clone().expect("local always some"),
-                            },
-                        }))
-                    } else {
-                        Ok(None)
-                    }
-                    // nothing to do yet, waiting for Msg
-                    // CoreArbitratingSetup to proceed
-                } else {
-                    runtime.log_error("Only Some(Wallet::Alice");
-                    Err(Error::Farcaster("Needs to be an Alice wallet".to_string()))
-                }
-            }
-            _ => Err(Error::Farcaster(
-                "Handle bob reveal can only handle a Bob Reveal message".to_string(),
-            )),
-        }
+        let view_key_bob = *local_params
+            .accordant_shared_keys
+            .clone()
+            .into_iter()
+            .find(|vk| vk.tag() == &SharedKeyId::new(SHARED_VIEW_KEY_ID))
+            .unwrap()
+            .elem();
+        let view = view_key_alice + view_key_bob;
+        runtime.log_info(format!(
+            "Full secret monero view key: {}",
+            view.bright_green_bold()
+        ));
+        let network = runtime.deal.parameters.network.into();
+        let keypair = monero::KeyPair { view, spend };
+        let corresponding_address = monero::Address::from_keypair(network, &keypair);
+        runtime.log_info(format!(
+            "Corresponding address: {}",
+            corresponding_address.addr()
+        ));
+
+        event.send_ctl_service(
+            ServiceId::Database,
+            CtlMsg::SetAddressSecretKey(AddressSecretKey::Monero {
+                address: corresponding_address,
+                secret_key_info: MoneroSecretKeyInfo {
+                    swap_id: Some(runtime.swap_id),
+                    view: keypair.view.as_bytes().try_into().unwrap(),
+                    spend: keypair.spend.as_bytes().try_into().unwrap(),
+                    creation_height: runtime.monero_address_creation_height,
+                },
+            }),
+        )?;
+
+        Ok(SweepMoneroAddress {
+            source_view_key: view,
+            source_spend_key: spend,
+            destination_address: *target_monero_address,
+            minimum_balance: runtime.deal.parameters.accordant_amount,
+            from_height: runtime.monero_address_creation_height,
+        })
     }
 
     pub fn handle_alice_reveals(
         &mut self,
         runtime: &mut Runtime,
-        reveal: Reveal,
-    ) -> Result<Option<Reveal>, Error> {
-        match reveal {
-            // getting parameters from counterparty Alice routed through
-            // swapd, thus I'm Bob on this swap: Bob can proceed
-            Reveal::Alice { parameters, proof } => {
-                if let Wallet::Bob(BobState {
-                    local_params,
-                    key_manager,
-                    remote_commit: Some(remote_commit),
-                    remote_params, // None
-                    remote_proof,  // None
-                    ..
-                }) = self
-                {
-                    // set wallet params
-                    if remote_params.is_some() || remote_proof.is_some() {
-                        runtime.log_error("Alice params or proof already set");
-                        return Err(Error::Farcaster(
-                            "Alice params or proof already set".to_string(),
-                        ));
-                    }
-
-                    runtime.log_trace(format!("Setting Alice params: {}", parameters));
-                    runtime.log_trace(format!("Setting Alice proof: {}", proof));
-                    remote_commit.verify_with_reveal(&CommitmentEngine, parameters.clone())?;
-                    let remote_params_candidate: Parameters = parameters.into_parameters();
-                    let proof_verification = key_manager.verify_proof(
-                        &remote_params_candidate.spend,
-                        &remote_params_candidate.adaptor,
-                        proof.proof.clone(),
-                    );
-
-                    if proof_verification.is_err() {
-                        runtime.log_error("DLEQ proof invalid");
-                        return Err(Error::Farcaster("DLEQ proof invalid".to_string()));
-                    }
-                    runtime.log_info("Proof successfully verified.");
-                    *remote_params = Some(remote_params_candidate);
-                    *remote_proof = Some(proof.proof);
-
-                    // if we're maker, send Reveal back to counterparty
-                    let reveal = if runtime.deal.swap_role(&TradeRole::Maker) == SwapRole::Bob {
-                        Some(Reveal::Bob {
-                            parameters: local_params.clone().reveal_bob(runtime.swap_id),
-                            proof: RevealProof {
-                                swap_id: runtime.swap_id,
-                                proof: local_params.proof.clone().expect("local always some"),
-                            },
-                        })
-                    } else {
-                        None
-                    };
-
-                    Ok(reveal)
-                } else {
-                    runtime.log_error("Only Some(Wallet::Bob)");
-                    Err(Error::Farcaster("Only wallet::Bob is allowed".to_string()))
-                }
-            }
-            _ => Err(Error::Farcaster(
-                "handle_alice_reveals can only handle an Alice Reveal".to_string(),
-            )),
+        parameters: RevealAliceParameters,
+        proof: RevealProof,
+    ) -> Result<(Option<Reveal>, Parameters), Error> {
+        let BobWallet {
+            local_params,
+            key_manager,
+            remote_commit,
+            remote_params, // None
+            remote_proof,  // None
+            ..
+        } = self;
+        let remote_commit = if let Some(remote_commit) = remote_commit {
+            remote_commit
+        } else {
+            return Err(Error::Farcaster(
+                "Expected remote commit to be set".to_string(),
+            ));
+        };
+        // set wallet params
+        if remote_params.is_some() || remote_proof.is_some() {
+            runtime.log_error("Alice params or proof already set");
+            return Err(Error::Farcaster(
+                "Alice params or proof already set".to_string(),
+            ));
         }
+
+        runtime.log_trace(format!("Setting Alice params: {}", parameters));
+        runtime.log_trace(format!("Setting Alice proof: {}", proof));
+        remote_commit.verify_with_reveal(&CommitmentEngine, parameters.clone())?;
+        let remote_params_candidate: Parameters = parameters.into_parameters();
+        let proof_verification = key_manager.verify_proof(
+            &remote_params_candidate.spend,
+            &remote_params_candidate.adaptor,
+            proof.proof.clone(),
+        );
+
+        if proof_verification.is_err() {
+            runtime.log_error("DLEQ proof invalid");
+            return Err(Error::Farcaster("DLEQ proof invalid".to_string()));
+        }
+        runtime.log_info("Proof successfully verified.");
+        *remote_params = Some(remote_params_candidate.clone());
+        *remote_proof = Some(proof.proof);
+
+        // if we're maker, send Reveal back to counterparty
+        let reveal = if runtime.deal.swap_role(&TradeRole::Maker) == SwapRole::Bob {
+            Some(Reveal::Bob {
+                parameters: local_params.clone().reveal_bob(runtime.swap_id),
+                proof: RevealProof {
+                    swap_id: runtime.swap_id,
+                    proof: local_params.proof.clone().expect("local always some"),
+                },
+            })
+        } else {
+            None
+        };
+
+        Ok((reveal, remote_params_candidate))
     }
 
     pub fn create_core_arb(
         &mut self,
         runtime: &mut Runtime,
     ) -> Result<CoreArbitratingSetup, Error> {
-        if let Wallet::Bob(BobState {
+        let BobWallet {
             bob,
             local_params,
             key_manager,
@@ -886,36 +1069,30 @@ impl Wallet {
             remote_params,
             core_arb_setup, // None
             ..
-        }) = self
-        {
-            // set wallet core_arb_txs
-            if core_arb_setup.is_some() {
-                runtime.log_error("Core Arb Txs already set.");
-                return Err(Error::Farcaster("Core arb txs already set".to_string()));
-            }
-            if !funding_tx.was_seen() {
-                runtime.log_error("Funding not yet seen.");
-                return Err(Error::Farcaster("Funding not seen yet".to_string()));
-            }
-            let core_arbitrating_txs = bob.core_arbitrating_transactions(
-                &remote_params.clone().expect("alice_params set above"),
-                local_params,
-                funding_tx.clone(),
-                runtime.deal.to_arbitrating_params(),
-            )?;
-            let cosign_arbitrating_cancel =
-                bob.cosign_arbitrating_cancel(key_manager, &core_arbitrating_txs)?;
-            *core_arb_setup = Some(
-                core_arbitrating_txs
-                    .into_arbitrating_setup(runtime.swap_id, cosign_arbitrating_cancel),
-            );
-            Ok(core_arb_setup
-                .clone()
-                .expect("This is safe, since we just set it to some"))
-        } else {
-            runtime.log_error("Only Some(Wallet::Bob");
-            Err(Error::Farcaster("Only Wallet::Bob is allowed".to_string()))
+        } = self;
+        // set wallet core_arb_txs
+        if core_arb_setup.is_some() {
+            runtime.log_error("Core Arb Txs already set.");
+            return Err(Error::Farcaster("Core arb txs already set".to_string()));
         }
+        if !funding_tx.was_seen() {
+            runtime.log_error("Funding not yet seen.");
+            return Err(Error::Farcaster("Funding not seen yet".to_string()));
+        }
+        let core_arbitrating_txs = bob.core_arbitrating_transactions(
+            &remote_params.clone().expect("alice_params set above"),
+            local_params,
+            funding_tx.clone(),
+            runtime.deal.to_arbitrating_params(),
+        )?;
+        let cosign_arbitrating_cancel =
+            bob.cosign_arbitrating_cancel(key_manager, &core_arbitrating_txs)?;
+        *core_arb_setup = Some(
+            core_arbitrating_txs.into_arbitrating_setup(runtime.swap_id, cosign_arbitrating_cancel),
+        );
+        Ok(core_arb_setup
+            .clone()
+            .expect("This is safe, since we just set it to some"))
     }
 
     pub fn handle_refund_procedure_signatures(
@@ -928,226 +1105,82 @@ impl Wallet {
             refund_adaptor_sig,
             ..
         } = refund_procedure_signatures;
-        if let Wallet::Bob(BobState {
+        let BobWallet {
             bob,
             local_params,
             key_manager,
-            remote_params: Some(remote_params),
-            core_arb_setup: Some(core_arb_setup),
+            remote_params,
+            core_arb_setup,
             adaptor_buy, // None
             ..
-        }) = self
-        {
-            let core_arb_txs = core_arb_setup.clone().into_arbitrating_tx();
-
-            bob.validate_adaptor_refund(
-                key_manager,
-                remote_params,
-                local_params,
-                &core_arb_txs,
-                &refund_adaptor_sig,
-            )?;
-
-            if adaptor_buy.is_some() {
-                runtime.log_error("Adaptor Buy already set");
-                return Err(Error::Farcaster("adaptor buy already set".to_string()));
-            }
-            *adaptor_buy = Some(bob.sign_adaptor_buy(
-                runtime.swap_id,
-                key_manager,
-                remote_params,
-                local_params,
-                &core_arb_txs,
-                runtime.deal.to_arbitrating_params(),
-            )?);
-
-            // lock
-            let sig = bob.sign_arbitrating_lock(key_manager, &core_arb_txs)?;
-            let tx = core_arb_setup.lock.clone();
-            let mut lock_tx = LockTx::from_partial(tx);
-            let lock_pubkey = key_manager.get_pubkey(ArbitratingKeyId::Lock)?;
-            lock_tx.add_witness(lock_pubkey, sig)?;
-            let finalized_lock_tx =
-                Broadcastable::<bitcoin::Transaction>::finalize_and_extract(&mut lock_tx)?;
-
-            // cancel
-            let tx = core_arb_setup.cancel.clone();
-            let mut cancel_tx = CancelTx::from_partial(tx);
-            cancel_tx.add_witness(remote_params.cancel, alice_cancel_sig)?;
-            cancel_tx.add_witness(local_params.cancel, core_arb_setup.cancel_sig)?;
-            let finalized_cancel_tx =
-                Broadcastable::<bitcoin::Transaction>::finalize_and_extract(&mut cancel_tx)?;
-
-            // refund
-            let TxSignatures { sig, adapted_sig } =
-                bob.fully_sign_refund(key_manager, &core_arb_txs, &refund_adaptor_sig)?;
-            let tx = core_arb_setup.refund.clone();
-            let mut refund_tx = RefundTx::from_partial(tx);
-            refund_tx.add_witness(local_params.refund, sig)?;
-            refund_tx.add_witness(remote_params.refund, adapted_sig)?;
-            let finalized_refund_tx =
-                Broadcastable::<bitcoin::Transaction>::finalize_and_extract(&mut refund_tx)?;
-
-            Ok(HandleRefundProcedureSignaturesRes {
-                buy_procedure_signature: adaptor_buy
-                    .clone()
-                    .expect("Value was to Some in the same function"),
-                lock_tx: finalized_lock_tx,
-                cancel_tx: finalized_cancel_tx,
-                refund_tx: finalized_refund_tx,
-            })
-        } else {
-            runtime.log_error("Unknown wallet and swap id");
-            Err(Error::Farcaster("Unknown wallet and swap id".to_string()))
-        }
-    }
-
-    pub fn handle_core_arbitrating_setup(
-        &mut self,
-        runtime: &mut Runtime,
-        core_arbitrating_setup: CoreArbitratingSetup,
-    ) -> Result<HandleCoreArbitratingSetupRes, Error> {
-        if let Wallet::Alice(AliceState {
-            alice,
-            local_params,
-            key_manager,
-            remote_params: Some(bob_parameters),
-            core_arb_setup,         // None
-            alice_cancel_signature, // None
-            adaptor_refund,         // None
-            ..
-        }) = self
-        {
-            if core_arb_setup.is_some() {
-                runtime.log_error("core_arb_txs already set for alice.");
-                return Err(Error::Farcaster("Core arb already set".to_string()));
-            }
-            if alice_cancel_signature.is_some() {
-                runtime.log_error("alice_cancel_sig already set for alice");
-                return Err(Error::Farcaster("Alice cancel sig already set".to_string()));
-            }
-            *core_arb_setup = Some(core_arbitrating_setup.clone());
-            let core_arb_txs = core_arbitrating_setup.into_arbitrating_tx();
-            let signed_adaptor_refund = alice.sign_adaptor_refund(
-                key_manager,
-                local_params,
-                bob_parameters,
-                &core_arb_txs,
-                runtime.deal.to_arbitrating_params(),
-            )?;
-            *adaptor_refund = Some(signed_adaptor_refund.clone());
-            let cosigned_arb_cancel = alice.cosign_arbitrating_cancel(
-                key_manager,
-                local_params,
-                bob_parameters,
-                &core_arb_txs,
-                runtime.deal.to_arbitrating_params(),
-            )?;
-            let refund_proc_signatures = RefundProcedureSignatures {
-                swap_id: runtime.swap_id,
-                cancel_sig: cosigned_arb_cancel,
-                refund_adaptor_sig: signed_adaptor_refund,
+        } = self;
+        let (remote_params, core_arb_setup) =
+            if let (Some(remote_params), Some(core_arb_setup)) = (remote_params, core_arb_setup) {
+                (remote_params, core_arb_setup)
+            } else {
+                return Err(Error::Farcaster(
+                    "Expected remote params and core arb setup to be set".to_string(),
+                ));
             };
-            *alice_cancel_signature = Some(refund_proc_signatures.cancel_sig);
 
-            // cancel
-            let partial_cancel_tx = core_arb_setup.as_ref().unwrap().cancel.clone();
-            let mut cancel_tx = CancelTx::from_partial(partial_cancel_tx);
-            cancel_tx.add_witness(local_params.cancel, alice_cancel_signature.unwrap())?;
-            cancel_tx.add_witness(
-                bob_parameters.cancel,
-                core_arb_setup.as_ref().unwrap().cancel_sig,
-            )?;
-            let finalized_cancel_tx =
-                Broadcastable::<bitcoin::Transaction>::finalize_and_extract(&mut cancel_tx)?;
+        let core_arb_txs = core_arb_setup.clone().into_arbitrating_tx();
 
-            // punish
-            let FullySignedPunish { punish, punish_sig } = alice.fully_sign_punish(
-                key_manager,
-                local_params,
-                bob_parameters,
-                &core_arb_txs,
-                runtime.deal.to_arbitrating_params(),
-            )?;
-            let mut punish_tx = PunishTx::from_partial(punish);
-            punish_tx.add_witness(
-                local_params.punish.expect("Alice has punish key"),
-                punish_sig,
-            )?;
-            let finalized_punish_tx =
-                Broadcastable::<bitcoin::Transaction>::finalize_and_extract(&mut punish_tx)?;
-
-            Ok(HandleCoreArbitratingSetupRes {
-                refund_procedure_signatures: refund_proc_signatures,
-                cancel_tx: finalized_cancel_tx,
-                punish_tx: finalized_punish_tx,
-            })
-        } else {
-            runtime.log_error("only Wallet::Alice");
-            Err(Error::Farcaster(
-                "Only Wallet::Alice is allowed".to_string(),
-            ))
-        }
-    }
-
-    pub fn handle_buy_procedure_signature(
-        &mut self,
-        runtime: &mut Runtime,
-        buy_procedure_signature: BuyProcedureSignature,
-    ) -> Result<HandleBuyProcedureSignatureRes, Error> {
-        runtime.log_trace("wallet received buyproceduresignature");
-        if let Wallet::Alice(AliceState {
-            alice,
-            local_params: alice_params,
+        bob.validate_adaptor_refund(
             key_manager,
-            remote_params: Some(bob_parameters),
-            core_arb_setup: Some(core_arb_setup),
-            alice_cancel_signature: Some(alice_cancel_sig),
-            ..
-        }) = self
-        {
-            let core_arb_txs = core_arb_setup.clone().into_arbitrating_tx();
+            remote_params,
+            local_params,
+            &core_arb_txs,
+            &refund_adaptor_sig,
+        )?;
 
-            // cancel
-            let tx = core_arb_setup.cancel.clone();
-            let mut cancel_tx = CancelTx::from_partial(tx);
-            cancel_tx.add_witness(alice_params.cancel, *alice_cancel_sig)?;
-            cancel_tx.add_witness(bob_parameters.cancel, core_arb_setup.cancel_sig)?;
-            let finalized_cancel_tx =
-                Broadcastable::<bitcoin::Transaction>::finalize_and_extract(&mut cancel_tx)?;
-
-            // buy
-            let mut buy_tx = BuyTx::from_partial(buy_procedure_signature.buy.clone());
-            alice.validate_adaptor_buy(
-                key_manager,
-                alice_params,
-                bob_parameters,
-                &core_arb_txs,
-                runtime.deal.to_arbitrating_params(),
-                &buy_procedure_signature,
-            )?;
-            let TxSignatures { sig, adapted_sig } = alice.fully_sign_buy(
-                key_manager,
-                alice_params,
-                bob_parameters,
-                &core_arb_txs,
-                runtime.deal.to_arbitrating_params(),
-                &buy_procedure_signature,
-            )?;
-            buy_tx.add_witness(key_manager.get_pubkey(ArbitratingKeyId::Buy)?, sig)?;
-            buy_tx.add_witness(bob_parameters.buy, adapted_sig)?;
-            let finalized_buy_tx =
-                Broadcastable::<bitcoin::Transaction>::finalize_and_extract(&mut buy_tx)?;
-            runtime.log_trace("wallet sends fullysignedbuy");
-            Ok(HandleBuyProcedureSignatureRes {
-                cancel_tx: finalized_cancel_tx,
-                buy_tx: finalized_buy_tx,
-            })
-            // buy_adaptor_sig
-        } else {
-            runtime.log_error("could not get alice's wallet");
-            Err(Error::Farcaster("Could not get alice wallet".to_string()))
+        if adaptor_buy.is_some() {
+            runtime.log_error("Adaptor Buy already set");
+            return Err(Error::Farcaster("adaptor buy already set".to_string()));
         }
+        *adaptor_buy = Some(bob.sign_adaptor_buy(
+            runtime.swap_id,
+            key_manager,
+            remote_params,
+            local_params,
+            &core_arb_txs,
+            runtime.deal.to_arbitrating_params(),
+        )?);
+
+        // lock
+        let sig = bob.sign_arbitrating_lock(key_manager, &core_arb_txs)?;
+        let tx = core_arb_setup.lock.clone();
+        let mut lock_tx = LockTx::from_partial(tx);
+        let lock_pubkey = key_manager.get_pubkey(ArbitratingKeyId::Lock)?;
+        lock_tx.add_witness(lock_pubkey, sig)?;
+        let finalized_lock_tx =
+            Broadcastable::<bitcoin::Transaction>::finalize_and_extract(&mut lock_tx)?;
+
+        // cancel
+        let tx = core_arb_setup.cancel.clone();
+        let mut cancel_tx = CancelTx::from_partial(tx);
+        cancel_tx.add_witness(remote_params.cancel, alice_cancel_sig)?;
+        cancel_tx.add_witness(local_params.cancel, core_arb_setup.cancel_sig)?;
+        let finalized_cancel_tx =
+            Broadcastable::<bitcoin::Transaction>::finalize_and_extract(&mut cancel_tx)?;
+
+        // refund
+        let TxSignatures { sig, adapted_sig } =
+            bob.fully_sign_refund(key_manager, &core_arb_txs, &refund_adaptor_sig)?;
+        let tx = core_arb_setup.refund.clone();
+        let mut refund_tx = RefundTx::from_partial(tx);
+        refund_tx.add_witness(local_params.refund, sig)?;
+        refund_tx.add_witness(remote_params.refund, adapted_sig)?;
+        let finalized_refund_tx =
+            Broadcastable::<bitcoin::Transaction>::finalize_and_extract(&mut refund_tx)?;
+
+        Ok(HandleRefundProcedureSignaturesRes {
+            buy_procedure_signature: adaptor_buy
+                .clone()
+                .expect("Value was to Some in the same function"),
+            lock_tx: finalized_lock_tx,
+            cancel_tx: finalized_cancel_tx,
+            refund_tx: finalized_refund_tx,
+        })
     }
 }
 
