@@ -692,7 +692,7 @@ fn bitcoin_syncer_abort_test() {
         task: Task::WatchTransaction(WatchTransaction {
             id: TaskId(0),
             lifetime: blocks + 10,
-            hash: bitcoin::Txid::from_slice(&vec![0; 32]).unwrap().into(),
+            hash: bitcoin::Txid::from_slice(&[0; 32]).unwrap().into(),
             confirmation_bound: 2,
         }),
         source: SOURCE1.clone(),
@@ -740,7 +740,7 @@ fn bitcoin_syncer_abort_test() {
         task: Task::WatchTransaction(WatchTransaction {
             id: TaskId(0),
             lifetime: blocks + 10,
-            hash: bitcoin::Txid::from_slice(&vec![0; 32]).unwrap().into(),
+            hash: bitcoin::Txid::from_slice(&[0; 32]).unwrap().into(),
             confirmation_bound: 2,
         }),
         source: SOURCE1.clone(),
@@ -755,7 +755,7 @@ fn bitcoin_syncer_abort_test() {
         task: Task::WatchTransaction(WatchTransaction {
             id: TaskId(1),
             lifetime: blocks + 10,
-            hash: bitcoin::Txid::from_slice(&vec![0; 32]).unwrap().into(),
+            hash: bitcoin::Txid::from_slice(&[0; 32]).unwrap().into(),
             confirmation_bound: 2,
         }),
         source: SOURCE1.clone(),
