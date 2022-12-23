@@ -473,14 +473,14 @@ impl StateMachine<Runtime, Error> for SwapStateMachine {
                 )
             }
             SwapStateMachine::BobAccordantLockFinal(bob_accordant_lock_final) => {
-                try_bob_accordant_lock_final_to_bob_buy_final(
+                try_bob_accordant_lock_final_to_bob_buy_seen(
                     event,
                     runtime,
                     bob_accordant_lock_final,
                 )
             }
             SwapStateMachine::BobBuySeen(task) => {
-                try_bob_buy_final_to_bob_buy_sweeping(event, runtime, task)
+                try_bob_buy_seen_to_bob_buy_sweeping(event, runtime, task)
             }
             SwapStateMachine::BobBuySweeping => try_bob_buy_sweeping_to_swap_end(event, runtime),
 
@@ -1160,7 +1160,7 @@ fn try_bob_accordant_lock_to_bob_accordant_lock_final(
     }
 }
 
-fn try_bob_accordant_lock_final_to_bob_buy_final(
+fn try_bob_accordant_lock_final_to_bob_buy_seen(
     event: Event,
     runtime: &mut Runtime,
     bob_accordant_lock_final: BobAccordantLockFinal,
@@ -1207,7 +1207,7 @@ fn try_bob_accordant_lock_final_to_bob_buy_final(
     }
 }
 
-fn try_bob_buy_final_to_bob_buy_sweeping(
+fn try_bob_buy_seen_to_bob_buy_sweeping(
     mut event: Event,
     runtime: &mut Runtime,
     task: SweepAddress,
