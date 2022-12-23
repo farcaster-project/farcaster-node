@@ -1224,7 +1224,7 @@ fn try_bob_accordant_lock_final_to_bob_buy_final(
             tx: Some(tx),
         }))) if matches!(
             runtime.syncer_state.tasks.retrieving_txs.remove(&id),
-            Some((TxLabel::Buy, _))
+            Some(TxLabel::Buy)
         ) =>
         {
             log_tx_seen(runtime.swap_id, &TxLabel::Buy, &tx.txid());
@@ -1858,10 +1858,10 @@ fn try_alice_canceled_to_alice_refund_or_alice_punish(
             tx: Some(ref tx),
         }))) if matches!(
             runtime.syncer_state.tasks.retrieving_txs.get(&id),
-            Some((TxLabel::Refund, _))
+            Some(TxLabel::Refund)
         ) =>
         {
-            let (txlabel, _) = runtime
+            let txlabel = runtime
                 .syncer_state
                 .tasks
                 .retrieving_txs

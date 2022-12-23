@@ -31,7 +31,7 @@ pub struct SyncerTasks {
     pub watched_txs: HashMap<TaskId, TxLabel>,
     pub final_txs: HashMap<TxLabel, bool>,
     pub watched_addrs: HashMap<TaskId, TxLabel>,
-    pub retrieving_txs: HashMap<TaskId, (TxLabel, Task)>,
+    pub retrieving_txs: HashMap<TaskId, TxLabel>,
     pub broadcasting_txs: HashMap<TaskId, TxLabel>,
     pub sweeping_addr: Option<TaskId>,
     // external address: needed to subscribe for buy (bob) or refund (alice) address_txs
@@ -174,9 +174,7 @@ impl SyncerState {
             id,
             hash: txid.to_vec(),
         });
-        self.tasks
-            .retrieving_txs
-            .insert(id, (tx_label, task.clone()));
+        self.tasks.retrieving_txs.insert(id, tx_label);
         self.tasks.tasks.insert(id, task.clone());
         task
     }
