@@ -584,7 +584,7 @@ async fn run_syncerd_task_receiver(
                     // do nothing
                 }
             }
-            tokio::time::sleep(std::time::Duration::from_secs(1)).await;
+            tokio::time::sleep(std::time::Duration::from_millis(100)).await;
         }
     });
 }
