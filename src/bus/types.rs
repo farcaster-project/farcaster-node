@@ -273,8 +273,22 @@ impl FromStr for HealthCheckSelector {
     derive(Serialize, Deserialize),
     serde(crate = "serde_crate")
 )]
-#[display(HealthReport::to_yaml_string)]
-pub struct HealthReport {
+#[display(DefaultHealthReport::to_yaml_string)]
+pub struct DefaultHealthReport {
+    pub bitcoin_mainnet_health: Health,
+    pub bitcoin_testnet_health: Health,
+    pub monero_mainnet_health: Health,
+    pub monero_testnet_health: Health,
+}
+
+#[derive(Clone, Debug, Display, NetworkEncode, NetworkDecode)]
+#[cfg_attr(
+    feature = "serde",
+    derive(Serialize, Deserialize),
+    serde(crate = "serde_crate")
+)]
+#[display(CompleteHealthReport::to_yaml_string)]
+pub struct CompleteHealthReport {
     pub bitcoin_mainnet_health: Health,
     pub bitcoin_testnet_health: Health,
     pub bitcoin_local_health: Health,
@@ -296,6 +310,8 @@ pub struct ReducedHealthReport {
 }
 
 #[cfg(feature = "serde")]
-impl ToYamlString for HealthReport {}
+impl ToYamlString for DefaultHealthReport {}
+#[cfg(feature = "serde")]
+impl ToYamlString for CompleteHealthReport {}
 #[cfg(feature = "serde")]
 impl ToYamlString for ReducedHealthReport {}
