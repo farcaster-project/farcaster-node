@@ -588,11 +588,11 @@ impl SwapStateMachineExecutor {
 }
 
 fn attempt_transition_to_init_taker(
-    event: Event,
+    mut event: Event,
     runtime: &mut Runtime,
     swap_role: SwapRole,
 ) -> Result<Option<SwapStateMachine>, Error> {
-    match event.request {
+    match event.request.clone() {
         BusMsg::Ctl(CtlMsg::TakeSwap(InitTakerSwap {
             ref peerd,
             ref report_to,
@@ -623,12 +623,11 @@ fn attempt_transition_to_init_taker(
             }
             runtime.enquirer = Some(report_to.clone());
             let wallet = Wallet::new_taker(
-                event.endpoints,
-                runtime.deal.clone(),
+                &mut event,
+                runtime,
                 target_bitcoin_address.clone(),
                 target_monero_address,
                 key_manager.0.clone(),
-                swap_id,
             )?;
             let local_params = wallet.local_params();
             let local_commit = runtime
@@ -666,7 +665,7 @@ fn attempt_transition_to_init_taker(
 }
 
 fn attempt_transition_to_init_maker(
-    event: Event,
+    mut event: Event,
     runtime: &mut Runtime,
     swap_role: SwapRole,
 ) -> Result<Option<SwapStateMachine>, Error> {
@@ -688,12 +687,11 @@ fn attempt_transition_to_init_maker(
                 .syncer_state
                 .watch_height(event.endpoints, Blockchain::Monero)?;
             let wallet = Wallet::new_maker(
-                event.endpoints,
-                runtime.deal.clone(),
+                &mut event,
+                runtime,
                 target_bitcoin_address,
                 target_monero_address,
                 key_manager.0,
-                swap_id,
                 remote_commit.clone(),
             )?;
             let local_params = wallet.local_params();
@@ -754,7 +752,7 @@ fn try_bob_init_taker_to_bob_taker_maker_commit(
         }
         BusMsg::P2p(PeerMsg::MakerCommit(remote_commit)) => {
             runtime.log_debug("Received remote maker commitment");
-            let reveal = wallet.handle_maker_commit(remote_commit.clone(), runtime.swap_id)?;
+            let reveal = wallet.handle_maker_commit(runtime, remote_commit.clone())?;
             runtime.log_debug("Wallet handled maker commit and produced reveal");
             runtime.send_peer(event.endpoints, PeerMsg::Reveal(reveal))?;
             runtime.log_trace("Sent reveal peer message to peerd");
@@ -791,7 +789,7 @@ fn try_alice_init_taker_to_alice_taker_maker_commit(
         }
         BusMsg::P2p(PeerMsg::MakerCommit(remote_commit)) => {
             runtime.log_debug("Received remote maker commitment");
-            let reveal = wallet.handle_maker_commit(remote_commit.clone(), runtime.swap_id)?;
+            let reveal = wallet.handle_maker_commit(runtime, remote_commit.clone())?;
             runtime.log_debug("Wallet handled maker commit and produced reveal");
             runtime.send_peer(event.endpoints, PeerMsg::Reveal(reveal))?;
             runtime.log_info("Sent reveal peer message to peerd");
@@ -958,8 +956,8 @@ fn try_bob_fee_estimated_to_bob_funded(
             }
 
             // process tx with wallet
-            wallet.process_funding_tx(Tx::Funding(tx), runtime.swap_id)?;
-            let core_arb_setup = wallet.create_core_arb(runtime.swap_id)?;
+            wallet.process_funding_tx(runtime, Tx::Funding(tx))?;
+            let core_arb_setup = wallet.create_core_arb(runtime)?;
 
             // register a watch task for arb lock, cancel, and refund
             for (&tx, tx_label) in [
@@ -1030,7 +1028,7 @@ fn try_bob_funded_to_bob_refund_procedure_signature(
                 lock_tx,
                 cancel_tx,
                 refund_tx,
-            } = wallet.handle_refund_procedure_signatures(refund_proc.clone(), runtime.swap_id)?;
+            } = wallet.handle_refund_procedure_signatures(runtime, refund_proc.clone())?;
             // Process and broadcast lock tx
             log_tx_created(runtime.swap_id, TxLabel::Lock);
             // Process params, aggregate and watch xmr address
@@ -1191,7 +1189,7 @@ fn try_bob_accordant_lock_final_to_bob_buy_final(
         remote_params,
         mut wallet,
     } = bob_accordant_lock_final;
-    match event.request {
+    match event.request.clone() {
         BusMsg::Sync(SyncMsg::Event(SyncEvent::TransactionConfirmations(
             TransactionConfirmations {
                 id,
@@ -1233,12 +1231,7 @@ fn try_bob_accordant_lock_final_to_bob_buy_final(
         ) =>
         {
             log_tx_seen(runtime.swap_id, &TxLabel::Buy, &tx.txid().into());
-            let sweep_xmr = wallet.process_buy_tx(
-                tx,
-                event.endpoints,
-                runtime.swap_id,
-                runtime.monero_address_creation_height,
-            )?;
+            let sweep_xmr = wallet.process_buy_tx(runtime, tx, &mut event)?;
             let task = runtime.syncer_state.sweep_xmr(sweep_xmr.clone(), true);
             let sweep_address = if let Task::SweepAddress(sweep_address) = task {
                 sweep_address
@@ -1409,7 +1402,7 @@ fn try_alice_reveal_to_alice_core_arbitrating_setup(
                 refund_procedure_signatures,
                 cancel_tx,
                 punish_tx,
-            } = wallet.handle_core_arbitrating_setup(setup, runtime.swap_id)?;
+            } = wallet.handle_core_arbitrating_setup(runtime, setup)?;
             // handle Cancel and Punish transactions
             log_tx_created(runtime.swap_id, TxLabel::Cancel);
             runtime.txs.insert(TxLabel::Cancel, cancel_tx);
@@ -1673,7 +1666,7 @@ fn try_alice_accordant_lock_to_alice_buy_procedure_signature(
             // Handle the received buy procedure signature message with the wallet
             runtime.log_debug("Handling buy procedure signature with wallet");
             let HandleBuyProcedureSignatureRes { cancel_tx, buy_tx } =
-                wallet.handle_buy_procedure_signature(buy_procedure_signature, runtime.swap_id)?;
+                wallet.handle_buy_procedure_signature(runtime, buy_procedure_signature)?;
 
             // Handle Cancel and Buy transactions
             log_tx_created(runtime.swap_id, TxLabel::Cancel);
@@ -1754,7 +1747,7 @@ fn try_alice_canceled_to_alice_refund_or_alice_punish(
     alice_canceled: AliceCanceled,
 ) -> Result<Option<SwapStateMachine>, Error> {
     let AliceCanceled { mut wallet } = alice_canceled;
-    match event.request {
+    match event.request.clone() {
         BusMsg::Sync(SyncMsg::Event(SyncEvent::TransactionConfirmations(
             TransactionConfirmations {
                 id,
@@ -1873,12 +1866,7 @@ fn try_alice_canceled_to_alice_refund_or_alice_punish(
                 .remove(&id)
                 .unwrap();
             log_tx_seen(runtime.swap_id, &txlabel, &tx.txid().into());
-            let sweep_xmr = wallet.process_refund_tx(
-                event.endpoints,
-                tx.clone(),
-                runtime.swap_id,
-                runtime.monero_address_creation_height,
-            )?;
+            let sweep_xmr = wallet.process_refund_tx(&mut event, runtime, tx.clone())?;
             // Check if we already registered the lock transaction, if so, initiate sweeping procedure
             runtime.log_debug(format!("{:?}", runtime.syncer_state.confirmations));
             if runtime
@@ -2063,7 +2051,7 @@ fn attempt_transition_to_bob_reveal(
                     return Err(Error::Farcaster(msg));
                 };
             runtime.log_info("Handling reveal with wallet");
-            let bob_reveal = wallet.handle_alice_reveals(alice_reveal, runtime.swap_id)?;
+            let bob_reveal = wallet.handle_alice_reveals(runtime, alice_reveal)?;
 
             // The wallet only returns reveal if we are Bob Maker
             if let Some(bob_reveal) = bob_reveal {
@@ -2103,7 +2091,7 @@ fn attempt_transition_to_alice_reveal(
                     return Err(Error::Farcaster(msg));
                 };
             runtime.log_info("Handling reveal with wallet");
-            let alice_reveal = wallet.handle_bob_reveals(bob_reveal, runtime.swap_id)?;
+            let alice_reveal = wallet.handle_bob_reveals(runtime, bob_reveal)?;
 
             // The wallet only returns reveal if we are Alice Maker
             if let Some(alice_reveal) = alice_reveal {
@@ -2249,7 +2237,7 @@ fn handle_bob_abort_swap(
     let funding_address = wallet
         .funding_address()
         .expect("Am Bob, so have funding address");
-    let sweep_btc = wallet.process_get_sweep_bitcoin_address(funding_address, runtime.swap_id)?;
+    let sweep_btc = wallet.process_get_sweep_bitcoin_address(runtime, funding_address)?;
     runtime.log_info(format!(
         "Sweeping source (funding) address: {} to destination address: {}",
         sweep_btc.source_address.addr(),
