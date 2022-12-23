@@ -132,7 +132,7 @@ impl SyncerState {
         let task = Task::WatchTransaction(WatchTransaction {
             id,
             lifetime: self.task_lifetime(Blockchain::Bitcoin),
-            hash: Txid::Bitcoin(txid),
+            hash: txid.into(),
             confirmation_bound: self.confirmation_bound,
         });
         self.tasks.tasks.insert(id, task.clone());

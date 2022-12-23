@@ -173,7 +173,7 @@ impl MoneroRpc {
                 };
                 AddressTx {
                     amount,
-                    tx_id: Txid::Monero(tx.hash.0),
+                    tx_id: tx.hash.0.into(),
                     tx: vec![],
                     incoming,
                 }
@@ -291,7 +291,7 @@ impl MoneroRpc {
                 // FIXME: tx set to vec![0]
                 address_txs.push(AddressTx {
                     amount: tx.amount.as_pico(),
-                    tx_id: Txid::Monero(monero::Hash::from_slice(&tx.txid.0)),
+                    tx_id: monero::Hash::from_slice(&tx.txid.0).into(),
                     tx: vec![0],
                     incoming,
                 });
@@ -375,7 +375,7 @@ async fn sweep_address(
             .map(|hash| {
                 let hash_str = hash.to_string();
                 info!("Sweep transaction hash: {}", hash_str.tx_hash());
-                Txid::Monero(hash.0)
+                hash.0.into()
             })
             .collect();
 
@@ -740,7 +740,7 @@ fn height_polling(
                     for tx in polled_transactions.drain(..) {
                         state_guard
                             .change_transaction(
-                                Txid::Monero(tx.tx_id),
+                                tx.tx_id.into(),
                                 tx.block_hash,
                                 tx.confirmations,
                                 vec![],
@@ -838,7 +838,7 @@ fn unseen_transaction_polling(
                 for tx in polled_transactions.drain(..) {
                     state_guard
                         .change_transaction(
-                            Txid::Monero(tx.tx_id),
+                            tx.tx_id.into(),
                             tx.block_hash,
                             tx.confirmations,
                             vec![],

@@ -823,13 +823,13 @@ async fn syncer_state_transaction() {
     let transaction_task_one = WatchTransaction {
         id: TaskId(0),
         lifetime: 1,
-        hash: Txid::Monero(monero::Hash::new(vec![0])),
+        hash: monero::Hash::new(vec![0]).into(),
         confirmation_bound: 4,
     };
     let transaction_task_two = WatchTransaction {
         id: TaskId(0),
         lifetime: 3,
-        hash: Txid::Monero(monero::Hash::new(vec![1])),
+        hash: monero::Hash::new(vec![1]).into(),
         confirmation_bound: 4,
     };
     let height_task = WatchHeight {
@@ -855,7 +855,7 @@ async fn syncer_state_transaction() {
 
     state
         .change_transaction(
-            Txid::Monero(monero::Hash::new(vec![0])),
+            monero::Hash::new(vec![0]).into(),
             none!(),
             none!(),
             none!(),
@@ -869,7 +869,7 @@ async fn syncer_state_transaction() {
 
     state
         .change_transaction(
-            Txid::Monero(monero::Hash::new(vec![0])),
+            monero::Hash::new(vec![0]).into(),
             none!(),
             Some(0),
             none!(),
@@ -883,7 +883,7 @@ async fn syncer_state_transaction() {
 
     state
         .change_transaction(
-            Txid::Monero(monero::Hash::new(vec![0])),
+            monero::Hash::new(vec![0]).into(),
             none!(),
             Some(0),
             none!(),
@@ -897,7 +897,7 @@ async fn syncer_state_transaction() {
 
     state
         .change_transaction(
-            Txid::Monero(monero::Hash::new(vec![0])),
+            monero::Hash::new(vec![0]).into(),
             Some(vec![1]),
             Some(1),
             none!(),
@@ -911,7 +911,7 @@ async fn syncer_state_transaction() {
 
     state
         .change_transaction(
-            Txid::Monero(monero::Hash::new(vec![0])),
+            monero::Hash::new(vec![0]).into(),
             Some(vec![1]),
             Some(1),
             none!(),
@@ -925,7 +925,7 @@ async fn syncer_state_transaction() {
 
     state
         .change_transaction(
-            Txid::Monero(monero::Hash::new(vec![0])),
+            monero::Hash::new(vec![0]).into(),
             none!(),
             none!(),
             none!(),
@@ -1011,25 +1011,25 @@ async fn syncer_state_addresses() {
     assert_eq!(state.addresses.len(), 1);
     let address_tx_one = AddressTx {
         amount: 1,
-        tx_id: Txid::Monero(monero::Hash::new(vec![0])),
+        tx_id: monero::Hash::new(vec![0]).into(),
         tx: vec![0],
         incoming: true,
     };
     let address_tx_two = AddressTx {
         amount: 1,
-        tx_id: Txid::Monero(monero::Hash::new(vec![1])),
+        tx_id: monero::Hash::new(vec![1]).into(),
         tx: vec![0],
         incoming: true,
     };
     let address_tx_three = AddressTx {
         amount: 1,
-        tx_id: Txid::Monero(monero::Hash::new(vec![2])),
+        tx_id: monero::Hash::new(vec![2]).into(),
         tx: vec![0],
         incoming: true,
     };
     let address_tx_four = AddressTx {
         amount: 1,
-        tx_id: Txid::Monero(monero::Hash::new(vec![3])),
+        tx_id: monero::Hash::new(vec![3]).into(),
         tx: vec![0],
         incoming: true,
     };
@@ -1179,7 +1179,7 @@ async fn syncer_state_sweep_addresses() {
     state
         .success_sweep(
             &InternalId(2),
-            vec![Txid::Monero(monero::Hash::new(vec![0]))],
+            vec![monero::Hash::new(vec![0]).into()],
         )
         .await;
     assert_eq!(state.lifetimes.len(), 0);

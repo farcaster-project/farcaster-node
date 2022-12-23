@@ -723,7 +723,7 @@ async fn monero_syncer_transaction_test() {
         task: Task::WatchTransaction(WatchTransaction {
             id: TaskId(1),
             lifetime: blocks + 5,
-            hash: Txid::Monero(transaction.tx_hash.0),
+            hash: transaction.tx_hash.0.into(),
             confirmation_bound: 2,
         }),
         source: SOURCE1.clone(),
@@ -779,13 +779,13 @@ async fn monero_syncer_abort_test() {
         .unwrap()
         .height;
 
-    let zero_txid_hash = Txid::Monero(monero::Hash::new(vec![0]));
+    let zero_txid_hash: Txid = monero::Hash::new(vec![0]).into();
 
     let task = SyncerdTask {
         task: Task::WatchTransaction(WatchTransaction {
             id: TaskId(0),
             lifetime: blocks + 2,
-            hash: zero_txid_hash.clone(),
+            hash: zero_txid_hash,
             confirmation_bound: 2,
         }),
         source: SOURCE2.clone(),
@@ -831,7 +831,7 @@ async fn monero_syncer_abort_test() {
         task: Task::WatchTransaction(WatchTransaction {
             id: TaskId(0),
             lifetime: blocks + 10,
-            hash: zero_txid_hash.clone(),
+            hash: zero_txid_hash,
             confirmation_bound: 2,
         }),
         source: SOURCE2.clone(),
@@ -1044,7 +1044,7 @@ async fn send_monero(
         )
         .await
         .unwrap();
-    Txid::Monero(transaction.tx_hash.0)
+    transaction.tx_hash.0.into()
 }
 
 async fn get_block_hash_from_height(

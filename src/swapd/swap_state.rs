@@ -17,7 +17,7 @@ use strict_encoding::{StrictDecode, StrictEncode};
 
 use crate::{
     bus::ctl::{MoneroFundingInfo, Params},
-    syncerd::{AddressTransaction, Txid},
+    syncerd::{AddressTransaction},
 };
 use crate::{
     bus::{
@@ -941,7 +941,7 @@ fn try_bob_fee_estimated_to_bob_funded(
             log_tx_seen(
                 runtime.swap_id,
                 &TxLabel::Funding,
-                &Txid::Bitcoin(tx.txid()),
+                &tx.txid().into(),
             );
             runtime.syncer_state.awaiting_funding = false;
             // If the bitcoin amount does not match the expected funding amount, abort the swap
@@ -1224,7 +1224,7 @@ fn try_bob_accordant_lock_final_to_bob_buy_final(
                 .unwrap();
             let task = runtime
                 .syncer_state
-                .retrieve_tx_btc(Txid::Bitcoin(txid), txlabel);
+                .retrieve_tx_btc(txid.into(), txlabel);
             event.send_sync_service(runtime.syncer_state.bitcoin_syncer(), SyncMsg::Task(task))?;
             Ok(Some(SwapStateMachine::BobAccordantLockFinal(
                 BobAccordantLockFinal {
@@ -1242,7 +1242,7 @@ fn try_bob_accordant_lock_final_to_bob_buy_final(
             Some((TxLabel::Buy, _))
         ) =>
         {
-            log_tx_seen(runtime.swap_id, &TxLabel::Buy, &Txid::Bitcoin(tx.txid()));
+            log_tx_seen(runtime.swap_id, &TxLabel::Buy, &tx.txid().into());
             let sweep_xmr = wallet.process_buy_tx(
                 tx,
                 event.endpoints,
@@ -1812,7 +1812,7 @@ fn try_alice_canceled_to_alice_refund_or_alice_punish(
                         .unwrap();
                     let task = runtime
                         .syncer_state
-                        .retrieve_tx_btc(Txid::Bitcoin(txid), txlabel);
+                        .retrieve_tx_btc(txid.into(), txlabel);
                     event.send_sync_service(
                         runtime.syncer_state.bitcoin_syncer(),
                         SyncMsg::Task(task),
@@ -1902,7 +1902,7 @@ fn try_alice_canceled_to_alice_refund_or_alice_punish(
                 .retrieving_txs
                 .remove(&id)
                 .unwrap();
-            log_tx_seen(runtime.swap_id, &txlabel, &Txid::Bitcoin(tx.txid()));
+            log_tx_seen(runtime.swap_id, &txlabel, &tx.txid().into());
             let sweep_xmr = wallet.process_refund_tx(
                 event.endpoints,
                 tx.clone(),

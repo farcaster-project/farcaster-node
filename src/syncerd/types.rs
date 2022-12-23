@@ -374,6 +374,18 @@ pub enum Txid {
     Bitcoin(bitcoin::Txid),
 }
 
+impl From<monero::Hash> for Txid {
+    fn from(t: monero::Hash) -> Txid {
+        Txid::Monero(t)
+    }
+}
+
+impl From<bitcoin::Txid> for Txid {
+    fn from(t: bitcoin::Txid) -> Txid {
+        Txid::Bitcoin(t)
+    }
+}
+
 #[derive(Clone, Debug, StrictEncode, StrictDecode, Eq, PartialEq, Hash)]
 pub struct AddressTransaction {
     pub id: TaskId,

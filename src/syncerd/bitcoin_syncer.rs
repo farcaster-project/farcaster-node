@@ -261,7 +261,7 @@ impl ElectrumRpc {
                             let mut state_guard = state.lock().await;
                             state_guard
                                 .change_transaction(
-                                    Txid::Bitcoin(*tx_id),
+                                    (*tx_id).into(),
                                     None,
                                     Some(0),
                                     bitcoin::consensus::serialize(&tx),
@@ -289,7 +289,7 @@ impl ElectrumRpc {
                                     let mut state_guard = state.lock().await;
                                     state_guard
                                         .change_transaction(
-                                            Txid::Bitcoin(*tx_id),
+                                            (*tx_id).into(),
                                             None,
                                             Some(0),
                                             bitcoin::consensus::serialize(&tx),
@@ -316,7 +316,7 @@ impl ElectrumRpc {
                             let mut state_guard = state.lock().await;
                             state_guard
                                 .change_transaction(
-                                    Txid::Bitcoin(*tx_id),
+                                    (*tx_id).into(),
                                     None,
                                     Some(0),
                                     bitcoin::consensus::serialize(&tx),
@@ -336,7 +336,7 @@ impl ElectrumRpc {
                     let mut state_guard = state.lock().await;
                     state_guard
                         .change_transaction(
-                            Txid::Bitcoin(tx.txid()),
+                            tx.txid().into(),
                             blockhash,
                             Some(confs),
                             bitcoin::consensus::serialize(&tx),
@@ -348,7 +348,7 @@ impl ElectrumRpc {
                     trace!("error getting transaction, treating as not found: {}", err);
                     let mut state_guard = state.lock().await;
                     state_guard
-                        .change_transaction(Txid::Bitcoin(*tx_id), None, None, vec![])
+                        .change_transaction((*tx_id).into(), None, None, vec![])
                         .await;
                     drop(state_guard);
                 }
@@ -450,7 +450,7 @@ fn query_addr_history(
         };
         addr_txs.push(AddressTx {
             amount,
-            tx_id: Txid::Bitcoin(txid),
+            tx_id: txid.into(),
             tx: bitcoin::consensus::serialize(&tx),
             incoming: output_found && !input_found,
         })
@@ -582,7 +582,7 @@ fn sweep_address(
     let tx_hash =
         client.transaction_broadcast_raw(&bitcoin::consensus::serialize(&finalized_signed_tx))?;
 
-    Ok(vec![Txid::Bitcoin(tx_hash)])
+    Ok(vec![tx_hash.into()])
 }
 
 async fn run_syncerd_bridge_event_sender(
