@@ -452,12 +452,13 @@ impl fmt::Display for SweepSuccess {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(
             f,
-            "SweepSuccess(id: {}, txids: {:?})",
+            "SweepSuccess(id: {}, txids: {})",
             self.id,
             self.txids
                 .iter()
                 .map(|t| t.to_string())
-                .collect::<Vec<String>>(),
+                .collect::<Vec<String>>()
+                .join(", ")
         )
     }
 }
