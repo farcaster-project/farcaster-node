@@ -361,7 +361,7 @@ impl fmt::Display for HeightChanged {
     }
 }
 
-#[derive(Clone, Debug, Display, StrictEncode, StrictDecode, Eq, PartialEq, Hash)]
+#[derive(Copy, Clone, Debug, Display, StrictEncode, StrictDecode, Eq, PartialEq, Hash)]
 #[cfg_attr(
     feature = "serde",
     derive(Serialize, Deserialize),

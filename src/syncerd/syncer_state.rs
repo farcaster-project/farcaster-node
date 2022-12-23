@@ -493,7 +493,7 @@ impl SyncerState {
                         debug!("new tx seen: {}", new_tx.tx_id);
                         let address_transaction = AddressTransaction {
                             id: addr.task.id,
-                            hash: new_tx.tx_id.clone(),
+                            hash: new_tx.tx_id,
                             amount: new_tx.amount,
                             block: vec![], // eventually this should be removed from the event
                             tx: new_tx

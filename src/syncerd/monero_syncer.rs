@@ -816,7 +816,7 @@ fn unseen_transaction_polling(
                     .iter()
                     .filter_map(|id| {
                         let tx = transactions.get(id).expect("attempted fetching a monero syncer state transaction that does not exist");
-                        if let Txid::Monero(txid) = tx.task.hash.clone() {
+                        if let Txid::Monero(txid) = tx.task.hash {
                             Some(txid)
                         } else {
                             None

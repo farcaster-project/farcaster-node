@@ -1123,7 +1123,7 @@ fn try_bob_refund_procedure_signatures_to_bob_accordant_lock(
             }
             if let Some(tx_label) = runtime.syncer_state.tasks.watched_addrs.remove(id) {
                 let abort_task = runtime.syncer_state.abort_task(*id);
-                let watch_tx = runtime.syncer_state.watch_tx_xmr(hash.clone(), tx_label);
+                let watch_tx = runtime.syncer_state.watch_tx_xmr(*hash, tx_label);
                 event.send_sync_service(
                     runtime.syncer_state.monero_syncer(),
                     SyncMsg::Task(watch_tx),
@@ -1615,7 +1615,7 @@ fn try_alice_arbitrating_lock_final_to_alice_accordant_lock(
                 id, hash, amount, block, tx
             ));
             let txlabel = TxLabel::AccLock;
-            let task = runtime.syncer_state.watch_tx_xmr(hash.clone(), txlabel);
+            let task = runtime.syncer_state.watch_tx_xmr(*hash, txlabel);
             if runtime.syncer_state.awaiting_funding {
                 event.send_ctl_service(
                     ServiceId::Farcasterd,

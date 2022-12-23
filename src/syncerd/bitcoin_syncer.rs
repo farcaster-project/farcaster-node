@@ -213,13 +213,13 @@ impl ElectrumRpc {
             state_guard
                 .unseen_transactions
                 .iter()
-                .map(|task_id| state_guard.transactions[task_id].task.hash.clone())
+                .map(|task_id| state_guard.transactions[task_id].task.hash)
                 .collect()
         } else {
             state_guard
                 .transactions
                 .values()
-                .map(|watched_tx| watched_tx.task.hash.clone())
+                .map(|watched_tx| watched_tx.task.hash)
                 .collect()
         };
         drop(state_guard);
