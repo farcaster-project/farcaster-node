@@ -312,21 +312,13 @@ fn bitcoin_syncer_address_test() {
     let message = rx_event.recv_multipart(0).unwrap();
     info!("received address transaction message");
     let request = misc::get_request_from_message(message);
-    assert::address_transaction(
-        request,
-        amount.as_sat(),
-        vec![txid_1.into(), txid_2.into()],
-    );
+    assert::address_transaction(request, amount.as_sat(), vec![txid_1.into(), txid_2.into()]);
 
     info!("waiting for address transaction message");
     let message = rx_event.recv_multipart(0).unwrap();
     info!("received address transaction message");
     let request = misc::get_request_from_message(message);
-    assert::address_transaction(
-        request,
-        amount.as_sat(),
-        vec![txid_1.into(), txid_2.into()],
-    );
+    assert::address_transaction(request, amount.as_sat(), vec![txid_1.into(), txid_2.into()]);
 
     // watch for the same address, it should already contain transactions
     let watch_address_task_3 = SyncerdTask {
@@ -344,20 +336,12 @@ fn bitcoin_syncer_address_test() {
     let message = rx_event.recv_multipart(0).unwrap();
     info!("received address transaction message");
     let request = misc::get_request_from_message(message);
-    assert::address_transaction(
-        request,
-        amount.as_sat(),
-        vec![txid_1.into(), txid_2.into()],
-    );
+    assert::address_transaction(request, amount.as_sat(), vec![txid_1.into(), txid_2.into()]);
     info!("waiting for address transaction message");
     let message = rx_event.recv_multipart(0).unwrap();
     info!("received address transaction message");
     let request = misc::get_request_from_message(message);
-    assert::address_transaction(
-        request,
-        amount.as_sat(),
-        vec![txid_1.into(), txid_2.into()],
-    );
+    assert::address_transaction(request, amount.as_sat(), vec![txid_1.into(), txid_2.into()]);
 
     let address4 = bitcoin_rpc.get_new_address(None, None).unwrap();
     let addendum_4 = AddressAddendum::Bitcoin(BtcAddressAddendum {

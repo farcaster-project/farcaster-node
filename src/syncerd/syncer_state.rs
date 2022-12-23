@@ -854,12 +854,7 @@ async fn syncer_state_transaction() {
     assert!(event_rx.try_recv().is_err());
 
     state
-        .change_transaction(
-            monero::Hash::new(vec![0]).into(),
-            none!(),
-            none!(),
-            none!(),
-        )
+        .change_transaction(monero::Hash::new(vec![0]).into(), none!(), none!(), none!())
         .await;
     assert_eq!(state.lifetimes.len(), 3);
     assert_eq!(state.transactions.len(), 2);
@@ -868,12 +863,7 @@ async fn syncer_state_transaction() {
     assert!(event_rx.try_recv().is_ok());
 
     state
-        .change_transaction(
-            monero::Hash::new(vec![0]).into(),
-            none!(),
-            Some(0),
-            none!(),
-        )
+        .change_transaction(monero::Hash::new(vec![0]).into(), none!(), Some(0), none!())
         .await;
     assert_eq!(state.lifetimes.len(), 3);
     assert_eq!(state.transactions.len(), 2);
@@ -882,12 +872,7 @@ async fn syncer_state_transaction() {
     assert!(event_rx.try_recv().is_ok());
 
     state
-        .change_transaction(
-            monero::Hash::new(vec![0]).into(),
-            none!(),
-            Some(0),
-            none!(),
-        )
+        .change_transaction(monero::Hash::new(vec![0]).into(), none!(), Some(0), none!())
         .await;
     assert_eq!(state.lifetimes.len(), 3);
     assert_eq!(state.transactions.len(), 2);
@@ -924,12 +909,7 @@ async fn syncer_state_transaction() {
     assert!(event_rx.try_recv().is_err());
 
     state
-        .change_transaction(
-            monero::Hash::new(vec![0]).into(),
-            none!(),
-            none!(),
-            none!(),
-        )
+        .change_transaction(monero::Hash::new(vec![0]).into(), none!(), none!(), none!())
         .await;
     assert_eq!(state.lifetimes.len(), 3);
     assert_eq!(state.transactions.len(), 2);
@@ -1177,10 +1157,7 @@ async fn syncer_state_sweep_addresses() {
     assert_eq!(state.tasks_sources.len(), 1);
     assert_eq!(state.sweep_addresses.len(), 1);
     state
-        .success_sweep(
-            &InternalId(2),
-            vec![monero::Hash::new(vec![0]).into()],
-        )
+        .success_sweep(&InternalId(2), vec![monero::Hash::new(vec![0]).into()])
         .await;
     assert_eq!(state.lifetimes.len(), 0);
     assert_eq!(state.tasks_sources.len(), 0);

@@ -171,9 +171,7 @@ impl SyncerState {
     pub fn retrieve_tx_btc(&mut self, txid: Txid, tx_label: TxLabel) -> Task {
         let id = self.tasks.new_taskid();
         let task = Task::GetTx(GetTx { id, hash: txid });
-        self.tasks
-            .retrieving_txs
-            .insert(id, tx_label);
+        self.tasks.retrieving_txs.insert(id, tx_label);
         self.tasks.tasks.insert(id, task.clone());
         task
     }
