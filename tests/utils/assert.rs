@@ -3,10 +3,10 @@
 use farcaster_node::bus::sync::{BridgeEvent, SyncMsg};
 use farcaster_node::bus::BusMsg;
 use farcaster_node::syncerd::types::Event;
-use farcaster_node::syncerd::TaskId;
 use farcaster_node::syncerd::{FeeEstimation, FeeEstimations};
+use farcaster_node::syncerd::{TaskId, Txid};
 
-pub fn address_transaction(request: BusMsg, expected_amount: u64, possible_txids: Vec<Vec<u8>>) {
+pub fn address_transaction(request: BusMsg, expected_amount: u64, possible_txids: Vec<Txid>) {
     match request {
         BusMsg::Sync(SyncMsg::BridgeEvent(event)) => match event.event {
             Event::AddressTransaction(address_transaction) => {

@@ -846,7 +846,7 @@ impl Wallet {
                     // CoreArbitratingSetup to proceed
                 } else {
                     error!("{} | only Some(Wallet::Alice)", swap_id.swap_id(),);
-                    Err(Error::Farcaster("Needs to be a n Alice wallet".to_string()))
+                    Err(Error::Farcaster("Needs to be an Alice wallet".to_string()))
                 }
             }
             _ => Err(Error::Farcaster(
