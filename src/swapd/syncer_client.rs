@@ -17,7 +17,7 @@ use crate::{
 };
 use bitcoin::consensus::Decodable;
 use farcaster_core::{blockchain::Blockchain, swap::SwapId, transaction::TxLabel};
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 
 use crate::{
     bus::sync::SyncMsg,
@@ -31,8 +31,8 @@ pub struct SyncerTasks {
     pub watched_txs: HashMap<TaskId, TxLabel>,
     pub final_txs: HashMap<TxLabel, bool>,
     pub watched_addrs: HashMap<TaskId, TxLabel>,
-    pub retrieving_txs: HashMap<TaskId, (TxLabel, Task)>,
-    pub broadcasting_txs: HashSet<TaskId>,
+    pub retrieving_txs: HashMap<TaskId, TxLabel>,
+    pub broadcasting_txs: HashMap<TaskId, TxLabel>,
     pub sweeping_addr: Option<TaskId>,
     // external address: needed to subscribe for buy (bob) or refund (alice) address_txs
     pub txids: HashMap<TxLabel, bitcoin::Txid>,
@@ -61,6 +61,7 @@ pub struct SyncerState {
     pub xmr_addr_addendum: Option<XmrAddressAddendum>,
     pub confirmations: HashMap<TxLabel, Option<u32>>,
     pub awaiting_funding: bool,
+    pub broadcasted_txs: HashMap<TxLabel, bitcoin::Transaction>,
 }
 impl SyncerState {
     pub fn task_lifetime(&self, blockchain: Blockchain) -> u64 {
@@ -172,7 +173,7 @@ impl SyncerState {
         let task = Task::GetTx(GetTx { id, hash: txid });
         self.tasks
             .retrieving_txs
-            .insert(id, (tx_label, task.clone()));
+            .insert(id, tx_label);
         self.tasks.tasks.insert(id, task.clone());
         task
     }
@@ -334,7 +335,7 @@ impl SyncerState {
         task
     }
 
-    pub fn broadcast(&mut self, tx: bitcoin::Transaction) -> Task {
+    pub fn broadcast(&mut self, tx: bitcoin::Transaction, label: TxLabel) -> Task {
         let id = self.tasks.new_taskid();
         let task = Task::BroadcastTransaction(BroadcastTransaction {
             id,
@@ -342,25 +343,47 @@ impl SyncerState {
             broadcast_after_height: None,
         });
         self.tasks.tasks.insert(id, task.clone());
-        self.tasks.broadcasting_txs.insert(id);
+        self.tasks.broadcasting_txs.insert(id, label);
         task
     }
     pub fn transaction_broadcasted(&mut self, event: &TransactionBroadcasted) {
-        self.tasks.broadcasting_txs.remove(&event.id);
-        self.tasks.tasks.remove(&event.id);
+        if let Some(txlabel) = self.tasks.broadcasting_txs.remove(&event.id) {
+            self.tasks.tasks.remove(&event.id);
+            if let Some(ref err) = event.error {
+                warn!(
+                    "{} | Error broadcasting {} transaction: {}",
+                    self.swap_id, txlabel, err
+                );
+            } else {
+                let tx = match bitcoin::Transaction::consensus_decode(std::io::Cursor::new(
+                    event.tx.clone(),
+                )) {
+                    Ok(tx) => tx,
+                    Err(_) => {
+                        error!(
+                            "{} | Error while consensus decoding broadcasted {} transaction",
+                            self.swap_id, txlabel
+                        );
+                        return;
+                    }
+                };
+                self.broadcasted_txs.insert(txlabel, tx);
+            }
+        }
     }
-    pub fn pending_broadcast_txs(&self) -> Vec<bitcoin::Transaction> {
+    pub fn pending_broadcast_txs(&self) -> Vec<(bitcoin::Transaction, TxLabel)> {
         self.tasks
             .broadcasting_txs
             .iter()
-            .filter_map(|id| {
+            .filter_map(|(id, label)| {
                 if let Task::BroadcastTransaction(broadcast_tx) = self.tasks.tasks.get(id)? {
-                    Some(
+                    Some((
                         bitcoin::Transaction::consensus_decode(std::io::Cursor::new(
                             broadcast_tx.tx.clone(),
                         ))
                         .ok()?,
-                    )
+                        label.clone(),
+                    ))
                 } else {
                     None
                 }
@@ -380,9 +403,10 @@ impl SyncerState {
         confirmations: &Option<u32>,
         swapid: SwapId,
         finality_thr: u32,
+        endpoints: &mut Endpoints,
     ) {
-        if let Some(txlabel) = self.tasks.watched_txs.get(id) {
-            if !self.tasks.final_txs.contains_key(txlabel)
+        if let Some(txlabel) = self.tasks.watched_txs.get(id).cloned() {
+            if !self.tasks.final_txs.contains_key(&txlabel)
                 && confirmations.is_some()
                 && confirmations.unwrap() >= finality_thr
             {
@@ -394,8 +418,8 @@ impl SyncerState {
                     confirmations.unwrap().bright_green_bold(),
                     "confirmations".bright_green_bold()
                 );
-                self.tasks.final_txs.insert(*txlabel, true);
-            } else if let Some(finality) = self.tasks.final_txs.get(txlabel) {
+                self.tasks.final_txs.insert(txlabel, true);
+            } else if let Some(finality) = self.tasks.final_txs.get(&txlabel) {
                 info!(
                     "{} | Tx {} {}",
                     self.swap_id.swap_id(),
@@ -425,6 +449,21 @@ impl SyncerState {
                         )
                     }
                     None => {
+                        if let Some(tx) = self.broadcasted_txs.get(&txlabel) {
+                            warn!("{} | Tx {} was re-orged or dropped from the mempool. Re-broadcasting tx", swapid.swap_id(), txlabel.label());
+                            let task = self.broadcast(tx.clone(), txlabel.clone());
+                            if let Err(_) = endpoints.send_to(
+                                ServiceBus::Sync,
+                                ServiceId::Swap(self.swap_id),
+                                self.bitcoin_syncer(),
+                                BusMsg::Sync(SyncMsg::Task(task)),
+                            ) {
+                                error!(
+                                    "{} | failed to send task for re-broadcasting {} transaction",
+                                    swapid, txlabel
+                                );
+                            }
+                        }
                         info!(
                             "{} | Tx {} not on the mempool",
                             swapid.swap_id(),
@@ -433,7 +472,7 @@ impl SyncerState {
                     }
                 }
             }
-            self.confirmations.insert(*txlabel, *confirmations);
+            self.confirmations.insert(txlabel, *confirmations);
         } else {
             error!(
                 "received event with unknown transaction and task id {}",

@@ -25,7 +25,7 @@ use strict_encoding::{NetworkDecode, NetworkEncode};
 
 use crate::bus::p2p::{PeerMsg, TakerCommit};
 use crate::bus::{
-    AddressSecretKey, CheckpointEntry, DealStatusPair, Failure, OptionDetails, Outcome, Progress,
+    AddressSecretKey, CheckpointEntry, DealInfo, Failure, OptionDetails, Outcome, Progress,
 };
 use crate::swapd::CheckpointSwapd;
 use crate::syncerd::{Health, SweepAddressAddendum};
@@ -149,7 +149,7 @@ pub enum CtlMsg {
     RemoveCheckpoint(SwapId),
 
     #[display("set_deal_history({0})")]
-    SetDealStatus(DealStatusPair),
+    SetDealInfo(DealInfo),
 
     #[display("keys({0})")]
     Keys(Keys),

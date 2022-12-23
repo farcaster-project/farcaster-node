@@ -8,7 +8,7 @@ use crate::bus::ctl::{CtlMsg, FundingInfo, GetKeys, SwapKeys};
 use crate::bus::info::FundingInfos;
 use crate::bus::p2p::{PeerMsg, TakerCommit};
 use crate::bus::sync::SyncMsg;
-use crate::bus::{BusMsg, List, ServiceBus};
+use crate::bus::{BusMsg, DealInfo, DealStatus, List, ServiceBus};
 use crate::event::StateMachineExecutor;
 use crate::farcasterd::stats::Stats;
 use crate::farcasterd::syncer_state_machine::{SyncerStateMachine, SyncerStateMachineExecutor};
@@ -18,7 +18,7 @@ use crate::syncerd::{AddressBalance, TaskAborted};
 use crate::syncerd::{Event as SyncerEvent, HealthResult, SweepSuccess, TaskId};
 use crate::{
     bus::ctl::{Keys, ProgressStack, Token},
-    bus::info::{DealInfo, DealStatusSelector, InfoMsg, NodeInfo, ProgressEvent, SwapProgress},
+    bus::info::{DealStatusSelector, InfoMsg, NodeInfo, ProgressEvent, SwapProgress},
     bus::{Failure, FailureCode, Progress},
     clap::Parser,
     config::ParsedSwapConfig,
@@ -464,20 +464,24 @@ impl Runtime {
                             .iter()
                             .filter_map(|tsm| tsm.open_deal())
                             .map(|deal| DealInfo {
-                                deal: deal.to_string(),
-                                details: deal,
+                                serialized_deal: deal.to_string(),
+                                deal,
+                                status: DealStatus::Open,
+                                local_trade_role: TradeRole::Maker,
                             })
                             .collect();
                         self.send_client_info(endpoints, source, InfoMsg::DealList(open_deals))?;
                     }
                     DealStatusSelector::InProgress => {
                         let pub_deals = self
-                            .deals
+                            .trade_state_machines
                             .iter()
-                            .filter(|k| self.consumed_deals_contains(k))
-                            .map(|deal| DealInfo {
-                                deal: deal.to_string(),
-                                details: deal.clone(),
+                            .filter_map(|tsm| tsm.consumed_deal())
+                            .map(|(deal, trade_role)| DealInfo {
+                                serialized_deal: deal.to_string(),
+                                deal,
+                                status: DealStatus::InProgress,
+                                local_trade_role: trade_role,
                             })
                             .collect();
                         self.send_client_info(endpoints, source, InfoMsg::DealList(pub_deals))?;
@@ -866,7 +870,7 @@ impl Runtime {
         self.trade_state_machines
             .iter()
             .filter_map(|tsm| tsm.consumed_deal())
-            .any(|tsm_deal| tsm_deal.id() == deal.id())
+            .any(|(tsm_deal, _)| tsm_deal.id() == deal.id())
     }
 
     fn running_swaps_contain(&self, swap_id: &SwapId) -> bool {
@@ -988,7 +992,7 @@ impl Runtime {
                 .trade_state_machines
                 .iter()
                 .position(|tsm| {
-                    if let Some(tsm_deal) = tsm.consumed_deal() {
+                    if let Some((tsm_deal, _)) = tsm.consumed_deal() {
                         tsm_deal == *deal
                     } else {
                         false

@@ -288,6 +288,14 @@ impl MoneroRpc {
                 _ => continue,
             };
             for tx in txs.drain(..) {
+                // Skip transactions with an unlock time set
+                if tx.unlock_time > 0 {
+                    warn!(
+                        "Address {} had transaction {} with an unlock time {}. Locked transactions are not supported. Skipping.",
+                        address, tx.txid, tx.unlock_time
+                    );
+                    continue;
+                }
                 // FIXME: tx set to vec![0]
                 address_txs.push(AddressTx {
                     amount: tx.amount.as_pico(),
@@ -565,7 +573,7 @@ async fn run_syncerd_task_receiver(
                     // do nothing
                 }
             }
-            tokio::time::sleep(std::time::Duration::from_secs(1)).await;
+            tokio::time::sleep(std::time::Duration::from_millis(100)).await;
         }
     });
 }
