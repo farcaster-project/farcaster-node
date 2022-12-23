@@ -40,10 +40,7 @@ use crate::{
         syncer_client::{log_tx_created, log_tx_seen},
         wallet::{HandleBuyProcedureSignatureRes, HandleRefundProcedureSignaturesRes},
     },
-    syncerd::{
-        Abort, Boolean, SweepSuccess, Task, TaskTarget, TransactionConfirmations,
-        TransactionRetrieved,
-    },
+    syncerd::{Abort, Boolean, SweepSuccess, Task, TaskTarget, TransactionConfirmations},
     Endpoints, Error,
 };
 use crate::{
@@ -108,7 +105,7 @@ use super::{
 ///       |_______________________|                                   |                AliceCancel
 ///       |                       |                                   |                     |
 ///       |                       V                                   |         ____________|
-///       V                   BobBuyFinal                             |        |            |
+///       V                   BobBuySeen                             |        |            |
 ///   BobCancel                   |                                   |        |            |
 ///       |                       |                                   |        |            |
 ///       |                       V                                   |        V            |
@@ -214,14 +211,14 @@ pub enum SwapStateMachine {
     #[display("Bob Accordant Lock")]
     BobAccordantLock(BobAccordantLock),
     // BobAccordantLockFinal state - transitions to BobAccordantFinal on event
-    // TransactionConfirmations, BobBuyFinal on event TransactionRetrieved, or
+    // TransactionConfirmations, BobBuySeen on event TransactionRetrieved, or
     // BobCanceled on event TransactionConfirmations. Retrieves Buy transaction.
     #[display("Bob Accordant Lock Final")]
     BobAccordantLockFinal(BobAccordantLockFinal),
-    // BobBuyFinal state - transitions to BobBuySweeping on event
+    // BobBuySeen state - transitions to BobBuySweeping on event
     // TransactionConfirmations. Sends sweep Monero to Monero syncer.
-    #[display("Bob Buy Final")]
-    BobBuyFinal(SweepAddress),
+    #[display("Bob Buy Seen")]
+    BobBuySeen(SweepAddress),
     // BobBuySweeping state - transitions to SwapEnd on request SweepSuccess.
     // Cleans up remaining swap data and report to Farcasterd.
     #[display("Bob Buy Sweeping")]
@@ -382,8 +379,6 @@ pub struct AliceCoreArbitratingSetup {
 
 #[derive(Clone, Debug, StrictEncode, StrictDecode)]
 pub struct BobRefundProcedureSignatures {
-    local_params: Params,
-    remote_params: Params,
     wallet: Wallet,
     buy_procedure_signature: BuyProcedureSignature,
 }
@@ -397,8 +392,6 @@ pub struct AliceArbitratingLockFinal {
 
 #[derive(Clone, Debug, StrictEncode, StrictDecode)]
 pub struct BobAccordantLock {
-    local_params: Params,
-    remote_params: Params,
     wallet: Wallet,
     buy_procedure_signature: BuyProcedureSignature,
 }
@@ -410,8 +403,6 @@ pub struct AliceAccordantLock {
 
 #[derive(Clone, Debug, StrictEncode, StrictDecode)]
 pub struct BobAccordantLockFinal {
-    local_params: Params,
-    remote_params: Params,
     wallet: Wallet,
 }
 
@@ -488,7 +479,7 @@ impl StateMachine<Runtime, Error> for SwapStateMachine {
                     bob_accordant_lock_final,
                 )
             }
-            SwapStateMachine::BobBuyFinal(task) => {
+            SwapStateMachine::BobBuySeen(task) => {
                 try_bob_buy_final_to_bob_buy_sweeping(event, runtime, task)
             }
             SwapStateMachine::BobBuySweeping => try_bob_buy_sweeping_to_swap_end(event, runtime),
@@ -1068,8 +1059,6 @@ fn try_bob_funded_to_bob_refund_procedure_signature(
             // Checkpoint BobRefundProcedureSignatures
             let new_ssm =
                 SwapStateMachine::BobRefundProcedureSignatures(BobRefundProcedureSignatures {
-                    local_params,
-                    remote_params,
                     wallet,
                     buy_procedure_signature,
                 });
@@ -1093,8 +1082,6 @@ fn try_bob_refund_procedure_signatures_to_bob_accordant_lock(
     bob_refund_procedure_signatures: BobRefundProcedureSignatures,
 ) -> Result<Option<SwapStateMachine>, Error> {
     let BobRefundProcedureSignatures {
-        local_params,
-        remote_params,
         wallet,
         buy_procedure_signature,
     } = bob_refund_procedure_signatures;
@@ -1132,8 +1119,6 @@ fn try_bob_refund_procedure_signatures_to_bob_accordant_lock(
                 )?;
             }
             Ok(Some(SwapStateMachine::BobAccordantLock(BobAccordantLock {
-                local_params,
-                remote_params,
                 wallet,
                 buy_procedure_signature,
             })))
@@ -1148,8 +1133,6 @@ fn try_bob_accordant_lock_to_bob_accordant_lock_final(
     bob_accordant_lock: BobAccordantLock,
 ) -> Result<Option<SwapStateMachine>, Error> {
     let BobAccordantLock {
-        local_params,
-        remote_params,
         wallet,
         buy_procedure_signature,
     } = bob_accordant_lock;
@@ -1170,11 +1153,7 @@ fn try_bob_accordant_lock_to_bob_accordant_lock_final(
                 PeerMsg::BuyProcedureSignature(buy_procedure_signature),
             )?;
             Ok(Some(SwapStateMachine::BobAccordantLockFinal(
-                BobAccordantLockFinal {
-                    local_params,
-                    remote_params,
-                    wallet,
-                },
+                BobAccordantLockFinal { wallet },
             )))
         }
         _ => handle_bob_swap_interrupt_after_lock(event, runtime),
@@ -1182,56 +1161,30 @@ fn try_bob_accordant_lock_to_bob_accordant_lock_final(
 }
 
 fn try_bob_accordant_lock_final_to_bob_buy_final(
-    mut event: Event,
+    event: Event,
     runtime: &mut Runtime,
     bob_accordant_lock_final: BobAccordantLockFinal,
 ) -> Result<Option<SwapStateMachine>, Error> {
-    let BobAccordantLockFinal {
-        local_params,
-        remote_params,
-        mut wallet,
-    } = bob_accordant_lock_final;
+    let BobAccordantLockFinal { mut wallet } = bob_accordant_lock_final;
     match event.request {
         BusMsg::Sync(SyncMsg::Event(SyncEvent::TransactionConfirmations(
             TransactionConfirmations {
                 id,
-                confirmations: Some(confirmations),
+                confirmations: Some(_),
+                ref tx,
                 ..
             },
-        ))) if runtime
-            .temporal_safety
-            .final_tx(confirmations, Blockchain::Bitcoin)
-            && runtime.syncer_state.tasks.watched_txs.get(&id) == Some(&TxLabel::Buy)
+        ))) if runtime.syncer_state.tasks.watched_txs.get(&id) == Some(&TxLabel::Buy)
             && runtime.syncer_state.tasks.txids.contains_key(&TxLabel::Buy) =>
         {
             runtime.log_warn(
                 "Peerd might crash, just ignore it, counterparty closed \
                     connection, because they are done with the swap, but you don't need it anymore either!"
             );
-            let (txlabel, txid) = runtime
-                .syncer_state
-                .tasks
-                .txids
-                .remove_entry(&TxLabel::Buy)
-                .unwrap();
-            let task = runtime.syncer_state.retrieve_tx_btc(txid.into(), txlabel);
-            event.send_sync_service(runtime.syncer_state.bitcoin_syncer(), SyncMsg::Task(task))?;
-            Ok(Some(SwapStateMachine::BobAccordantLockFinal(
-                BobAccordantLockFinal {
-                    local_params,
-                    remote_params,
-                    wallet,
-                },
-            )))
-        }
-        BusMsg::Sync(SyncMsg::Event(SyncEvent::TransactionRetrieved(TransactionRetrieved {
-            id,
-            tx: Some(tx),
-        }))) if matches!(
-            runtime.syncer_state.tasks.retrieving_txs.remove(&id),
-            Some(TxLabel::Buy)
-        ) =>
-        {
+            let tx = bitcoin::Transaction::deserialize(
+                &tx.iter().flatten().copied().collect::<Vec<u8>>(),
+            )?;
+
             log_tx_seen(runtime.swap_id, &TxLabel::Buy, &tx.txid().into());
             let sweep_xmr = wallet.process_buy_tx(
                 tx,
@@ -1240,13 +1193,15 @@ fn try_bob_accordant_lock_final_to_bob_buy_final(
                 runtime.monero_address_creation_height,
             )?;
             let task = runtime.syncer_state.sweep_xmr(sweep_xmr.clone(), true);
+            runtime.syncer_state.tasks.txids.remove_entry(&TxLabel::Buy);
+
             let sweep_address = if let Task::SweepAddress(sweep_address) = task {
                 sweep_address
             } else {
                 return Ok(None);
             };
             runtime.log_monero_maturity(sweep_xmr.destination_address);
-            Ok(Some(SwapStateMachine::BobBuyFinal(sweep_address)))
+            Ok(Some(SwapStateMachine::BobBuySeen(sweep_address)))
         }
         _ => handle_bob_swap_interrupt_after_lock(event, runtime),
     }
@@ -1759,40 +1714,17 @@ fn try_alice_canceled_to_alice_refund_or_alice_punish(
             TransactionConfirmations {
                 id,
                 confirmations: Some(confirmations),
+                ref tx,
                 ..
             },
-        ))) if runtime
-            .temporal_safety
-            .final_tx(confirmations, Blockchain::Bitcoin) =>
-        {
-            let txlabel = runtime.syncer_state.tasks.watched_txs.get(&id);
-            match txlabel {
-                // if Alice sees the refund transaction, she subscribes to the address
-                Some(TxLabel::Refund)
+        ))) => {
+            match runtime.syncer_state.tasks.watched_txs.get(&id) {
+                // Alice can punish once Cancel is final and the punish timelock is expired
+                Some(&TxLabel::Cancel)
                     if runtime
-                        .syncer_state
-                        .tasks
-                        .txids
-                        .contains_key(&TxLabel::Refund) =>
-                {
-                    runtime.log_debug("Subscribe Refund address task");
-                    let (txlabel, txid) = runtime
-                        .syncer_state
-                        .tasks
-                        .txids
-                        .remove_entry(&TxLabel::Refund)
-                        .unwrap();
-                    let task = runtime.syncer_state.retrieve_tx_btc(txid.into(), txlabel);
-                    event.send_sync_service(
-                        runtime.syncer_state.bitcoin_syncer(),
-                        SyncMsg::Task(task),
-                    )?;
-                    Ok(Some(SwapStateMachine::AliceCanceled(AliceCanceled {
-                        wallet,
-                    })))
-                }
-                Some(TxLabel::Cancel)
-                    if runtime.temporal_safety.valid_punish(confirmations)
+                        .temporal_safety
+                        .final_tx(confirmations, Blockchain::Bitcoin)
+                        && runtime.temporal_safety.valid_punish(confirmations)
                         && runtime.txs.contains_key(&TxLabel::Punish) =>
                 {
                     runtime.log_debug("Publishing punish tx");
@@ -1809,7 +1741,13 @@ fn try_alice_canceled_to_alice_refund_or_alice_punish(
                         wallet,
                     })))
                 }
-                Some(TxLabel::Punish) => {
+
+                // When Alice's Punish transaction is final, end the swap
+                Some(&TxLabel::Punish)
+                    if runtime
+                        .temporal_safety
+                        .final_tx(confirmations, Blockchain::Bitcoin) =>
+                {
                     let abort_all = Task::Abort(Abort {
                         task_target: TaskTarget::AllTasks,
                         respond: Boolean::False,
@@ -1831,13 +1769,15 @@ fn try_alice_canceled_to_alice_refund_or_alice_punish(
                     Ok(Some(SwapStateMachine::SwapEnd(outcome)))
                 }
 
-                // hit this path if Alice overfunded, moved on to AliceCanceled,
-                // but could not broadcast cancel yet since not available,
-                // so broadcast if available now
-                // Note that this will also broadcast if Bob broadcasted cancel,
-                // which is fine
-                Some(TxLabel::Lock)
-                    if runtime.temporal_safety.valid_cancel(confirmations)
+                // Hit this path if Alice overfunded, moved on to AliceCanceled, but
+                // could not broadcast cancel yet since not available, so broadcast
+                // if available now. Note that this will also broadcast if Bob
+                // broadcasted cancel, which is fine.
+                Some(&TxLabel::Lock)
+                    if runtime
+                        .temporal_safety
+                        .final_tx(confirmations, Blockchain::Bitcoin)
+                        && runtime.temporal_safety.valid_cancel(confirmations)
                         && runtime.txs.contains_key(&TxLabel::Cancel) =>
                 {
                     runtime.log_debug("Publishing cancel tx");
@@ -1854,80 +1794,86 @@ fn try_alice_canceled_to_alice_refund_or_alice_punish(
                         wallet,
                     })))
                 }
-                _ => Ok(None),
-            }
-        }
 
-        BusMsg::Sync(SyncMsg::Event(SyncEvent::TransactionRetrieved(TransactionRetrieved {
-            id,
-            tx: Some(ref tx),
-        }))) if matches!(
-            runtime.syncer_state.tasks.retrieving_txs.get(&id),
-            Some(TxLabel::Refund)
-        ) =>
-        {
-            let txlabel = runtime
-                .syncer_state
-                .tasks
-                .retrieving_txs
-                .remove(&id)
-                .unwrap();
-            log_tx_seen(runtime.swap_id, &txlabel, &tx.txid().into());
-            let sweep_xmr = wallet.process_refund_tx(
-                event.endpoints,
-                tx.clone(),
-                runtime.swap_id,
-                runtime.monero_address_creation_height,
-            )?;
-            // Check if we already registered the lock transaction, if so, initiate sweeping procedure
-            runtime.log_debug(format!("{:?}", runtime.syncer_state.confirmations));
-            if runtime
-                .syncer_state
-                .confirmations
-                .get(&TxLabel::AccLock)
-                .is_some()
-            {
-                let task = runtime.syncer_state.sweep_xmr(sweep_xmr.clone(), true);
-                let sweep_address = if let Task::SweepAddress(sweep_address) = task {
-                    sweep_address
-                } else {
-                    return Ok(None);
-                };
-                runtime.log_monero_maturity(sweep_xmr.destination_address);
-                runtime.log_warn(
-                    "Peerd might crash, just ignore it, counterparty closed \
-                        connection but you don't need it anymore!",
-                );
-                Ok(Some(SwapStateMachine::AliceRefund(sweep_address)))
-            } else {
-                if runtime.syncer_state.awaiting_funding {
-                    runtime.log_warn(
-                        "FundingCompleted never emitted, emitting it now to clean up farcasterd",
-                    );
-                    runtime.syncer_state.awaiting_funding = false;
-                    event.send_ctl_service(
-                        ServiceId::Farcasterd,
-                        CtlMsg::FundingCompleted(Blockchain::Monero),
+                // When Alice learns of the refund transaction, immediately extract the Monero keys from its adaptor signature
+                Some(&TxLabel::Refund)
+                    if runtime
+                        .syncer_state
+                        .tasks
+                        .txids
+                        .contains_key(&TxLabel::Refund) =>
+                {
+                    runtime.log_debug("Subscribe Refund address task");
+                    let tx = bitcoin::Transaction::deserialize(
+                        &tx.iter().flatten().copied().collect::<Vec<u8>>(),
                     )?;
+
+                    log_tx_seen(runtime.swap_id, &TxLabel::Refund, &tx.txid().into());
+                    let sweep_xmr = wallet.process_refund_tx(
+                        event.endpoints,
+                        tx,
+                        runtime.swap_id,
+                        runtime.monero_address_creation_height,
+                    )?;
+
+                    runtime
+                        .syncer_state
+                        .tasks
+                        .txids
+                        .remove_entry(&TxLabel::Refund);
+
+                    // Check if we already registered the lock transaction, if so, initiate sweeping procedure
+                    runtime.log_debug(format!("{:?}", runtime.syncer_state.confirmations));
+                    if runtime
+                        .syncer_state
+                        .confirmations
+                        .get(&TxLabel::AccLock)
+                        .is_some()
+                    {
+                        let task = runtime.syncer_state.sweep_xmr(sweep_xmr.clone(), true);
+                        let sweep_address = if let Task::SweepAddress(sweep_address) = task {
+                            sweep_address
+                        } else {
+                            return Ok(None);
+                        };
+                        runtime.log_monero_maturity(sweep_xmr.destination_address);
+                        runtime.log_warn(
+                            "Peerd might crash, just ignore it, counterparty closed \
+                                    connection but you don't need it anymore!",
+                        );
+                        Ok(Some(SwapStateMachine::AliceRefund(sweep_address)))
+                    } else {
+                        if runtime.syncer_state.awaiting_funding {
+                            runtime.log_warn(
+                            "FundingCompleted never emitted, emitting it now to clean up farcasterd",
+                        );
+                            runtime.syncer_state.awaiting_funding = false;
+                            event.send_ctl_service(
+                                ServiceId::Farcasterd,
+                                CtlMsg::FundingCompleted(Blockchain::Monero),
+                            )?;
+                        }
+                        let abort_all = Task::Abort(Abort {
+                            task_target: TaskTarget::AllTasks,
+                            respond: Boolean::False,
+                        });
+                        event.send_sync_service(
+                            runtime.syncer_state.monero_syncer(),
+                            SyncMsg::Task(abort_all.clone()),
+                        )?;
+                        event.send_sync_service(
+                            runtime.syncer_state.bitcoin_syncer(),
+                            SyncMsg::Task(abort_all),
+                        )?;
+                        // remove txs to invalidate outdated states
+                        runtime.txs.remove(&TxLabel::Cancel);
+                        runtime.txs.remove(&TxLabel::Refund);
+                        runtime.txs.remove(&TxLabel::Buy);
+                        runtime.txs.remove(&TxLabel::Punish);
+                        Ok(Some(SwapStateMachine::SwapEnd(Outcome::FailureRefund)))
+                    }
                 }
-                let abort_all = Task::Abort(Abort {
-                    task_target: TaskTarget::AllTasks,
-                    respond: Boolean::False,
-                });
-                event.send_sync_service(
-                    runtime.syncer_state.monero_syncer(),
-                    SyncMsg::Task(abort_all.clone()),
-                )?;
-                event.send_sync_service(
-                    runtime.syncer_state.bitcoin_syncer(),
-                    SyncMsg::Task(abort_all),
-                )?;
-                // remove txs to invalidate outdated states
-                runtime.txs.remove(&TxLabel::Cancel);
-                runtime.txs.remove(&TxLabel::Refund);
-                runtime.txs.remove(&TxLabel::Buy);
-                runtime.txs.remove(&TxLabel::Punish);
-                Ok(Some(SwapStateMachine::SwapEnd(Outcome::FailureRefund)))
+                _ => Ok(None),
             }
         }
         _ => Ok(None),
