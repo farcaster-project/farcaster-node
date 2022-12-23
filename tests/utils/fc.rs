@@ -213,7 +213,7 @@ pub fn run(
         .to_string()
         .lines()
         .map(|line| {
-            let plain_bytes = strip_ansi_escapes::strip(&line).unwrap();
+            let plain_bytes = strip_ansi_escapes::strip(line).unwrap();
             str::from_utf8(&plain_bytes).unwrap().to_string()
         })
         .collect();
@@ -221,7 +221,7 @@ pub fn run(
         .to_string()
         .lines()
         .map(|line| {
-            let plain_bytes = strip_ansi_escapes::strip(&line).unwrap();
+            let plain_bytes = strip_ansi_escapes::strip(line).unwrap();
             str::from_utf8(&plain_bytes).unwrap().to_string()
         })
         .collect();

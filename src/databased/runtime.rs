@@ -697,7 +697,7 @@ fn test_lmdb_state() {
         service_id: ServiceId::Database,
     };
     let path = std::env::current_dir().unwrap();
-    let mut database = Database::new(path.to_path_buf()).unwrap();
+    let mut database = Database::new(path).unwrap();
     database.set_checkpoint_state(&key1, &val1).unwrap();
     let res = database.get_checkpoint_state(&key1).unwrap();
     assert_eq!(val1, res);
@@ -713,7 +713,7 @@ fn test_lmdb_state() {
 
     let key_info = SwapId(Uuid::new());
     let val_info = CheckpointEntry {
-        swap_id: key_info.clone(),
+        swap_id: key_info,
         trade_role: TradeRole::Maker,
         deal: Deal::from_str("Deal:Cke4ftrP5A781Vq85dgBQJNwYgBS4nuUV1LQM2fvVdFMNR4h5TrWhRR11111uMFuZTAsNgpdK8DiK11111TB9zym113GTvtvqfD1111114A4TTfFfmZoWyvpcjDBtTZCdWFSUWcRKYfEC3Y17hqaXZ3dWz11111111111111111111111111111111111111111AfZ113SEBTEspU3a").unwrap(),
         expected_counterparty_node_id: None,
@@ -736,7 +736,7 @@ fn test_lmdb_state() {
     let val_retrieved = database.get_bitcoin_address_secret_key(&addr).unwrap();
     assert_eq!(addr_info, val_retrieved);
     let addrs = database.get_all_bitcoin_addresses().unwrap();
-    assert!(addrs.iter().find(|(a, _)| *a == addr).is_some());
+    assert!(addrs.iter().any(|(a, _)| *a == addr));
     let key_pair = monero::KeyPair {
         spend: monero::PrivateKey::from_str(
             "77916d0cd56ed1920aef6ca56d8a41bac915b68e4c46a589e0956e27a7b77404",
@@ -759,7 +759,7 @@ fn test_lmdb_state() {
     let val_retrieved = database.get_monero_address_secret_key(&addr).unwrap();
     assert_eq!(addr_info, val_retrieved);
     let addrs = database.get_all_monero_addresses().unwrap();
-    assert!(addrs.iter().find(|(a, _)| *a == addr).is_some());
+    assert!(addrs.iter().any(|(a, _)| *a == addr));
 
     let deal_1 = Deal::from_str("Deal:Cke4ftrP5A7MgLMaQZLZUMTC6TfkqUKBu1LQM2fvVdFMNR4gmBqNCsR11111uMFuZTAsNgpdK8DiK11111TB9zym113GTvtvqfD1111114A4TTF4h53Tv4MR6eS9sdDxV5JCH9xZcKejCqKShnphqndeeD11111111111111111111111111111111111111111AfZ113XRBtrLeA3t").unwrap();
     let deal_2 = Deal::from_str("Deal:Cke4ftrP5A7Km9Kmc2UDBePio1p7wM56P1LQM2fvVdFMNR4gmBqNCsR11111uMFuZTAsNgpdK8DiK11111TB9zym113GTvtvqfD1111114A4TTF4h53Tv4MR6eS9sdDxV5JCH9xZcKejCqKShnphqndeeD11111111111111111111111111111111111111111AfZ113XRBuLWyw3M").unwrap();

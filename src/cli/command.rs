@@ -28,11 +28,12 @@ use crate::bus::{
     AddressSecretKey,
 };
 use crate::bus::{
-    BusMsg, Failure, FailureCode, HealthCheckSelector, HealthReport, ReducedHealthReport,
+    BusMsg, CompleteHealthReport, DefaultHealthReport, Failure, FailureCode, HealthCheckSelector,
+    ReducedHealthReport,
 };
 use crate::cli::opts::CheckpointSelector;
 use crate::client::Client;
-use crate::syncerd::{SweepAddressAddendum, SweepBitcoinAddress, SweepMoneroAddress};
+use crate::syncerd::{Health, SweepAddressAddendum, SweepBitcoinAddress, SweepMoneroAddress};
 use crate::{Error, LogStyle, ServiceId};
 
 impl Exec for Command {
@@ -197,135 +198,66 @@ impl Exec for Command {
                 runtime.report_response_or_fail()?;
             }
 
-            Command::HealthCheck { selector } => match selector {
-                HealthCheckSelector::Network(network) => {
-                    runtime.request_ctl(
-                        ServiceId::Farcasterd,
-                        CtlMsg::HealthCheck(Blockchain::Bitcoin, network),
-                    )?;
-                    let bitcoin_health = match runtime.response()? {
-                        BusMsg::Ctl(CtlMsg::HealthResult(health)) => health,
-                        _ => {
-                            return Err(Error::Other(
-                                "Server returned unexpected response for call health check"
-                                    .to_string(),
-                            ))
-                        }
-                    };
+            Command::HealthCheck { ref selector } => match selector {
+                // no selector, check only mainnet and testnet
+                None => {
+                    use Blockchain::*;
+                    use Network::*;
 
-                    runtime.request_ctl(
-                        ServiceId::Farcasterd,
-                        CtlMsg::HealthCheck(Blockchain::Monero, network),
-                    )?;
-                    let monero_health = match runtime.response()? {
-                        BusMsg::Ctl(CtlMsg::HealthResult(health)) => health,
-                        _ => {
-                            return Err(Error::Other(
-                                "Server returned unexpected response for call health check"
-                                    .to_string(),
-                            ))
-                        }
-                    };
+                    let bitcoin_testnet_health = self.check_health(runtime, Bitcoin, Testnet)?;
+                    let bitcoin_mainnet_health = self.check_health(runtime, Bitcoin, Mainnet)?;
 
-                    let health = ReducedHealthReport {
-                        bitcoin_health,
-                        monero_health,
-                    };
-                    println!("{}", health);
+                    let monero_testnet_health = self.check_health(runtime, Monero, Testnet)?;
+                    let monero_mainnet_health = self.check_health(runtime, Monero, Mainnet)?;
+
+                    println!(
+                        "{}",
+                        DefaultHealthReport {
+                            bitcoin_testnet_health,
+                            bitcoin_mainnet_health,
+                            monero_testnet_health,
+                            monero_mainnet_health,
+                        }
+                    );
                 }
-                HealthCheckSelector::All => {
-                    runtime.request_ctl(
-                        ServiceId::Farcasterd,
-                        CtlMsg::HealthCheck(Blockchain::Bitcoin, Network::Testnet),
-                    )?;
-                    let bitcoin_testnet_health = match runtime.response()? {
-                        BusMsg::Ctl(CtlMsg::HealthResult(health)) => health,
-                        _ => {
-                            return Err(Error::Other(
-                                "Server returned unexpected response for call health check"
-                                    .to_string(),
-                            ))
-                        }
-                    };
+                // user selected a specific network
+                Some(HealthCheckSelector::Network(network)) => {
+                    use Blockchain::*;
 
-                    runtime.request_ctl(
-                        ServiceId::Farcasterd,
-                        CtlMsg::HealthCheck(Blockchain::Bitcoin, Network::Mainnet),
-                    )?;
-                    let bitcoin_mainnet_health = match runtime.response()? {
-                        BusMsg::Ctl(CtlMsg::HealthResult(health)) => health,
-                        _ => {
-                            return Err(Error::Other(
-                                "Server returned unexpected response for call health check"
-                                    .to_string(),
-                            ))
+                    let bitcoin_health = self.check_health(runtime, Bitcoin, *network)?;
+                    let monero_health = self.check_health(runtime, Monero, *network)?;
+                    println!(
+                        "{}",
+                        ReducedHealthReport {
+                            bitcoin_health,
+                            monero_health,
                         }
-                    };
-                    runtime.request_ctl(
-                        ServiceId::Farcasterd,
-                        CtlMsg::HealthCheck(Blockchain::Bitcoin, Network::Local),
-                    )?;
-                    let bitcoin_local_health = match runtime.response()? {
-                        BusMsg::Ctl(CtlMsg::HealthResult(health)) => health,
-                        _ => {
-                            return Err(Error::Other(
-                                "Server returned unexpected response for call health check"
-                                    .to_string(),
-                            ))
-                        }
-                    };
+                    );
+                }
+                // check all networks
+                Some(HealthCheckSelector::All) => {
+                    use Blockchain::*;
+                    use Network::*;
 
-                    runtime.request_ctl(
-                        ServiceId::Farcasterd,
-                        CtlMsg::HealthCheck(Blockchain::Monero, Network::Testnet),
-                    )?;
-                    let monero_testnet_health = match runtime.response()? {
-                        BusMsg::Ctl(CtlMsg::HealthResult(health)) => health,
-                        _ => {
-                            return Err(Error::Other(
-                                "Server returned unexpected response for call health check"
-                                    .to_string(),
-                            ))
-                        }
-                    };
+                    let bitcoin_testnet_health = self.check_health(runtime, Bitcoin, Testnet)?;
+                    let bitcoin_mainnet_health = self.check_health(runtime, Bitcoin, Mainnet)?;
+                    let bitcoin_local_health = self.check_health(runtime, Bitcoin, Local)?;
 
-                    runtime.request_ctl(
-                        ServiceId::Farcasterd,
-                        CtlMsg::HealthCheck(Blockchain::Monero, Network::Mainnet),
-                    )?;
-                    let monero_mainnet_health = match runtime.response()? {
-                        BusMsg::Ctl(CtlMsg::HealthResult(health)) => health,
-                        _ => {
-                            return Err(Error::Other(
-                                "Server returned unexpected response for call health check"
-                                    .to_string(),
-                            ))
-                        }
-                    };
+                    let monero_testnet_health = self.check_health(runtime, Monero, Testnet)?;
+                    let monero_mainnet_health = self.check_health(runtime, Monero, Mainnet)?;
+                    let monero_local_health = self.check_health(runtime, Monero, Local)?;
 
-                    runtime.request_ctl(
-                        ServiceId::Farcasterd,
-                        CtlMsg::HealthCheck(Blockchain::Monero, Network::Local),
-                    )?;
-                    let monero_local_health = match runtime.response()? {
-                        BusMsg::Ctl(CtlMsg::HealthResult(health)) => health,
-                        _ => {
-                            return Err(Error::Other(
-                                "Server returned unexpected response for call health check"
-                                    .to_string(),
-                            ))
+                    println!(
+                        "{}",
+                        CompleteHealthReport {
+                            bitcoin_testnet_health,
+                            bitcoin_mainnet_health,
+                            bitcoin_local_health,
+                            monero_testnet_health,
+                            monero_mainnet_health,
+                            monero_local_health,
                         }
-                    };
-
-                    let report = HealthReport {
-                        bitcoin_testnet_health,
-                        bitcoin_mainnet_health,
-                        bitcoin_local_health,
-                        monero_testnet_health,
-                        monero_mainnet_health,
-                        monero_local_health,
-                    };
-                    println!("{}", report);
+                    );
                 }
             },
 
@@ -631,6 +563,27 @@ impl Exec for Command {
         }
 
         Ok(())
+    }
+}
+
+impl Command {
+    /// Check syncer (coin, net) health via farcasterd and return a [`Health`] result
+    fn check_health(
+        &self,
+        runtime: &mut Client,
+        blockchain: Blockchain,
+        network: Network,
+    ) -> Result<Health, Error> {
+        runtime.request_ctl(
+            ServiceId::Farcasterd,
+            CtlMsg::HealthCheck(blockchain, network),
+        )?;
+        match runtime.response()? {
+            BusMsg::Ctl(CtlMsg::HealthResult(health)) => Ok(health),
+            _ => Err(Error::Other(
+                "Server returned unexpected response for call health check".to_string(),
+            )),
+        }
     }
 }
 
