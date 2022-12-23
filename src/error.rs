@@ -181,21 +181,29 @@ impl From<Error> for esb::Error<ServiceId> {
     }
 }
 
+//
+// Custom Syncer error transformation
+//
+
 impl From<anyhow::Error> for Error {
     fn from(err: anyhow::Error) -> Self {
         Error::Syncer(SyncerError::MoneroRpc(err))
     }
 }
 
-impl From<farcaster_core::Error> for Error {
-    fn from(err: farcaster_core::Error) -> Self {
-        Error::FarcasterCore(err)
-    }
-}
-
 impl From<electrum_client::Error> for Error {
     fn from(err: electrum_client::Error) -> Self {
         Error::Syncer(SyncerError::Electrum(err))
+    }
+}
+
+//
+// Custom Core error transformation
+//
+
+impl From<farcaster_core::Error> for Error {
+    fn from(err: farcaster_core::Error) -> Self {
+        Error::FarcasterCore(err)
     }
 }
 
