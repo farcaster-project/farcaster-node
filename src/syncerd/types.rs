@@ -213,27 +213,18 @@ impl From<Boolean> for bool {
     }
 }
 
-#[derive(Clone, Debug, StrictEncode, StrictDecode, Eq, PartialEq, Hash)]
+#[derive(Clone, Display, Debug, StrictEncode, StrictDecode, Eq, PartialEq, Hash)]
 #[cfg_attr(
     feature = "serde",
     derive(Serialize, Deserialize),
     serde(crate = "serde_crate")
 )]
+#[display("WatchTransaction(id: {id}, lifetime: {lifetime}, hash: {hash}, confirmation_bound: {confirmation_bound})")]
 pub struct WatchTransaction {
     pub id: TaskId,
     pub lifetime: u64,
     pub hash: Txid,
     pub confirmation_bound: u32,
-}
-
-impl fmt::Display for WatchTransaction {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(
-            f,
-            "WatchTransaction(id: {}, lifetime: {}, hash: {}, confirmations_bound: {})",
-            self.id, self.lifetime, self.hash, self.confirmation_bound
-        )
-    }
 }
 
 #[derive(Clone, Debug, StrictEncode, StrictDecode, Eq, PartialEq, Hash)]
@@ -264,21 +255,16 @@ impl fmt::Display for BroadcastTransaction {
     }
 }
 
-#[derive(Clone, Debug, StrictEncode, StrictDecode, Eq, PartialEq, Hash)]
+#[derive(Clone, Debug, Display, StrictEncode, StrictDecode, Eq, PartialEq, Hash)]
 #[cfg_attr(
     feature = "serde",
     derive(Serialize, Deserialize),
     serde(crate = "serde_crate")
 )]
+#[display("GetTx(id: {id}, hash: {hash})")]
 pub struct GetTx {
     pub id: TaskId,
     pub hash: Txid,
-}
-
-impl fmt::Display for GetTx {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "GetTx(id: {}, hash: {})", self.id, self.hash,)
-    }
 }
 
 #[derive(Clone, Debug, Display, StrictEncode, StrictDecode, Eq, PartialEq, Hash)]
