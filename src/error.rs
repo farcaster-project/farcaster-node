@@ -19,20 +19,21 @@ use crate::service::ServiceId;
 #[display(doc_comments)]
 #[non_exhaustive]
 pub enum Error {
-    /// Farcaster core errors: {0}
-    FarcasterCore(farcaster_core::Error),
+    /// Farcaster core errors, related to low level cryptography or protocol
+    #[display(inner)]
+    Core(farcaster_core::Error),
 
-    /// Farcaster node errors: {0}
+    /// Generic Farcaster node errors
+    #[display(inner)]
     Farcaster(String),
 
-    /// Wallet node errors: {0}
-    Wallet(String),
-
-    /// Config errors: {0}
-    #[from(config::ConfigError)]
+    /// Node configuration errors, when parsing and manipulating `farcasterd.toml` conf
+    #[display("Configuration error: {0}")]
+    #[from]
     Config(config::ConfigError),
 
-    /// I/O error: {0:?}
+    /// Generic I/O errors
+    #[display(inner)]
     #[from(io::Error)]
     Io(IoError),
 
@@ -53,15 +54,16 @@ pub enum Error {
 
     /// Provided RPC request is not supported for the used type of endpoint
     #[cfg(feature = "_rpc")]
+    #[display("RPC request error, not supported on {0}: {1}")]
     NotSupported(ServiceBus, String),
 
     /// Peer does not respond to ping messages
     NotResponding,
 
-    /// Peer has misbehaved LN peer protocol rules
+    /// Peer has misbehaved peer protocol rules
     Misbehaving,
 
-    /// unrecoverable error "{0}"
+    /// Unrecoverable error: {0}
     Terminate(String),
 
     /// Other error type with string explanation
@@ -72,60 +74,101 @@ pub enum Error {
     /// Invalid walletd token error
     InvalidToken,
 
-    /// Syncer
+    /// Syncer microservice errors
     #[display(inner)]
-    #[from(SyncerError)]
+    #[from]
     Syncer(SyncerError),
 
-    /// BitcoinHashes
+    /// Bitcoin hashes manipulation errors
     #[display(inner)]
+    #[from]
     BitcoinHashes(bitcoin::hashes::Error),
 
-    /// Checkpoint
-    #[from(lmdb::Error)]
+    /// Checkpoint database errors
+    #[display(inner)]
+    #[from]
     Checkpoint(lmdb::Error),
 
-    /// BitcoinKey
+    /// Bitcoin key errors
     #[display(inner)]
-    #[from(bitcoin::util::key::Error)]
+    #[from]
     BitcoinKey(bitcoin::util::key::Error),
 
-    /// BitcoinSecp256k1
+    /// Bitcoin secp256k1 curve errors
+    #[display(inner)]
+    #[from]
     BitcoinSecp256k1(bitcoin::secp256k1::Error),
 
-    /// StrictEncoding
-    #[from(strict_encoding::Error)]
+    /// Bitcoin address errors
+    #[display(inner)]
+    #[from]
+    BitcoinAddress(bitcoin::util::address::Error),
+
+    /// Bitcoin consensus errors
+    #[display(inner)]
+    #[from]
+    BitcoinConsensus(bitcoin::consensus::encode::Error),
+
+    /// Bitcoin amount errors
+    #[display(inner)]
+    #[from]
+    BitcoinAmount(bitcoin::util::amount::ParseAmountError),
+
+    /// Monero address errors
+    #[display(inner)]
+    #[from]
+    MoneroAddress(monero::util::address::Error),
+
+    /// Monero amount errors
+    #[display(inner)]
+    #[from]
+    MoneroAmount(monero::util::amount::ParsingError),
+
+    /// Strict encoding and decoding errors
+    #[display(inner)]
+    #[from]
     StrictEncoding(strict_encoding::Error),
 
-    /// Uuid
-    #[from(uuid::Error)]
+    /// Deals and swaps identifiers errors
+    #[display(inner)]
+    #[from]
     Uuid(uuid::Error),
+
+    /// Internet2 address parsing errors
+    #[display(inner)]
+    #[from]
+    Inet2AddrParseError(internet2::addr::AddrParseError),
+
+    /// Tonic gRPC deamon transport errors
+    #[display(inner)]
+    #[from]
+    TonicTransportError(tonic::transport::Error),
 }
 
-#[derive(Debug, Display)]
+#[derive(Debug, Display, From, Error)]
+#[display(doc_comments)]
+#[non_exhaustive]
 pub enum SyncerError {
+    /// Generic Electrum client errors
+    #[from]
     #[display(inner)]
     Electrum(electrum_client::Error),
 
-    #[display(inner)]
-    NoTxsOnAddress,
-
-    #[display(inner)]
-    ScriptAlreadyRegistered,
-
-    #[display("syncer creating error")]
-    UnknownNetwork,
-
+    /// Generic Monero RPC errors
+    #[from]
     #[display(inner)]
     MoneroRpc(anyhow::Error),
 
-    #[display("Invalid configuration. Missing or malformed")]
+    /// Invalid configuration, missing or malformed
     InvalidConfig,
-    #[display("height did not increment")]
+
+    /// Height did not increment
     NoIncrementToHeight,
-    #[display("could not construct psbt")]
+
+    /// Invalid PSBT, could not construct
     InvalidPsbt,
-    #[display("Transaction should be found in the history if we successfully queried `transaction_get` for it")]
+
+    /// Transaction should be found in the history if we successfully queried `transaction_get`
     TxNotInHistory,
 }
 
@@ -141,45 +184,13 @@ impl From<Error> for esb::Error<ServiceId> {
     }
 }
 
+//
+// Custom Syncer error transformation
+//
+
 impl From<anyhow::Error> for Error {
     fn from(err: anyhow::Error) -> Self {
         Error::Syncer(SyncerError::MoneroRpc(err))
-    }
-}
-
-impl From<farcaster_core::Error> for Error {
-    fn from(err: farcaster_core::Error) -> Self {
-        Error::FarcasterCore(err)
-    }
-}
-
-impl From<bitcoin::consensus::encode::Error> for Error {
-    fn from(err: bitcoin::consensus::encode::Error) -> Self {
-        Error::Farcaster(err.to_string())
-    }
-}
-
-impl From<monero::util::address::Error> for Error {
-    fn from(err: monero::util::address::Error) -> Self {
-        Error::Farcaster(err.to_string())
-    }
-}
-
-impl From<bitcoin::util::address::Error> for Error {
-    fn from(err: bitcoin::util::address::Error) -> Self {
-        Error::Farcaster(err.to_string())
-    }
-}
-
-impl From<monero::util::amount::ParsingError> for Error {
-    fn from(err: monero::util::amount::ParsingError) -> Self {
-        Error::Farcaster(err.to_string())
-    }
-}
-
-impl From<bitcoin::util::amount::ParseAmountError> for Error {
-    fn from(err: bitcoin::util::amount::ParseAmountError) -> Self {
-        Error::Farcaster(err.to_string())
     }
 }
 
@@ -189,38 +200,30 @@ impl From<electrum_client::Error> for Error {
     }
 }
 
-impl From<rustc_hex::FromHexError> for Error {
-    fn from(err: rustc_hex::FromHexError) -> Self {
-        Error::Farcaster(err.to_string())
-    }
-}
+//
+// Custom Core error transformation
+//
 
-impl From<bitcoin::hashes::Error> for Error {
-    fn from(err: bitcoin::hashes::Error) -> Self {
-        Error::BitcoinHashes(err)
-    }
-}
-
-impl From<bitcoin::secp256k1::Error> for Error {
-    fn from(err: bitcoin::secp256k1::Error) -> Self {
-        Error::BitcoinSecp256k1(err)
+impl From<farcaster_core::Error> for Error {
+    fn from(err: farcaster_core::Error) -> Self {
+        Error::Core(err)
     }
 }
 
 impl From<farcaster_core::transaction::Error> for Error {
     fn from(err: farcaster_core::transaction::Error) -> Self {
-        Error::FarcasterCore(err.into())
+        Error::Core(err.into())
     }
 }
 
 impl From<farcaster_core::crypto::Error> for Error {
     fn from(err: farcaster_core::crypto::Error) -> Self {
-        Error::FarcasterCore(err.into())
+        Error::Core(err.into())
     }
 }
 
 impl From<farcaster_core::consensus::Error> for Error {
     fn from(err: farcaster_core::consensus::Error) -> Self {
-        Error::FarcasterCore(err.into())
+        Error::Core(err.into())
     }
 }

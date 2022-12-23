@@ -1372,7 +1372,7 @@ fn request_loop(
                     "Error encountered while sending request to GRPC runtime: {}",
                     err
                 );
-                return Err(Error::Farcaster(err.to_string()));
+                return Err(err.into());
             }
         }
         Ok(())
@@ -1429,7 +1429,7 @@ fn server_loop(
             .await
         {
             error!("Error encountered while running grpc server: {}", err);
-            Err(Error::Farcaster(err.to_string()))
+            Err(err.into())
         } else {
             Ok(())
         }

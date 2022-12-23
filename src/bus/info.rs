@@ -380,11 +380,11 @@ impl FromStr for Address {
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         bitcoin::Address::from_str(s)
             .map(Address::Bitcoin)
-            .map_err(|e| Error::Farcaster(e.to_string()))
+            .map_err(Error::from)
             .or_else(|_| {
                 monero::Address::from_str(s)
                     .map(Address::Monero)
-                    .map_err(|e| Error::Farcaster(e.to_string()))
+                    .map_err(Error::from)
             })
     }
 }

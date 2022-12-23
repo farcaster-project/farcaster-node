@@ -232,7 +232,7 @@ impl ElectrumRpc {
                     let height = match self
                         .client
                         .script_get_history(&tx.output[0].script_pubkey)
-                        .map_err(|err| SyncerError::Electrum(err))
+                        .map_err(SyncerError::Electrum)
                         .and_then(|mut history| {
                             history
                                 .iter()
