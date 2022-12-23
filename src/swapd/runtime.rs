@@ -723,8 +723,8 @@ impl Runtime {
                 }
             }
             // Try to handle previously unhandled peer message
-            if let Some(peer_msg) = &self.unhandled_peer_message {
-                self.handle_msg(endpoints, source.clone(), peer_msg.clone())?;
+            if let Some(peer_msg) = self.unhandled_peer_message.clone() {
+                self.handle_msg(endpoints, source.clone(), peer_msg)?;
             }
             // Replay syncer events to ensure we immediately advance through states that can be skipped
             for event in self.syncer_state.last_tx_event.clone().values() {

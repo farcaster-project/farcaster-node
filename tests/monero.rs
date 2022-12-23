@@ -387,13 +387,13 @@ async fn monero_syncer_address_test() {
         let message = rx_event.recv_multipart(0).unwrap();
         info!("received address transaction message");
         let request = misc::get_request_from_message(message);
-        assert::address_transaction(request, 1, vec![tx_id2_1.clone(), tx_id2_2.clone()]);
+        assert::address_transaction(request, 1, vec![tx_id2_1, tx_id2_2]);
 
         info!("waiting for address transaction message");
         let message = rx_event.recv_multipart(0).unwrap();
         info!("received address transaction message");
         let request = misc::get_request_from_message(message);
-        assert::address_transaction(request, 1, vec![tx_id2_1.clone(), tx_id2_2.clone()]);
+        assert::address_transaction(request, 1, vec![tx_id2_1, tx_id2_2]);
 
         let addendum_3 = AddressAddendum::Monero(XmrAddressAddendum {
             address: address2,
@@ -415,13 +415,13 @@ async fn monero_syncer_address_test() {
         let message = rx_event.recv_multipart(0).unwrap();
         info!("received address transaction message");
         let request = misc::get_request_from_message(message);
-        assert::address_transaction(request, 1, vec![tx_id2_1.clone(), tx_id2_2.clone()]);
+        assert::address_transaction(request, 1, vec![tx_id2_1, tx_id2_2]);
 
         info!("waiting for address transaction message");
         let message = rx_event.recv_multipart(0).unwrap();
         info!("received address transaction message");
         let request = misc::get_request_from_message(message);
-        assert::address_transaction(request, 1, vec![tx_id2_1.clone(), tx_id2_2.clone()]);
+        assert::address_transaction(request, 1, vec![tx_id2_1, tx_id2_2]);
 
         let (address4, view_key4) = new_address(&wallet).await;
 
@@ -460,7 +460,7 @@ async fn monero_syncer_address_test() {
             let message = rx_event.recv_multipart(0).unwrap();
             info!("received repeated address transaction message {}", i);
             let request = misc::get_request_from_message(message);
-            assert::address_transaction(request, 1, vec![tx_id4.clone()]);
+            assert::address_transaction(request, 1, vec![tx_id4]);
         }
 
         // generate an address, send Monero to it and ensure that the first transaction sent to it does not show up
@@ -508,7 +508,7 @@ async fn monero_syncer_address_test() {
         let message = rx_event.recv_multipart(0).unwrap();
         info!("received address transaction message");
         let request = misc::get_request_from_message(message);
-        assert::address_transaction(request, 2, vec![tx_id5_2.clone()]);
+        assert::address_transaction(request, 2, vec![tx_id5_2]);
 
         let tx_id5_2_3 = send_monero(&wallet, address5, 2).await;
         regtest.generate_blocks(1, address.address).await.unwrap();
@@ -516,7 +516,7 @@ async fn monero_syncer_address_test() {
         let message = rx_event.recv_multipart(0).unwrap();
         info!("received address transaction message");
         let request = misc::get_request_from_message(message);
-        assert::address_transaction(request, 2, vec![tx_id5_2_3.clone()]);
+        assert::address_transaction(request, 2, vec![tx_id5_2_3]);
 
         let (address6, view_key6) = new_address(&wallet).await;
         let addendum_6 = AddressAddendum::Monero(XmrAddressAddendum {

@@ -378,7 +378,7 @@ impl SyncerState {
                             broadcast_tx.tx.clone(),
                         ))
                         .ok()?,
-                        label.clone(),
+                        *label,
                     ))
                 } else {
                     None
@@ -446,17 +446,18 @@ impl SyncerState {
                     }
                     None => {
                         if let Some(tx) = self.broadcasted_txs.get(&txlabel) {
+                            let tx = tx.clone();
                             warn!("{} | Tx {} was re-orged or dropped from the mempool. Re-broadcasting tx", swapid.swap_id(), txlabel.label());
-                            let task = self.broadcast(tx.clone(), txlabel.clone());
-                            if let Err(_) = endpoints.send_to(
+                            let task = self.broadcast(tx, txlabel);
+                            if let Err(err) = endpoints.send_to(
                                 ServiceBus::Sync,
                                 ServiceId::Swap(self.swap_id),
                                 self.bitcoin_syncer(),
                                 BusMsg::Sync(SyncMsg::Task(task)),
                             ) {
                                 error!(
-                                    "{} | failed to send task for re-broadcasting {} transaction",
-                                    swapid, txlabel
+                                    "{} | failed to send task for re-broadcasting {} transaction: {}",
+                                    swapid, txlabel, err
                                 );
                             }
                         }
