@@ -6,7 +6,7 @@
 
 use std::cmp::Ordering;
 
-use bitcoin::psbt::serialize::Deserialize;
+use bitcoin::{psbt::serialize::Deserialize, secp256k1::ecdsa::Signature};
 use farcaster_core::{
     blockchain::Blockchain,
     role::SwapRole,
@@ -375,6 +375,7 @@ pub struct BobFunded {
 pub struct AliceCoreArbitratingSetup {
     remote_params: Parameters,
     core_arbitrating_setup: CoreArbitratingSetup,
+    alice_cancel_signature: Signature,
     wallet: AliceWallet,
 }
 
@@ -392,6 +393,7 @@ pub struct AliceArbitratingLockFinal {
     required_funding_amount: monero::Amount,
     remote_params: Parameters,
     core_arbitrating_setup: CoreArbitratingSetup,
+    alice_cancel_signature: Signature,
 }
 
 #[derive(Clone, Debug, StrictEncode, StrictDecode)]
@@ -405,6 +407,7 @@ pub struct BobAccordantLock {
 pub struct AliceAccordantLock {
     remote_params: Parameters,
     core_arbitrating_setup: CoreArbitratingSetup,
+    alice_cancel_signature: Signature,
     wallet: AliceWallet,
 }
 
@@ -1276,7 +1279,13 @@ fn try_bob_accordant_lock_final_to_bob_buy_final(
         ) =>
         {
             log_tx_seen(runtime.swap_id, &TxLabel::Buy, &tx.txid().into());
-            let sweep_xmr = wallet.process_buy_tx(runtime, tx, &mut event, remote_params, buy_procedure_signature)?;
+            let sweep_xmr = wallet.process_buy_tx(
+                runtime,
+                tx,
+                &mut event,
+                remote_params,
+                buy_procedure_signature,
+            )?;
             let task = runtime.syncer_state.sweep_xmr(sweep_xmr.clone(), true);
             let sweep_address = if let Task::SweepAddress(sweep_address) = task {
                 sweep_address
@@ -1446,6 +1455,7 @@ fn try_alice_reveal_to_alice_core_arbitrating_setup(
                 refund_procedure_signatures,
                 cancel_tx,
                 punish_tx,
+                alice_cancel_signature,
             } = wallet.handle_core_arbitrating_setup(runtime, setup.clone(), &remote_params)?;
             // handle Cancel and Punish transactions
             log_tx_created(runtime.swap_id, TxLabel::Cancel);
@@ -1456,6 +1466,7 @@ fn try_alice_reveal_to_alice_core_arbitrating_setup(
             let new_ssm = SwapStateMachine::AliceCoreArbitratingSetup(AliceCoreArbitratingSetup {
                 remote_params,
                 core_arbitrating_setup: setup,
+                alice_cancel_signature: alice_cancel_signature,
                 wallet,
             });
             runtime.log_debug("checkpointing alice pre lock state");
@@ -1487,6 +1498,7 @@ fn try_alice_core_arbitrating_setup_to_alice_arbitrating_lock_final(
     let AliceCoreArbitratingSetup {
         remote_params,
         core_arbitrating_setup,
+        alice_cancel_signature,
         wallet,
     } = alice_core_arbitrating_setup;
     match event.request {
@@ -1535,6 +1547,7 @@ fn try_alice_core_arbitrating_setup_to_alice_arbitrating_lock_final(
                     funding_info,
                     remote_params,
                     core_arbitrating_setup,
+                    alice_cancel_signature,
                 },
             )))
         }
@@ -1553,6 +1566,7 @@ fn try_alice_arbitrating_lock_final_to_alice_accordant_lock(
         required_funding_amount,
         remote_params,
         core_arbitrating_setup,
+        alice_cancel_signature,
     } = alice_arbitrating_lock_final;
     match event.request {
         BusMsg::Sync(SyncMsg::Event(SyncEvent::Empty(id)))
@@ -1577,6 +1591,7 @@ fn try_alice_arbitrating_lock_final_to_alice_accordant_lock(
                     required_funding_amount,
                     remote_params,
                     core_arbitrating_setup,
+                    alice_cancel_signature,
                 },
             )))
         }
@@ -1611,6 +1626,7 @@ fn try_alice_arbitrating_lock_final_to_alice_accordant_lock(
                     required_funding_amount,
                     remote_params,
                     core_arbitrating_setup,
+                    alice_cancel_signature,
                 },
             )))
         }
@@ -1690,6 +1706,7 @@ fn try_alice_arbitrating_lock_final_to_alice_accordant_lock(
                 AliceAccordantLock {
                     remote_params,
                     core_arbitrating_setup,
+                    alice_cancel_signature,
                     wallet,
                 },
             )))
@@ -1706,6 +1723,7 @@ fn try_alice_accordant_lock_to_alice_buy_procedure_signature(
     let AliceAccordantLock {
         remote_params,
         core_arbitrating_setup,
+        alice_cancel_signature,
         mut wallet,
     } = alice_accordant_lock;
 
@@ -1724,6 +1742,7 @@ fn try_alice_accordant_lock_to_alice_buy_procedure_signature(
                     buy_procedure_signature,
                     &remote_params,
                     core_arbitrating_setup,
+                    alice_cancel_signature,
                 )?;
 
             // Handle Cancel and Buy transactions

@@ -58,6 +58,7 @@ pub struct HandleCoreArbitratingSetupRes {
     pub refund_procedure_signatures: RefundProcedureSignatures,
     pub cancel_tx: bitcoin::Transaction,
     pub punish_tx: bitcoin::Transaction,
+    pub alice_cancel_signature: Signature,
 }
 
 pub struct HandleBuyProcedureSignatureRes {
@@ -72,7 +73,7 @@ pub struct AliceWallet {
     pub local_trade_role: TradeRole,
     pub local_params: Parameters,
     pub key_manager: KeyManager,
-    pub alice_cancel_signature: Option<Signature>,
+    // pub alice_cancel_signature: Option<Signature>,
     pub adaptor_refund: Option<EncryptedSignature>,
     pub target_bitcoin_address: bitcoin::Address,
     pub target_monero_address: monero::Address,
@@ -84,10 +85,6 @@ impl Encodable for AliceWallet {
         len += self.local_trade_role.consensus_encode(writer)?;
         len += self.local_params.consensus_encode(writer)?;
         len += self.key_manager.consensus_encode(writer)?;
-        len += farcaster_core::consensus::Encodable::consensus_encode(
-            &self.alice_cancel_signature.as_canonical_bytes(),
-            writer,
-        )?;
         len += self.adaptor_refund.consensus_encode(writer)?;
         len += self
             .target_bitcoin_address
@@ -108,9 +105,6 @@ impl Decodable for AliceWallet {
             local_trade_role: Decodable::consensus_decode(d)?,
             local_params: Decodable::consensus_decode(d)?,
             key_manager: Decodable::consensus_decode(d)?,
-            alice_cancel_signature: Option::<Signature>::from_canonical_bytes(
-                farcaster_core::unwrap_vec_ref!(d).as_ref(),
-            )?,
             adaptor_refund: Decodable::consensus_decode(d)?,
             target_bitcoin_address: bitcoin::Address::from_canonical_bytes(
                 farcaster_core::unwrap_vec_ref!(d).as_ref(),
@@ -138,7 +132,6 @@ impl AliceWallet {
             local_trade_role,
             local_params,
             key_manager,
-            alice_cancel_signature: None,
             adaptor_refund: None,
             target_bitcoin_address,
             target_monero_address,
@@ -487,14 +480,9 @@ impl AliceWallet {
             alice,
             local_params,
             key_manager,
-            alice_cancel_signature, // None
-            adaptor_refund,         // None
+            adaptor_refund, // None
             ..
         } = self;
-        if alice_cancel_signature.is_some() {
-            runtime.log_error("alice_cancel_sig already set for alice");
-            return Err(Error::Farcaster("Alice cancel sig already set".to_string()));
-        }
         let core_arb_txs = core_arbitrating_setup.clone().into_arbitrating_tx();
         let signed_adaptor_refund = alice.sign_adaptor_refund(
             key_manager,
@@ -516,12 +504,12 @@ impl AliceWallet {
             cancel_sig: cosigned_arb_cancel,
             refund_adaptor_sig: signed_adaptor_refund,
         };
-        *alice_cancel_signature = Some(refund_proc_signatures.cancel_sig);
+        let alice_cancel_signature = refund_proc_signatures.cancel_sig;
 
         // cancel
         let partial_cancel_tx = core_arbitrating_setup.cancel.clone();
         let mut cancel_tx = CancelTx::from_partial(partial_cancel_tx);
-        cancel_tx.add_witness(local_params.cancel, alice_cancel_signature.unwrap())?;
+        cancel_tx.add_witness(local_params.cancel, alice_cancel_signature)?;
         cancel_tx.add_witness(bob_parameters.cancel, core_arbitrating_setup.cancel_sig)?;
         let finalized_cancel_tx =
             Broadcastable::<bitcoin::Transaction>::finalize_and_extract(&mut cancel_tx)?;
@@ -546,6 +534,7 @@ impl AliceWallet {
             refund_procedure_signatures: refund_proc_signatures,
             cancel_tx: finalized_cancel_tx,
             punish_tx: finalized_punish_tx,
+            alice_cancel_signature: alice_cancel_signature,
         })
     }
 
@@ -555,29 +544,21 @@ impl AliceWallet {
         buy_procedure_signature: BuyProcedureSignature,
         bob_parameters: &Parameters,
         core_arb_setup: CoreArbitratingSetup,
+        alice_cancel_signature: Signature,
     ) -> Result<HandleBuyProcedureSignatureRes, Error> {
         runtime.log_trace("wallet received buyproceduresignature");
         let AliceWallet {
             alice,
             local_params: alice_params,
             key_manager,
-            alice_cancel_signature,
             ..
         } = self;
-        let alice_cancel_signature = if let Some(alice_cancel_signature) = alice_cancel_signature {
-            alice_cancel_signature
-        } else {
-            return Err(Error::Farcaster(
-                "Expected alice_cancel_signature to be set".to_string(),
-            ));
-        };
-
         let core_arb_txs = core_arb_setup.clone().into_arbitrating_tx();
 
         // cancel
         let tx = core_arb_setup.cancel.clone();
         let mut cancel_tx = CancelTx::from_partial(tx);
-        cancel_tx.add_witness(alice_params.cancel, *alice_cancel_signature)?;
+        cancel_tx.add_witness(alice_params.cancel, alice_cancel_signature)?;
         cancel_tx.add_witness(bob_parameters.cancel, core_arb_setup.cancel_sig)?;
         let finalized_cancel_tx =
             Broadcastable::<bitcoin::Transaction>::finalize_and_extract(&mut cancel_tx)?;
