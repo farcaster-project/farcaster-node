@@ -345,7 +345,7 @@ impl AliceWallet {
         let proof_verification = key_manager.verify_proof(
             &remote_params_candidate.spend,
             &remote_params_candidate.adaptor,
-            proof.proof.clone(),
+            proof.proof,
         );
         if proof_verification.is_err() {
             runtime.log_error("DLEQ proof invalid");
@@ -401,12 +401,8 @@ impl AliceWallet {
             ..
         } = self;
 
-        let sk_b_btc = alice.recover_accordant_key(
-            key_manager,
-            &bob_params,
-            adaptor_refund.0.clone(),
-            refund_tx,
-        );
+        let sk_b_btc =
+            alice.recover_accordant_key(key_manager, &bob_params, adaptor_refund.0, refund_tx);
         let mut sk_b_btc_buf: Vec<u8> = (*sk_b_btc.as_ref()).into();
         sk_b_btc_buf.reverse();
         let sk_b = monero::PrivateKey::from_slice(sk_b_btc_buf.as_ref())
@@ -510,8 +506,7 @@ impl AliceWallet {
         let alice_cancel_signature = refund_proc_signatures.cancel_sig;
 
         // cancel
-        let partial_cancel_tx = core_arbitrating_setup.cancel.clone();
-        let mut cancel_tx = CancelTx::from_partial(partial_cancel_tx);
+        let mut cancel_tx = CancelTx::from_partial(core_arbitrating_setup.cancel);
         cancel_tx.add_witness(local_params.cancel, alice_cancel_signature)?;
         cancel_tx.add_witness(bob_parameters.cancel, core_arbitrating_setup.cancel_sig)?;
         let finalized_cancel_tx =
@@ -537,8 +532,8 @@ impl AliceWallet {
             refund_procedure_signatures: refund_proc_signatures,
             cancel_tx: finalized_cancel_tx,
             punish_tx: finalized_punish_tx,
-            alice_cancel_signature: alice_cancel_signature,
-            adaptor_refund: adaptor_refund,
+            alice_cancel_signature,
+            adaptor_refund,
         })
     }
 
@@ -560,8 +555,7 @@ impl AliceWallet {
         let core_arb_txs = core_arb_setup.clone().into_arbitrating_tx();
 
         // cancel
-        let tx = core_arb_setup.cancel.clone();
-        let mut cancel_tx = CancelTx::from_partial(tx);
+        let mut cancel_tx = CancelTx::from_partial(core_arb_setup.cancel);
         cancel_tx.add_witness(alice_params.cancel, alice_cancel_signature)?;
         cancel_tx.add_witness(bob_parameters.cancel, core_arb_setup.cancel_sig)?;
         let finalized_cancel_tx =
@@ -804,7 +798,7 @@ impl BobWallet {
         let sk_a_btc = bob.recover_accordant_key(
             key_manager,
             &alice_params,
-            adaptor_buy.buy_adaptor_sig.clone(),
+            adaptor_buy.buy_adaptor_sig,
             buy_tx,
         );
         let mut sk_a_btc_buf: Vec<u8> = (*sk_a_btc.as_ref()).into();
@@ -890,7 +884,7 @@ impl BobWallet {
         let proof_verification = key_manager.verify_proof(
             &remote_params_candidate.spend,
             &remote_params_candidate.adaptor,
-            proof.proof.clone(),
+            proof.proof,
         );
 
         if proof_verification.is_err() {
@@ -982,16 +976,14 @@ impl BobWallet {
 
         // lock
         let sig = bob.sign_arbitrating_lock(key_manager, &core_arb_txs)?;
-        let tx = core_arb_setup.lock.clone();
-        let mut lock_tx = LockTx::from_partial(tx);
+        let mut lock_tx = LockTx::from_partial(core_arb_setup.lock);
         let lock_pubkey = key_manager.get_pubkey(ArbitratingKeyId::Lock)?;
         lock_tx.add_witness(lock_pubkey, sig)?;
         let finalized_lock_tx =
             Broadcastable::<bitcoin::Transaction>::finalize_and_extract(&mut lock_tx)?;
 
         // cancel
-        let tx = core_arb_setup.cancel.clone();
-        let mut cancel_tx = CancelTx::from_partial(tx);
+        let mut cancel_tx = CancelTx::from_partial(core_arb_setup.cancel);
         cancel_tx.add_witness(remote_params.cancel, alice_cancel_sig)?;
         cancel_tx.add_witness(local_params.cancel, core_arb_setup.cancel_sig)?;
         let finalized_cancel_tx =
@@ -1000,8 +992,7 @@ impl BobWallet {
         // refund
         let TxSignatures { sig, adapted_sig } =
             bob.fully_sign_refund(key_manager, &core_arb_txs, &refund_adaptor_sig)?;
-        let tx = core_arb_setup.refund.clone();
-        let mut refund_tx = RefundTx::from_partial(tx);
+        let mut refund_tx = RefundTx::from_partial(core_arb_setup.refund);
         refund_tx.add_witness(local_params.refund, sig)?;
         refund_tx.add_witness(remote_params.refund, adapted_sig)?;
         let finalized_refund_tx =

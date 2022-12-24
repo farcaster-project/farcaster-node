@@ -1471,7 +1471,7 @@ fn try_alice_reveal_to_alice_core_arbitrating_setup(
             let new_ssm = SwapStateMachine::AliceCoreArbitratingSetup(AliceCoreArbitratingSetup {
                 remote_params,
                 core_arbitrating_setup: setup,
-                alice_cancel_signature: alice_cancel_signature,
+                alice_cancel_signature,
                 adaptor_refund,
                 wallet,
             });
