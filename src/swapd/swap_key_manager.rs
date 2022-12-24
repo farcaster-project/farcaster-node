@@ -84,8 +84,8 @@ impl Decodable for WrappedEncryptedSignature {
 impl_strict_encoding!(WrappedEncryptedSignature);
 
 #[derive(Display, Clone, Debug)]
-#[display("Alice's Wallet")]
-pub struct AliceWallet {
+#[display("Alice's Swap Key Manager")]
+pub struct AliceSwapKeyManager {
     pub alice: Alice,
     pub local_trade_role: TradeRole,
     pub local_params: Parameters,
@@ -94,7 +94,7 @@ pub struct AliceWallet {
     pub target_monero_address: monero::Address,
 }
 
-impl Encodable for AliceWallet {
+impl Encodable for AliceSwapKeyManager {
     fn consensus_encode<W: io::Write>(&self, writer: &mut W) -> Result<usize, io::Error> {
         let mut len = self.alice.consensus_encode(writer)?;
         len += self.local_trade_role.consensus_encode(writer)?;
@@ -112,9 +112,9 @@ impl Encodable for AliceWallet {
     }
 }
 
-impl Decodable for AliceWallet {
+impl Decodable for AliceSwapKeyManager {
     fn consensus_decode<D: io::Read>(d: &mut D) -> Result<Self, consensus::Error> {
-        Ok(AliceWallet {
+        Ok(AliceSwapKeyManager {
             alice: Decodable::consensus_decode(d)?,
             local_trade_role: Decodable::consensus_decode(d)?,
             local_params: Decodable::consensus_decode(d)?,
@@ -129,9 +129,9 @@ impl Decodable for AliceWallet {
     }
 }
 
-impl_strict_encoding!(AliceWallet);
+impl_strict_encoding!(AliceSwapKeyManager);
 
-impl AliceWallet {
+impl AliceSwapKeyManager {
     pub fn new(
         alice: Alice,
         local_trade_role: TradeRole,
@@ -152,8 +152,8 @@ impl AliceWallet {
 }
 
 #[derive(Display, Clone, Debug)]
-#[display("Bob's Wallet")]
-pub struct BobWallet {
+#[display("Bob's Swap Key Manager")]
+pub struct BobSwapKeyManager {
     pub bob: Bob,
     pub local_trade_role: TradeRole,
     pub local_params: Parameters,
@@ -163,7 +163,7 @@ pub struct BobWallet {
     pub target_monero_address: monero::Address,
 }
 
-impl Encodable for BobWallet {
+impl Encodable for BobSwapKeyManager {
     fn consensus_encode<W: io::Write>(&self, writer: &mut W) -> Result<usize, io::Error> {
         let mut len = self.bob.consensus_encode(writer)?;
         len += self.local_trade_role.consensus_encode(writer)?;
@@ -182,9 +182,9 @@ impl Encodable for BobWallet {
     }
 }
 
-impl Decodable for BobWallet {
+impl Decodable for BobSwapKeyManager {
     fn consensus_decode<D: io::Read>(d: &mut D) -> Result<Self, consensus::Error> {
-        Ok(BobWallet {
+        Ok(BobSwapKeyManager {
             bob: Decodable::consensus_decode(d)?,
             local_trade_role: Decodable::consensus_decode(d)?,
             local_params: Decodable::consensus_decode(d)?,
@@ -200,7 +200,7 @@ impl Decodable for BobWallet {
     }
 }
 
-impl BobWallet {
+impl BobSwapKeyManager {
     pub fn new(
         bob: Bob,
         local_trade_role: TradeRole,
@@ -222,9 +222,9 @@ impl BobWallet {
     }
 }
 
-impl_strict_encoding!(BobWallet);
+impl_strict_encoding!(BobSwapKeyManager);
 
-impl AliceWallet {
+impl AliceSwapKeyManager {
     pub fn local_params(&self) -> Parameters {
         self.local_params.clone()
     }
@@ -243,7 +243,7 @@ impl AliceWallet {
             FeePriority::Low,
         );
         let local_params = alice.generate_parameters(&mut key_manager, &runtime.deal)?;
-        Ok(AliceWallet::new(
+        Ok(AliceSwapKeyManager::new(
             alice,
             TradeRole::Taker,
             local_params,
@@ -259,7 +259,7 @@ impl AliceWallet {
         event: &mut Event,
         runtime: &mut Runtime,
     ) -> Result<CommitAliceParameters, Error> {
-        let AliceWallet { local_params, .. } = self;
+        let AliceSwapKeyManager { local_params, .. } = self;
         runtime.log_info(format!(
             "{} to Maker remote peer",
             "Proposing to take swap".bright_white_bold(),
@@ -290,9 +290,9 @@ impl AliceWallet {
             FeePriority::Low,
         );
         let local_params = alice.generate_parameters(&mut key_manager, &runtime.deal)?;
-        runtime.log_info(format!("Loading {}", "Wallet::Alice".label()));
+        runtime.log_info(format!("Loading {}", "Alice Swap Key Manager".label()));
         let local_trade_role = TradeRole::Maker;
-        Ok(AliceWallet::new(
+        Ok(AliceSwapKeyManager::new(
             alice,
             local_trade_role,
             local_params,
@@ -307,7 +307,7 @@ impl AliceWallet {
         event: &mut Event,
         runtime: &mut Runtime,
     ) -> Result<CommitAliceParameters, Error> {
-        let AliceWallet { local_params, .. } = self;
+        let AliceSwapKeyManager { local_params, .. } = self;
         runtime.log_info(format!(
             "{} as Maker from Taker through peerd {}",
             "Accepting swap".bright_white_bold(),
@@ -333,7 +333,7 @@ impl AliceWallet {
         proof: RevealProof,
         remote_commit: CommitBobParameters,
     ) -> Result<(Option<Reveal>, Parameters), Error> {
-        let AliceWallet {
+        let AliceSwapKeyManager {
             local_params,
             key_manager,
             ..
@@ -376,7 +376,7 @@ impl AliceWallet {
         &mut self,
         runtime: &mut Runtime,
     ) -> Result<Reveal, Error> {
-        let AliceWallet { local_params, .. } = self;
+        let AliceSwapKeyManager { local_params, .. } = self;
         runtime.log_debug("Generating reveal alice message");
         Ok(Reveal::Alice {
             parameters: local_params.clone().reveal_alice(runtime.swap_id),
@@ -395,7 +395,7 @@ impl AliceWallet {
         bob_params: Parameters,
         adaptor_refund: WrappedEncryptedSignature,
     ) -> Result<SweepMoneroAddress, Error> {
-        let AliceWallet {
+        let AliceSwapKeyManager {
             alice,
             local_params,
             key_manager,
@@ -478,7 +478,7 @@ impl AliceWallet {
         core_arbitrating_setup: CoreArbitratingSetup,
         bob_parameters: &Parameters,
     ) -> Result<HandleCoreArbitratingSetupRes, Error> {
-        let AliceWallet {
+        let AliceSwapKeyManager {
             alice,
             local_params,
             key_manager,
@@ -547,8 +547,8 @@ impl AliceWallet {
         core_arb_setup: CoreArbitratingSetup,
         alice_cancel_signature: Signature,
     ) -> Result<HandleBuyProcedureSignatureRes, Error> {
-        runtime.log_trace("wallet received buyproceduresignature");
-        let AliceWallet {
+        runtime.log_trace("Swap key manager handling buy procedure signature.");
+        let AliceSwapKeyManager {
             alice,
             local_params: alice_params,
             key_manager,
@@ -585,7 +585,7 @@ impl AliceWallet {
         buy_tx.add_witness(bob_parameters.buy, adapted_sig)?;
         let finalized_buy_tx =
             Broadcastable::<bitcoin::Transaction>::finalize_and_extract(&mut buy_tx)?;
-        runtime.log_trace("wallet sends fullysignedbuy");
+        runtime.log_trace("Swap key manager returning fully signed buy");
         Ok(HandleBuyProcedureSignatureRes {
             cancel_tx: finalized_cancel_tx,
             buy_tx: finalized_buy_tx,
@@ -594,7 +594,7 @@ impl AliceWallet {
     }
 }
 
-impl BobWallet {
+impl BobSwapKeyManager {
     pub fn local_params(&self) -> Parameters {
         self.local_params.clone()
     }
@@ -606,7 +606,9 @@ impl BobWallet {
                 return Err(Error::Farcaster("Funding already updated".to_string()));
             }
             funding_update(&mut self.funding_tx, tx)?;
-            runtime.log_debug("Bob's wallet informs swapd that funding was successfully updated");
+            runtime.log_debug(
+                "Bob's swap key manager informs swapd that funding was successfully updated",
+            );
             Ok(())
         } else {
             Err(Error::Farcaster(
@@ -623,7 +625,7 @@ impl BobWallet {
         &mut self,
         source_address: bitcoin::Address,
     ) -> Result<SweepBitcoinAddress, Error> {
-        let BobWallet {
+        let BobSwapKeyManager {
             key_manager, bob, ..
         } = self;
         let source_secret_key = key_manager.get_or_derive_bitcoin_key(ArbitratingKeyId::Lock)?;
@@ -666,8 +668,8 @@ impl BobWallet {
                 },
             }),
         )?;
-        runtime.log_info(format!("Loading {}", "Wallet::Bob".label()));
-        Ok(BobWallet::new(
+        runtime.log_info(format!("Loading {}", "Bob's Swap Key Manager".label()));
+        Ok(BobSwapKeyManager::new(
             bob,
             TradeRole::Taker,
             local_params,
@@ -683,7 +685,7 @@ impl BobWallet {
         event: &mut Event,
         runtime: &mut Runtime,
     ) -> Result<CommitBobParameters, Error> {
-        let BobWallet { local_params, .. } = self;
+        let BobSwapKeyManager { local_params, .. } = self;
         runtime.log_info(format!(
             "{} to Maker remote peer",
             "Proposing to take swap".bright_white_bold(),
@@ -731,8 +733,8 @@ impl BobWallet {
                 },
             }),
         )?;
-        runtime.log_info(format!("Loading {}", "Wallet::Bob".label()));
-        Ok(BobWallet::new(
+        runtime.log_info(format!("Loading {}", "Bob's Swap Key Manager".label()));
+        Ok(BobSwapKeyManager::new(
             bob,
             TradeRole::Maker,
             local_params,
@@ -748,7 +750,7 @@ impl BobWallet {
         event: &mut Event,
         runtime: &mut Runtime,
     ) -> Result<CommitBobParameters, Error> {
-        let BobWallet { local_params, .. } = self;
+        let BobSwapKeyManager { local_params, .. } = self;
         runtime.log_info(format!(
             "{} as Maker from Taker through peerd {}",
             "Accepting swap".bright_white_bold(),
@@ -771,7 +773,7 @@ impl BobWallet {
         &mut self,
         runtime: &mut Runtime,
     ) -> Result<Reveal, Error> {
-        let BobWallet { local_params, .. } = self;
+        let BobSwapKeyManager { local_params, .. } = self;
         // craft the correct reveal depending on role
         Ok(Reveal::Bob {
             parameters: local_params.clone().reveal_bob(runtime.swap_id),
@@ -790,7 +792,7 @@ impl BobWallet {
         alice_params: Parameters,
         adaptor_buy: BuyProcedureSignature,
     ) -> Result<SweepMoneroAddress, Error> {
-        let BobWallet {
+        let BobSwapKeyManager {
             bob,
             local_params,
             key_manager,
@@ -874,7 +876,7 @@ impl BobWallet {
         proof: RevealProof,
         remote_commit: CommitAliceParameters,
     ) -> Result<(Option<Reveal>, Parameters), Error> {
-        let BobWallet {
+        let BobSwapKeyManager {
             local_params,
             key_manager,
             ..
@@ -916,7 +918,7 @@ impl BobWallet {
         runtime: &mut Runtime,
         remote_params: &Parameters,
     ) -> Result<CoreArbitratingSetup, Error> {
-        let BobWallet {
+        let BobSwapKeyManager {
             bob,
             local_params,
             key_manager,
@@ -950,7 +952,7 @@ impl BobWallet {
             refund_adaptor_sig,
             ..
         } = refund_procedure_signatures;
-        let BobWallet {
+        let BobSwapKeyManager {
             bob,
             local_params,
             key_manager,
