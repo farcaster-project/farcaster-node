@@ -15,7 +15,7 @@ use farcaster_core::{
     blockchain::FeePriority,
     consensus::{self, CanonicalBytes, Decodable, Encodable},
     crypto::{
-        dleq::DLEQProof, ArbitratingKeyId, CommitmentEngine, GenerateKey, ProveCrossGroupDleq,
+        ArbitratingKeyId, CommitmentEngine, GenerateKey, ProveCrossGroupDleq,
         SharedKeyId,
     },
     impl_strict_encoding,
@@ -76,7 +76,6 @@ pub struct AliceWallet {
     pub local_params: Parameters,
     pub key_manager: KeyManager,
     pub remote_params: Option<Parameters>,
-    pub remote_proof: Option<DLEQProof>,
     pub core_arb_setup: Option<CoreArbitratingSetup>,
     pub alice_cancel_signature: Option<Signature>,
     pub adaptor_refund: Option<EncryptedSignature>,
@@ -91,7 +90,6 @@ impl Encodable for AliceWallet {
         len += self.local_params.consensus_encode(writer)?;
         len += self.key_manager.consensus_encode(writer)?;
         len += self.remote_params.consensus_encode(writer)?;
-        len += self.remote_proof.consensus_encode(writer)?;
         len += self.core_arb_setup.consensus_encode(writer)?;
         len += farcaster_core::consensus::Encodable::consensus_encode(
             &self.alice_cancel_signature.as_canonical_bytes(),
@@ -118,7 +116,6 @@ impl Decodable for AliceWallet {
             local_params: Decodable::consensus_decode(d)?,
             key_manager: Decodable::consensus_decode(d)?,
             remote_params: Decodable::consensus_decode(d)?,
-            remote_proof: Decodable::consensus_decode(d)?,
             core_arb_setup: Decodable::consensus_decode(d)?,
             alice_cancel_signature: Option::<Signature>::from_canonical_bytes(
                 farcaster_core::unwrap_vec_ref!(d).as_ref(),
@@ -151,7 +148,6 @@ impl AliceWallet {
             local_params,
             key_manager,
             remote_params: None,
-            remote_proof: None,
             core_arb_setup: None,
             alice_cancel_signature: None,
             adaptor_refund: None,
@@ -170,7 +166,6 @@ pub struct BobWallet {
     pub key_manager: KeyManager,
     pub funding_tx: FundingTx,
     pub remote_params: Option<Parameters>,
-    pub remote_proof: Option<DLEQProof>,
     pub core_arb_setup: Option<CoreArbitratingSetup>,
     pub adaptor_buy: Option<BuyProcedureSignature>,
     pub target_bitcoin_address: bitcoin::Address,
@@ -185,7 +180,6 @@ impl Encodable for BobWallet {
         len += self.key_manager.consensus_encode(writer)?;
         len += self.funding_tx.consensus_encode(writer)?;
         len += self.remote_params.consensus_encode(writer)?;
-        len += self.remote_proof.consensus_encode(writer)?;
         len += self.core_arb_setup.consensus_encode(writer)?;
         len += self.adaptor_buy.consensus_encode(writer)?;
         len += self
@@ -209,7 +203,6 @@ impl Decodable for BobWallet {
             key_manager: Decodable::consensus_decode(d)?,
             funding_tx: Decodable::consensus_decode(d)?,
             remote_params: Decodable::consensus_decode(d)?,
-            remote_proof: Decodable::consensus_decode(d)?,
             core_arb_setup: Decodable::consensus_decode(d)?,
             adaptor_buy: Decodable::consensus_decode(d)?,
             target_bitcoin_address: bitcoin::Address::from_canonical_bytes(
@@ -239,7 +232,6 @@ impl BobWallet {
             key_manager,
             funding_tx,
             remote_params: None,
-            remote_proof: None,
             core_arb_setup: None,
             adaptor_buy: None,
             target_bitcoin_address,
@@ -363,13 +355,12 @@ impl AliceWallet {
             local_params,
             key_manager,
             remote_params, // None
-            remote_proof,  // None
             ..
         } = self;
-        if remote_params.is_some() || remote_proof.is_some() {
-            runtime.log_error("Bob params or proof already set");
+        if remote_params.is_some() {
+            runtime.log_error("Bob params already set");
             return Err(Error::Farcaster(
-                "Bob params or proof already set".to_string(),
+                "Bob params already set".to_string(),
             ));
         }
         runtime.log_trace(format!("Setting Bob params: {}", parameters));
@@ -387,7 +378,6 @@ impl AliceWallet {
         }
         runtime.log_info("Proof successfully verified");
         *remote_params = Some(remote_params_candidate.clone());
-        *remote_proof = Some(proof.proof);
         // if we're maker, send Reveal back to counterparty
         if runtime.deal.swap_role(&TradeRole::Maker) == SwapRole::Alice {
             Ok((
@@ -962,14 +952,13 @@ impl BobWallet {
             local_params,
             key_manager,
             remote_params, // None
-            remote_proof,  // None
             ..
         } = self;
         // set wallet params
-        if remote_params.is_some() || remote_proof.is_some() {
-            runtime.log_error("Alice params or proof already set");
+        if remote_params.is_some() {
+            runtime.log_error("Alice params already set");
             return Err(Error::Farcaster(
-                "Alice params or proof already set".to_string(),
+                "Alice params already set".to_string(),
             ));
         }
 
@@ -989,7 +978,6 @@ impl BobWallet {
         }
         runtime.log_info("Proof successfully verified.");
         *remote_params = Some(remote_params_candidate.clone());
-        *remote_proof = Some(proof.proof);
 
         // if we're maker, send Reveal back to counterparty
         let reveal = if runtime.deal.swap_role(&TradeRole::Maker) == SwapRole::Bob {
