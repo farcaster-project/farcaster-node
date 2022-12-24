@@ -338,8 +338,8 @@ impl AliceWallet {
             key_manager,
             ..
         } = self;
-        runtime.log_trace(format!("Setting Bob params: {}", parameters));
-        runtime.log_trace(format!("Setting Bob proof: {}", proof));
+        runtime.log_trace(format!("Verifying with Bob params: {}", parameters));
+        runtime.log_trace(format!("Verifying with Bob proof: {}", proof));
         remote_commit.verify_with_reveal(&CommitmentEngine, parameters.clone())?;
         let remote_params_candidate: Parameters = parameters.into_parameters();
         let proof_verification = key_manager.verify_proof(
@@ -347,11 +347,13 @@ impl AliceWallet {
             &remote_params_candidate.adaptor,
             proof.proof,
         );
-        if proof_verification.is_err() {
-            runtime.log_error("DLEQ proof invalid");
-            return Err(Error::Farcaster("DLEQ invalid".to_string()));
+        if let Err(err) = proof_verification {
+            let msg = format!("DLEQ proof from Bob is invalid: {}.", err);
+            runtime.log_error(&msg);
+            return Err(Error::Farcaster(msg));
         }
-        runtime.log_info("Proof successfully verified");
+        runtime.log_info("DLEQ proof from Bob successfully verified.");
+
         // if we're maker, send Reveal back to counterparty
         if runtime.deal.swap_role(&TradeRole::Maker) == SwapRole::Alice {
             Ok((
@@ -425,7 +427,7 @@ impl AliceWallet {
             .clone()
             .into_iter()
             .find(|vk| vk.tag() == &SharedKeyId::new(SHARED_VIEW_KEY_ID))
-            .unwrap()
+            .expect("We always expect to find this tag")
             .elem();
 
         let view_key_alice = *local_params
@@ -433,7 +435,7 @@ impl AliceWallet {
             .clone()
             .into_iter()
             .find(|vk| vk.tag() == &SharedKeyId::new(SHARED_VIEW_KEY_ID))
-            .unwrap()
+            .expect("We always expect to find this tag")
             .elem();
         let view = view_key_alice + view_key_bob;
         runtime.log_info(format!(
@@ -820,7 +822,7 @@ impl BobWallet {
             .clone()
             .into_iter()
             .find(|vk| vk.tag() == &SharedKeyId::new(SHARED_VIEW_KEY_ID))
-            .unwrap()
+            .expect("We always expect to find this tag")
             .elem();
 
         let view_key_bob = *local_params
@@ -828,7 +830,7 @@ impl BobWallet {
             .clone()
             .into_iter()
             .find(|vk| vk.tag() == &SharedKeyId::new(SHARED_VIEW_KEY_ID))
-            .unwrap()
+            .expect("We always expect to find this tag")
             .elem();
         let view = view_key_alice + view_key_bob;
         runtime.log_info(format!(
@@ -877,8 +879,8 @@ impl BobWallet {
             key_manager,
             ..
         } = self;
-        runtime.log_trace(format!("Setting Alice params: {}", parameters));
-        runtime.log_trace(format!("Setting Alice proof: {}", proof));
+        runtime.log_trace(format!("Verifying with Alice params: {}", parameters));
+        runtime.log_trace(format!("Verifying with Alice proof: {}", proof));
         remote_commit.verify_with_reveal(&CommitmentEngine, parameters.clone())?;
         let remote_params_candidate: Parameters = parameters.into_parameters();
         let proof_verification = key_manager.verify_proof(
@@ -886,12 +888,12 @@ impl BobWallet {
             &remote_params_candidate.adaptor,
             proof.proof,
         );
-
-        if proof_verification.is_err() {
-            runtime.log_error("DLEQ proof invalid");
-            return Err(Error::Farcaster("DLEQ proof invalid".to_string()));
+        if let Err(err) = proof_verification {
+            let msg = format!("DLEQ proof from Alice is invalid: {}.", err);
+            runtime.log_error(&msg);
+            return Err(Error::Farcaster(msg));
         }
-        runtime.log_info("Proof successfully verified.");
+        runtime.log_info("DLEQ proof from Alice successfully verified.");
 
         // if we're maker, send Reveal back to counterparty
         let reveal = if runtime.deal.swap_role(&TradeRole::Maker) == SwapRole::Bob {
@@ -921,7 +923,6 @@ impl BobWallet {
             funding_tx,
             ..
         } = self;
-        // set wallet core_arb_txs
         if !funding_tx.was_seen() {
             runtime.log_error("Funding not yet seen.");
             return Err(Error::Farcaster("Funding not seen yet".to_string()));
