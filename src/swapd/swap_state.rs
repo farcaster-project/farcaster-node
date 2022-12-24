@@ -10,7 +10,10 @@ use bitcoin::psbt::serialize::Deserialize;
 use farcaster_core::{
     blockchain::Blockchain,
     role::SwapRole,
-    swap::btcxmr::{message::BuyProcedureSignature, Parameters},
+    swap::btcxmr::{
+        message::{BuyProcedureSignature, CommitBobParameters},
+        Parameters,
+    },
     transaction::TxLabel,
 };
 use microservices::esb::Handler;
@@ -315,6 +318,7 @@ pub struct BobInitMaker {
 #[derive(Clone, Debug, StrictEncode, StrictDecode)]
 pub struct AliceInitMaker {
     local_params: Parameters,
+    remote_commit: CommitBobParameters,
     wallet: AliceWallet,
 }
 
@@ -333,6 +337,7 @@ pub struct AliceInitTaker {
 #[derive(Clone, Debug, StrictEncode, StrictDecode)]
 pub struct AliceTakerMakerCommit {
     local_params: Parameters,
+    remote_commit: CommitBobParameters,
     wallet: AliceWallet,
 }
 
@@ -716,6 +721,7 @@ fn attempt_transition_to_init_maker(
             if runtime.peer_service != ServiceId::Loopback {
                 runtime.connected = true;
             }
+            runtime.enquirer = Some(report_to);
 
             match swap_role {
                 SwapRole::Bob => {
@@ -737,7 +743,6 @@ fn attempt_transition_to_init_maker(
                         remote_commit.clone(),
                     )?;
                     let local_params = wallet.local_params();
-                    runtime.enquirer = Some(report_to);
                     let local_commit = wallet.maker_commit(&mut event, runtime).map_err(|err| {
                         runtime.report_failure(
                             event.endpoints,
@@ -773,10 +778,8 @@ fn attempt_transition_to_init_maker(
                         target_bitcoin_address,
                         target_monero_address,
                         key_manager.0,
-                        remote_commit.clone(),
                     )?;
                     let local_params = wallet.local_params();
-                    runtime.enquirer = Some(report_to);
                     let local_commit = wallet.maker_commit(&mut event, runtime).map_err(|err| {
                         runtime.report_failure(
                             event.endpoints,
@@ -795,6 +798,7 @@ fn attempt_transition_to_init_maker(
 
                     Ok(Some(SwapStateMachine::AliceInitMaker(AliceInitMaker {
                         local_params,
+                        remote_commit,
                         wallet,
                     })))
                 }
@@ -861,13 +865,14 @@ fn try_alice_init_taker_to_alice_taker_maker_commit(
         }
         BusMsg::P2p(PeerMsg::MakerCommit(Commit::BobParameters(remote_commit))) => {
             runtime.log_debug("Received remote maker commitment");
-            let reveal = wallet.handle_maker_commit(runtime, remote_commit.clone())?;
+            let reveal = wallet.create_reveal_from_local_params(runtime)?;
             runtime.log_debug("Wallet handled maker commit and produced reveal");
             runtime.send_peer(event.endpoints, PeerMsg::Reveal(reveal))?;
             runtime.log_info("Sent reveal peer message to peerd");
             Ok(Some(SwapStateMachine::AliceTakerMakerCommit(
                 AliceTakerMakerCommit {
                     local_params,
+                    remote_commit,
                     wallet,
                 },
             )))
@@ -896,9 +901,10 @@ fn try_alice_taker_maker_commit_to_alice_reveal(
 ) -> Result<Option<SwapStateMachine>, Error> {
     let AliceTakerMakerCommit {
         local_params,
+        remote_commit,
         wallet,
     } = alice_taker_maker_commit;
-    attempt_transition_to_alice_reveal(event, runtime, local_params, wallet)
+    attempt_transition_to_alice_reveal(event, runtime, local_params, remote_commit, wallet)
 }
 
 fn try_bob_init_maker_to_bob_reveal(
@@ -920,9 +926,10 @@ fn try_alice_init_maker_to_alice_reveal(
 ) -> Result<Option<SwapStateMachine>, Error> {
     let AliceInitMaker {
         local_params,
+        remote_commit,
         wallet,
     } = alice_init_maker;
-    attempt_transition_to_alice_reveal(event, runtime, local_params, wallet)
+    attempt_transition_to_alice_reveal(event, runtime, local_params, remote_commit, wallet)
 }
 
 fn try_bob_reveal_to_bob_fee_estimated(
@@ -2118,13 +2125,14 @@ fn attempt_transition_to_alice_reveal(
     event: Event,
     runtime: &mut Runtime,
     local_params: Parameters,
+    remote_commit: CommitBobParameters,
     mut wallet: AliceWallet,
 ) -> Result<Option<SwapStateMachine>, Error> {
     match event.request {
         BusMsg::P2p(PeerMsg::Reveal(Reveal::Bob { parameters, proof })) => {
             runtime.log_info("Handling reveal with wallet");
             let (alice_reveal, remote_params) =
-                wallet.handle_bob_reveals(runtime, parameters, proof)?;
+                wallet.handle_bob_reveals(runtime, parameters, proof, remote_commit)?;
 
             // The wallet only returns reveal if we are Alice Maker
             if let Some(alice_reveal) = alice_reveal {
