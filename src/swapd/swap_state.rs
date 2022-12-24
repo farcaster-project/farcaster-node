@@ -411,6 +411,7 @@ pub struct AliceAccordantLock {
 #[derive(Clone, Debug, StrictEncode, StrictDecode)]
 pub struct BobAccordantLockFinal {
     remote_params: Parameters,
+    buy_procedure_signature: BuyProcedureSignature,
     wallet: BobWallet,
 }
 
@@ -1209,11 +1210,12 @@ fn try_bob_accordant_lock_to_bob_accordant_lock_final(
         {
             runtime.send_peer(
                 event.endpoints,
-                PeerMsg::BuyProcedureSignature(buy_procedure_signature),
+                PeerMsg::BuyProcedureSignature(buy_procedure_signature.clone()),
             )?;
             Ok(Some(SwapStateMachine::BobAccordantLockFinal(
                 BobAccordantLockFinal {
                     remote_params,
+                    buy_procedure_signature,
                     wallet,
                 },
             )))
@@ -1229,6 +1231,7 @@ fn try_bob_accordant_lock_final_to_bob_buy_final(
 ) -> Result<Option<SwapStateMachine>, Error> {
     let BobAccordantLockFinal {
         remote_params,
+        buy_procedure_signature,
         mut wallet,
     } = bob_accordant_lock_final;
     match event.request.clone() {
@@ -1259,6 +1262,7 @@ fn try_bob_accordant_lock_final_to_bob_buy_final(
             Ok(Some(SwapStateMachine::BobAccordantLockFinal(
                 BobAccordantLockFinal {
                     remote_params,
+                    buy_procedure_signature,
                     wallet,
                 },
             )))
@@ -1272,7 +1276,7 @@ fn try_bob_accordant_lock_final_to_bob_buy_final(
         ) =>
         {
             log_tx_seen(runtime.swap_id, &TxLabel::Buy, &tx.txid().into());
-            let sweep_xmr = wallet.process_buy_tx(runtime, tx, &mut event, remote_params)?;
+            let sweep_xmr = wallet.process_buy_tx(runtime, tx, &mut event, remote_params, buy_procedure_signature)?;
             let task = runtime.syncer_state.sweep_xmr(sweep_xmr.clone(), true);
             let sweep_address = if let Task::SweepAddress(sweep_address) = task {
                 sweep_address

@@ -154,7 +154,7 @@ pub struct BobWallet {
     pub local_params: Parameters,
     pub key_manager: KeyManager,
     pub funding_tx: FundingTx,
-    pub adaptor_buy: Option<BuyProcedureSignature>,
+    // pub adaptor_buy: Option<BuyProcedureSignature>,
     pub target_bitcoin_address: bitcoin::Address,
     pub target_monero_address: monero::Address,
 }
@@ -166,7 +166,6 @@ impl Encodable for BobWallet {
         len += self.local_params.consensus_encode(writer)?;
         len += self.key_manager.consensus_encode(writer)?;
         len += self.funding_tx.consensus_encode(writer)?;
-        len += self.adaptor_buy.consensus_encode(writer)?;
         len += self
             .target_bitcoin_address
             .as_canonical_bytes()
@@ -187,7 +186,6 @@ impl Decodable for BobWallet {
             local_params: Decodable::consensus_decode(d)?,
             key_manager: Decodable::consensus_decode(d)?,
             funding_tx: Decodable::consensus_decode(d)?,
-            adaptor_buy: Decodable::consensus_decode(d)?,
             target_bitcoin_address: bitcoin::Address::from_canonical_bytes(
                 farcaster_core::unwrap_vec_ref!(d).as_ref(),
             )?,
@@ -214,7 +212,6 @@ impl BobWallet {
             local_params,
             key_manager,
             funding_tx,
-            adaptor_buy: None,
             target_bitcoin_address,
             target_monero_address,
         }
@@ -810,22 +807,15 @@ impl BobWallet {
         buy_tx: bitcoin::Transaction,
         event: &mut Event,
         alice_params: Parameters,
+        adaptor_buy: BuyProcedureSignature,
     ) -> Result<SweepMoneroAddress, Error> {
         let BobWallet {
             bob,
             local_params,
             key_manager,
-            adaptor_buy,
             target_monero_address,
             ..
         } = self;
-        let adaptor_buy = if let Some(adaptor_buy) = adaptor_buy {
-            adaptor_buy
-        } else {
-            return Err(Error::Farcaster(
-                "Expected remote params and adaptor buy to be set".to_string(),
-            ));
-        };
         let sk_a_btc = bob.recover_accordant_key(
             key_manager,
             &alice_params,
@@ -984,7 +974,6 @@ impl BobWallet {
             bob,
             local_params,
             key_manager,
-            adaptor_buy, // None
             ..
         } = self;
         let core_arb_txs = core_arb_setup.clone().into_arbitrating_tx();
@@ -997,18 +986,14 @@ impl BobWallet {
             &refund_adaptor_sig,
         )?;
 
-        if adaptor_buy.is_some() {
-            runtime.log_error("Adaptor Buy already set");
-            return Err(Error::Farcaster("adaptor buy already set".to_string()));
-        }
-        *adaptor_buy = Some(bob.sign_adaptor_buy(
+        let adaptor_buy = bob.sign_adaptor_buy(
             runtime.swap_id,
             key_manager,
             remote_params,
             local_params,
             &core_arb_txs,
             runtime.deal.to_arbitrating_params(),
-        )?);
+        )?;
 
         // lock
         let sig = bob.sign_arbitrating_lock(key_manager, &core_arb_txs)?;
@@ -1038,9 +1023,7 @@ impl BobWallet {
             Broadcastable::<bitcoin::Transaction>::finalize_and_extract(&mut refund_tx)?;
 
         Ok(HandleRefundProcedureSignaturesRes {
-            buy_procedure_signature: adaptor_buy
-                .clone()
-                .expect("Value was to Some in the same function"),
+            buy_procedure_signature: adaptor_buy,
             lock_tx: finalized_lock_tx,
             cancel_tx: finalized_cancel_tx,
             refund_tx: finalized_refund_tx,
