@@ -59,6 +59,7 @@ pub struct HandleCoreArbitratingSetupRes {
     pub cancel_tx: bitcoin::Transaction,
     pub punish_tx: bitcoin::Transaction,
     pub alice_cancel_signature: Signature,
+    pub adaptor_refund: WrappedEncryptedSignature,
 }
 
 pub struct HandleBuyProcedureSignatureRes {
@@ -67,14 +68,28 @@ pub struct HandleBuyProcedureSignatureRes {
 }
 
 #[derive(Display, Clone, Debug)]
+#[display("Encrypted Signature")]
+pub struct WrappedEncryptedSignature(EncryptedSignature);
+
+impl Encodable for WrappedEncryptedSignature {
+    fn consensus_encode<W: std::io::Write>(&self, writer: &mut W) -> Result<usize, std::io::Error> {
+        self.0.consensus_encode(writer)
+    }
+}
+impl Decodable for WrappedEncryptedSignature {
+    fn consensus_decode<D: std::io::Read>(d: &mut D) -> Result<Self, consensus::Error> {
+        Ok(WrappedEncryptedSignature(Decodable::consensus_decode(d)?))
+    }
+}
+impl_strict_encoding!(WrappedEncryptedSignature);
+
+#[derive(Display, Clone, Debug)]
 #[display("Alice's Wallet")]
 pub struct AliceWallet {
     pub alice: Alice,
     pub local_trade_role: TradeRole,
     pub local_params: Parameters,
     pub key_manager: KeyManager,
-    // pub alice_cancel_signature: Option<Signature>,
-    pub adaptor_refund: Option<EncryptedSignature>,
     pub target_bitcoin_address: bitcoin::Address,
     pub target_monero_address: monero::Address,
 }
@@ -85,7 +100,6 @@ impl Encodable for AliceWallet {
         len += self.local_trade_role.consensus_encode(writer)?;
         len += self.local_params.consensus_encode(writer)?;
         len += self.key_manager.consensus_encode(writer)?;
-        len += self.adaptor_refund.consensus_encode(writer)?;
         len += self
             .target_bitcoin_address
             .as_canonical_bytes()
@@ -105,7 +119,6 @@ impl Decodable for AliceWallet {
             local_trade_role: Decodable::consensus_decode(d)?,
             local_params: Decodable::consensus_decode(d)?,
             key_manager: Decodable::consensus_decode(d)?,
-            adaptor_refund: Decodable::consensus_decode(d)?,
             target_bitcoin_address: bitcoin::Address::from_canonical_bytes(
                 farcaster_core::unwrap_vec_ref!(d).as_ref(),
             )?,
@@ -132,7 +145,6 @@ impl AliceWallet {
             local_trade_role,
             local_params,
             key_manager,
-            adaptor_refund: None,
             target_bitcoin_address,
             target_monero_address,
         }
@@ -147,7 +159,6 @@ pub struct BobWallet {
     pub local_params: Parameters,
     pub key_manager: KeyManager,
     pub funding_tx: FundingTx,
-    // pub adaptor_buy: Option<BuyProcedureSignature>,
     pub target_bitcoin_address: bitcoin::Address,
     pub target_monero_address: monero::Address,
 }
@@ -380,27 +391,20 @@ impl AliceWallet {
         runtime: &mut Runtime,
         refund_tx: bitcoin::Transaction,
         bob_params: Parameters,
+        adaptor_refund: WrappedEncryptedSignature,
     ) -> Result<SweepMoneroAddress, Error> {
         let AliceWallet {
             alice,
             local_params,
             key_manager,
-            adaptor_refund,
             target_monero_address,
             ..
         } = self;
 
-        let adaptor_refund = if let Some(adaptor_refund) = adaptor_refund {
-            adaptor_refund
-        } else {
-            return Err(Error::Farcaster(
-                "Expected adaptor refund to be set".to_string(),
-            ));
-        };
         let sk_b_btc = alice.recover_accordant_key(
             key_manager,
             &bob_params,
-            adaptor_refund.clone(),
+            adaptor_refund.0.clone(),
             refund_tx,
         );
         let mut sk_b_btc_buf: Vec<u8> = (*sk_b_btc.as_ref()).into();
@@ -480,7 +484,6 @@ impl AliceWallet {
             alice,
             local_params,
             key_manager,
-            adaptor_refund, // None
             ..
         } = self;
         let core_arb_txs = core_arbitrating_setup.clone().into_arbitrating_tx();
@@ -491,7 +494,7 @@ impl AliceWallet {
             &core_arb_txs,
             runtime.deal.to_arbitrating_params(),
         )?;
-        *adaptor_refund = Some(signed_adaptor_refund.clone());
+        let adaptor_refund = WrappedEncryptedSignature(signed_adaptor_refund.clone());
         let cosigned_arb_cancel = alice.cosign_arbitrating_cancel(
             key_manager,
             local_params,
@@ -535,6 +538,7 @@ impl AliceWallet {
             cancel_tx: finalized_cancel_tx,
             punish_tx: finalized_punish_tx,
             alice_cancel_signature: alice_cancel_signature,
+            adaptor_refund: adaptor_refund,
         })
     }
 

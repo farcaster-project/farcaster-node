@@ -61,7 +61,7 @@ use crate::{swapd::wallet::HandleCoreArbitratingSetupRes, syncerd::types::Event 
 
 use super::{
     runtime::Runtime,
-    wallet::{AliceWallet, BobWallet},
+    wallet::{AliceWallet, BobWallet, WrappedEncryptedSignature},
 };
 
 /// State machine for running a swap.
@@ -376,6 +376,7 @@ pub struct AliceCoreArbitratingSetup {
     remote_params: Parameters,
     core_arbitrating_setup: CoreArbitratingSetup,
     alice_cancel_signature: Signature,
+    adaptor_refund: WrappedEncryptedSignature,
     wallet: AliceWallet,
 }
 
@@ -394,6 +395,7 @@ pub struct AliceArbitratingLockFinal {
     remote_params: Parameters,
     core_arbitrating_setup: CoreArbitratingSetup,
     alice_cancel_signature: Signature,
+    adaptor_refund: WrappedEncryptedSignature,
 }
 
 #[derive(Clone, Debug, StrictEncode, StrictDecode)]
@@ -408,6 +410,7 @@ pub struct AliceAccordantLock {
     remote_params: Parameters,
     core_arbitrating_setup: CoreArbitratingSetup,
     alice_cancel_signature: Signature,
+    adaptor_refund: WrappedEncryptedSignature,
     wallet: AliceWallet,
 }
 
@@ -421,6 +424,7 @@ pub struct BobAccordantLockFinal {
 #[derive(Clone, Debug, StrictEncode, StrictDecode)]
 pub struct AliceCanceled {
     remote_params: Parameters,
+    adaptor_refund: WrappedEncryptedSignature,
     wallet: AliceWallet,
 }
 
@@ -1456,6 +1460,7 @@ fn try_alice_reveal_to_alice_core_arbitrating_setup(
                 cancel_tx,
                 punish_tx,
                 alice_cancel_signature,
+                adaptor_refund,
             } = wallet.handle_core_arbitrating_setup(runtime, setup.clone(), &remote_params)?;
             // handle Cancel and Punish transactions
             log_tx_created(runtime.swap_id, TxLabel::Cancel);
@@ -1467,6 +1472,7 @@ fn try_alice_reveal_to_alice_core_arbitrating_setup(
                 remote_params,
                 core_arbitrating_setup: setup,
                 alice_cancel_signature: alice_cancel_signature,
+                adaptor_refund,
                 wallet,
             });
             runtime.log_debug("checkpointing alice pre lock state");
@@ -1499,6 +1505,7 @@ fn try_alice_core_arbitrating_setup_to_alice_arbitrating_lock_final(
         remote_params,
         core_arbitrating_setup,
         alice_cancel_signature,
+        adaptor_refund,
         wallet,
     } = alice_core_arbitrating_setup;
     match event.request {
@@ -1548,10 +1555,17 @@ fn try_alice_core_arbitrating_setup_to_alice_arbitrating_lock_final(
                     remote_params,
                     core_arbitrating_setup,
                     alice_cancel_signature,
+                    adaptor_refund,
                 },
             )))
         }
-        _ => handle_alice_swap_interrupt_after_lock(event, runtime, remote_params, wallet),
+        _ => handle_alice_swap_interrupt_after_lock(
+            event,
+            runtime,
+            remote_params,
+            adaptor_refund,
+            wallet,
+        ),
     }
 }
 
@@ -1567,6 +1581,7 @@ fn try_alice_arbitrating_lock_final_to_alice_accordant_lock(
         remote_params,
         core_arbitrating_setup,
         alice_cancel_signature,
+        adaptor_refund,
     } = alice_arbitrating_lock_final;
     match event.request {
         BusMsg::Sync(SyncMsg::Event(SyncEvent::Empty(id)))
@@ -1592,6 +1607,7 @@ fn try_alice_arbitrating_lock_final_to_alice_accordant_lock(
                     remote_params,
                     core_arbitrating_setup,
                     alice_cancel_signature,
+                    adaptor_refund,
                 },
             )))
         }
@@ -1627,6 +1643,7 @@ fn try_alice_arbitrating_lock_final_to_alice_accordant_lock(
                     remote_params,
                     core_arbitrating_setup,
                     alice_cancel_signature,
+                    adaptor_refund,
                 },
             )))
         }
@@ -1695,6 +1712,7 @@ fn try_alice_arbitrating_lock_final_to_alice_accordant_lock(
                     // Alice moves on to AliceCanceled despite not broadcasting the cancel transaction.
                     return Ok(Some(SwapStateMachine::AliceCanceled(AliceCanceled {
                         remote_params,
+                        adaptor_refund,
                         wallet,
                     })));
                 }
@@ -1707,11 +1725,18 @@ fn try_alice_arbitrating_lock_final_to_alice_accordant_lock(
                     remote_params,
                     core_arbitrating_setup,
                     alice_cancel_signature,
+                    adaptor_refund,
                     wallet,
                 },
             )))
         }
-        _ => handle_alice_swap_interrupt_after_lock(event, runtime, remote_params, wallet),
+        _ => handle_alice_swap_interrupt_after_lock(
+            event,
+            runtime,
+            remote_params,
+            adaptor_refund,
+            wallet,
+        ),
     }
 }
 
@@ -1724,6 +1749,7 @@ fn try_alice_accordant_lock_to_alice_buy_procedure_signature(
         remote_params,
         core_arbitrating_setup,
         alice_cancel_signature,
+        adaptor_refund,
         mut wallet,
     } = alice_accordant_lock;
 
@@ -1765,6 +1791,7 @@ fn try_alice_accordant_lock_to_alice_buy_procedure_signature(
                     runtime.broadcast(cancel_tx, TxLabel::Cancel, event.endpoints)?;
                     return Ok(Some(SwapStateMachine::AliceCanceled(AliceCanceled {
                         remote_params,
+                        adaptor_refund,
                         wallet,
                     })));
                 }
@@ -1779,7 +1806,13 @@ fn try_alice_accordant_lock_to_alice_buy_procedure_signature(
             runtime.checkpoint_state(event.endpoints, None, new_ssm.clone())?;
             Ok(Some(new_ssm))
         }
-        _ => handle_alice_swap_interrupt_after_lock(event, runtime, remote_params, wallet),
+        _ => handle_alice_swap_interrupt_after_lock(
+            event,
+            runtime,
+            remote_params,
+            adaptor_refund,
+            wallet,
+        ),
     }
 }
 
@@ -1826,6 +1859,7 @@ fn try_alice_canceled_to_alice_refund_or_alice_punish(
 ) -> Result<Option<SwapStateMachine>, Error> {
     let AliceCanceled {
         remote_params,
+        adaptor_refund,
         mut wallet,
     } = alice_canceled;
     match event.request.clone() {
@@ -1863,6 +1897,7 @@ fn try_alice_canceled_to_alice_refund_or_alice_punish(
                     )?;
                     Ok(Some(SwapStateMachine::AliceCanceled(AliceCanceled {
                         remote_params,
+                        adaptor_refund,
                         wallet,
                     })))
                 }
@@ -1882,6 +1917,7 @@ fn try_alice_canceled_to_alice_refund_or_alice_punish(
                     runtime.broadcast(punish_tx, tx_label, event.endpoints)?;
                     Ok(Some(SwapStateMachine::AliceCanceled(AliceCanceled {
                         remote_params,
+                        adaptor_refund,
                         wallet,
                     })))
                 }
@@ -1928,6 +1964,7 @@ fn try_alice_canceled_to_alice_refund_or_alice_punish(
                     runtime.broadcast(cancel_tx, tx_label, event.endpoints)?;
                     Ok(Some(SwapStateMachine::AliceCanceled(AliceCanceled {
                         remote_params,
+                        adaptor_refund,
                         wallet,
                     })))
                 }
@@ -1950,8 +1987,13 @@ fn try_alice_canceled_to_alice_refund_or_alice_punish(
                 .remove(&id)
                 .unwrap();
             log_tx_seen(runtime.swap_id, &txlabel, &tx.txid().into());
-            let sweep_xmr =
-                wallet.process_refund_tx(&mut event, runtime, tx.clone(), remote_params)?;
+            let sweep_xmr = wallet.process_refund_tx(
+                &mut event,
+                runtime,
+                tx.clone(),
+                remote_params,
+                adaptor_refund,
+            )?;
             // Check if we already registered the lock transaction, if so, initiate sweeping procedure
             runtime.log_debug(format!("{:?}", runtime.syncer_state.confirmations));
             if runtime
@@ -2220,6 +2262,7 @@ fn handle_alice_swap_interrupt_after_lock(
     mut event: Event,
     runtime: &mut Runtime,
     remote_params: Parameters,
+    adaptor_refund: WrappedEncryptedSignature,
     wallet: AliceWallet,
 ) -> Result<Option<SwapStateMachine>, Error> {
     match event.request {
@@ -2240,6 +2283,7 @@ fn handle_alice_swap_interrupt_after_lock(
             }
             Ok(Some(SwapStateMachine::AliceCanceled(AliceCanceled {
                 remote_params,
+                adaptor_refund,
                 wallet,
             })))
         }
@@ -2266,6 +2310,7 @@ fn handle_alice_swap_interrupt_after_lock(
         ))) if runtime.syncer_state.tasks.watched_txs.get(&id) == Some(&TxLabel::Cancel) => {
             Ok(Some(SwapStateMachine::AliceCanceled(AliceCanceled {
                 remote_params,
+                adaptor_refund,
                 wallet,
             })))
         }
