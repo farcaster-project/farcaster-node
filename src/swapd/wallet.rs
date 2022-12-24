@@ -72,7 +72,6 @@ pub struct AliceWallet {
     pub local_trade_role: TradeRole,
     pub local_params: Parameters,
     pub key_manager: KeyManager,
-    pub core_arb_setup: Option<CoreArbitratingSetup>,
     pub alice_cancel_signature: Option<Signature>,
     pub adaptor_refund: Option<EncryptedSignature>,
     pub target_bitcoin_address: bitcoin::Address,
@@ -85,7 +84,6 @@ impl Encodable for AliceWallet {
         len += self.local_trade_role.consensus_encode(writer)?;
         len += self.local_params.consensus_encode(writer)?;
         len += self.key_manager.consensus_encode(writer)?;
-        len += self.core_arb_setup.consensus_encode(writer)?;
         len += farcaster_core::consensus::Encodable::consensus_encode(
             &self.alice_cancel_signature.as_canonical_bytes(),
             writer,
@@ -110,7 +108,6 @@ impl Decodable for AliceWallet {
             local_trade_role: Decodable::consensus_decode(d)?,
             local_params: Decodable::consensus_decode(d)?,
             key_manager: Decodable::consensus_decode(d)?,
-            core_arb_setup: Decodable::consensus_decode(d)?,
             alice_cancel_signature: Option::<Signature>::from_canonical_bytes(
                 farcaster_core::unwrap_vec_ref!(d).as_ref(),
             )?,
@@ -141,7 +138,6 @@ impl AliceWallet {
             local_trade_role,
             local_params,
             key_manager,
-            core_arb_setup: None,
             alice_cancel_signature: None,
             adaptor_refund: None,
             target_bitcoin_address,
@@ -158,7 +154,6 @@ pub struct BobWallet {
     pub local_params: Parameters,
     pub key_manager: KeyManager,
     pub funding_tx: FundingTx,
-    pub core_arb_setup: Option<CoreArbitratingSetup>,
     pub adaptor_buy: Option<BuyProcedureSignature>,
     pub target_bitcoin_address: bitcoin::Address,
     pub target_monero_address: monero::Address,
@@ -171,7 +166,6 @@ impl Encodable for BobWallet {
         len += self.local_params.consensus_encode(writer)?;
         len += self.key_manager.consensus_encode(writer)?;
         len += self.funding_tx.consensus_encode(writer)?;
-        len += self.core_arb_setup.consensus_encode(writer)?;
         len += self.adaptor_buy.consensus_encode(writer)?;
         len += self
             .target_bitcoin_address
@@ -193,7 +187,6 @@ impl Decodable for BobWallet {
             local_params: Decodable::consensus_decode(d)?,
             key_manager: Decodable::consensus_decode(d)?,
             funding_tx: Decodable::consensus_decode(d)?,
-            core_arb_setup: Decodable::consensus_decode(d)?,
             adaptor_buy: Decodable::consensus_decode(d)?,
             target_bitcoin_address: bitcoin::Address::from_canonical_bytes(
                 farcaster_core::unwrap_vec_ref!(d).as_ref(),
@@ -221,7 +214,6 @@ impl BobWallet {
             local_params,
             key_manager,
             funding_tx,
-            core_arb_setup: None,
             adaptor_buy: None,
             target_bitcoin_address,
             target_monero_address,
@@ -498,21 +490,15 @@ impl AliceWallet {
             alice,
             local_params,
             key_manager,
-            core_arb_setup,         // None
             alice_cancel_signature, // None
             adaptor_refund,         // None
             ..
         } = self;
-        if core_arb_setup.is_some() {
-            runtime.log_error("core_arb_txs already set for alice.");
-            return Err(Error::Farcaster("Core arb already set".to_string()));
-        }
         if alice_cancel_signature.is_some() {
             runtime.log_error("alice_cancel_sig already set for alice");
             return Err(Error::Farcaster("Alice cancel sig already set".to_string()));
         }
-        *core_arb_setup = Some(core_arbitrating_setup.clone());
-        let core_arb_txs = core_arbitrating_setup.into_arbitrating_tx();
+        let core_arb_txs = core_arbitrating_setup.clone().into_arbitrating_tx();
         let signed_adaptor_refund = alice.sign_adaptor_refund(
             key_manager,
             local_params,
@@ -536,13 +522,10 @@ impl AliceWallet {
         *alice_cancel_signature = Some(refund_proc_signatures.cancel_sig);
 
         // cancel
-        let partial_cancel_tx = core_arb_setup.as_ref().unwrap().cancel.clone();
+        let partial_cancel_tx = core_arbitrating_setup.cancel.clone();
         let mut cancel_tx = CancelTx::from_partial(partial_cancel_tx);
         cancel_tx.add_witness(local_params.cancel, alice_cancel_signature.unwrap())?;
-        cancel_tx.add_witness(
-            bob_parameters.cancel,
-            core_arb_setup.as_ref().unwrap().cancel_sig,
-        )?;
+        cancel_tx.add_witness(bob_parameters.cancel, core_arbitrating_setup.cancel_sig)?;
         let finalized_cancel_tx =
             Broadcastable::<bitcoin::Transaction>::finalize_and_extract(&mut cancel_tx)?;
 
@@ -574,26 +557,23 @@ impl AliceWallet {
         runtime: &mut Runtime,
         buy_procedure_signature: BuyProcedureSignature,
         bob_parameters: &Parameters,
+        core_arb_setup: CoreArbitratingSetup,
     ) -> Result<HandleBuyProcedureSignatureRes, Error> {
         runtime.log_trace("wallet received buyproceduresignature");
         let AliceWallet {
             alice,
             local_params: alice_params,
             key_manager,
-            core_arb_setup,
             alice_cancel_signature,
             ..
         } = self;
-        let (core_arb_setup, alice_cancel_signature) =
-            if let (Some(core_arb_setup), Some(alice_cancel_signature)) =
-                (core_arb_setup, alice_cancel_signature)
-            {
-                (core_arb_setup, alice_cancel_signature)
-            } else {
-                return Err(Error::Farcaster(
-                    "Expected core_arb_setup and alice_cancel_signature to be set".to_string(),
-                ));
-            };
+        let alice_cancel_signature = if let Some(alice_cancel_signature) = alice_cancel_signature {
+            alice_cancel_signature
+        } else {
+            return Err(Error::Farcaster(
+                "Expected alice_cancel_signature to be set".to_string(),
+            ));
+        };
 
         let core_arb_txs = core_arb_setup.clone().into_arbitrating_tx();
 
@@ -970,14 +950,9 @@ impl BobWallet {
             local_params,
             key_manager,
             funding_tx,
-            core_arb_setup, // None
             ..
         } = self;
         // set wallet core_arb_txs
-        if core_arb_setup.is_some() {
-            runtime.log_error("Core Arb Txs already set.");
-            return Err(Error::Farcaster("Core arb txs already set".to_string()));
-        }
         if !funding_tx.was_seen() {
             runtime.log_error("Funding not yet seen.");
             return Err(Error::Farcaster("Funding not seen yet".to_string()));
@@ -990,12 +965,7 @@ impl BobWallet {
         )?;
         let cosign_arbitrating_cancel =
             bob.cosign_arbitrating_cancel(key_manager, &core_arbitrating_txs)?;
-        *core_arb_setup = Some(
-            core_arbitrating_txs.into_arbitrating_setup(runtime.swap_id, cosign_arbitrating_cancel),
-        );
-        Ok(core_arb_setup
-            .clone()
-            .expect("This is safe, since we just set it to some"))
+        Ok(core_arbitrating_txs.into_arbitrating_setup(runtime.swap_id, cosign_arbitrating_cancel))
     }
 
     pub fn handle_refund_procedure_signatures(
@@ -1003,6 +973,7 @@ impl BobWallet {
         runtime: &mut Runtime,
         refund_procedure_signatures: RefundProcedureSignatures,
         remote_params: &Parameters,
+        core_arb_setup: CoreArbitratingSetup,
     ) -> Result<HandleRefundProcedureSignaturesRes, Error> {
         let RefundProcedureSignatures {
             cancel_sig: alice_cancel_sig,
@@ -1013,18 +984,9 @@ impl BobWallet {
             bob,
             local_params,
             key_manager,
-            core_arb_setup,
             adaptor_buy, // None
             ..
         } = self;
-        let core_arb_setup = if let Some(core_arb_setup) = core_arb_setup {
-            core_arb_setup
-        } else {
-            return Err(Error::Farcaster(
-                "Expected remote params and core arb setup to be set".to_string(),
-            ));
-        };
-
         let core_arb_txs = core_arb_setup.clone().into_arbitrating_tx();
 
         bob.validate_adaptor_refund(

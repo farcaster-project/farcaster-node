@@ -11,7 +11,9 @@ use farcaster_core::{
     blockchain::Blockchain,
     role::SwapRole,
     swap::btcxmr::{
-        message::{BuyProcedureSignature, CommitAliceParameters, CommitBobParameters},
+        message::{
+            BuyProcedureSignature, CommitAliceParameters, CommitBobParameters, CoreArbitratingSetup,
+        },
         Parameters,
     },
     transaction::TxLabel,
@@ -365,12 +367,14 @@ pub struct BobFeeEstimated {
 #[derive(Clone, Debug, StrictEncode, StrictDecode)]
 pub struct BobFunded {
     remote_params: Parameters,
+    core_arbitrating_setup: CoreArbitratingSetup,
     wallet: BobWallet,
 }
 
 #[derive(Clone, Debug, StrictEncode, StrictDecode)]
 pub struct AliceCoreArbitratingSetup {
     remote_params: Parameters,
+    core_arbitrating_setup: CoreArbitratingSetup,
     wallet: AliceWallet,
 }
 
@@ -387,6 +391,7 @@ pub struct AliceArbitratingLockFinal {
     funding_info: MoneroFundingInfo,
     required_funding_amount: monero::Amount,
     remote_params: Parameters,
+    core_arbitrating_setup: CoreArbitratingSetup,
 }
 
 #[derive(Clone, Debug, StrictEncode, StrictDecode)]
@@ -399,6 +404,7 @@ pub struct BobAccordantLock {
 #[derive(Clone, Debug, StrictEncode, StrictDecode)]
 pub struct AliceAccordantLock {
     remote_params: Parameters,
+    core_arbitrating_setup: CoreArbitratingSetup,
     wallet: AliceWallet,
 }
 
@@ -1033,6 +1039,7 @@ fn try_bob_fee_estimated_to_bob_funded(
             // transition to new state
             let new_ssm = SwapStateMachine::BobFunded(BobFunded {
                 remote_params,
+                core_arbitrating_setup: core_arb_setup.clone(),
                 wallet,
             });
             runtime.checkpoint_state(
@@ -1061,6 +1068,7 @@ fn try_bob_funded_to_bob_refund_procedure_signature(
 ) -> Result<Option<SwapStateMachine>, Error> {
     let BobFunded {
         remote_params,
+        core_arbitrating_setup,
         mut wallet,
     } = bob_funded;
     match &event.request {
@@ -1075,6 +1083,7 @@ fn try_bob_funded_to_bob_refund_procedure_signature(
                 runtime,
                 refund_proc.clone(),
                 &remote_params,
+                core_arbitrating_setup,
             )?;
             // Process and broadcast lock tx
             log_tx_created(runtime.swap_id, TxLabel::Lock);
@@ -1433,7 +1442,7 @@ fn try_alice_reveal_to_alice_core_arbitrating_setup(
                 refund_procedure_signatures,
                 cancel_tx,
                 punish_tx,
-            } = wallet.handle_core_arbitrating_setup(runtime, setup, &remote_params)?;
+            } = wallet.handle_core_arbitrating_setup(runtime, setup.clone(), &remote_params)?;
             // handle Cancel and Punish transactions
             log_tx_created(runtime.swap_id, TxLabel::Cancel);
             runtime.txs.insert(TxLabel::Cancel, cancel_tx);
@@ -1442,6 +1451,7 @@ fn try_alice_reveal_to_alice_core_arbitrating_setup(
             // checkpoint alice pre lock bob
             let new_ssm = SwapStateMachine::AliceCoreArbitratingSetup(AliceCoreArbitratingSetup {
                 remote_params,
+                core_arbitrating_setup: setup,
                 wallet,
             });
             runtime.log_debug("checkpointing alice pre lock state");
@@ -1472,6 +1482,7 @@ fn try_alice_core_arbitrating_setup_to_alice_arbitrating_lock_final(
 ) -> Result<Option<SwapStateMachine>, Error> {
     let AliceCoreArbitratingSetup {
         remote_params,
+        core_arbitrating_setup,
         wallet,
     } = alice_core_arbitrating_setup;
     match event.request {
@@ -1519,6 +1530,7 @@ fn try_alice_core_arbitrating_setup_to_alice_arbitrating_lock_final(
                     required_funding_amount: amount,
                     funding_info,
                     remote_params,
+                    core_arbitrating_setup,
                 },
             )))
         }
@@ -1536,6 +1548,7 @@ fn try_alice_arbitrating_lock_final_to_alice_accordant_lock(
         funding_info,
         required_funding_amount,
         remote_params,
+        core_arbitrating_setup,
     } = alice_arbitrating_lock_final;
     match event.request {
         BusMsg::Sync(SyncMsg::Event(SyncEvent::Empty(id)))
@@ -1559,6 +1572,7 @@ fn try_alice_arbitrating_lock_final_to_alice_accordant_lock(
                     funding_info,
                     required_funding_amount,
                     remote_params,
+                    core_arbitrating_setup,
                 },
             )))
         }
@@ -1592,6 +1606,7 @@ fn try_alice_arbitrating_lock_final_to_alice_accordant_lock(
                     funding_info,
                     required_funding_amount,
                     remote_params,
+                    core_arbitrating_setup,
                 },
             )))
         }
@@ -1670,6 +1685,7 @@ fn try_alice_arbitrating_lock_final_to_alice_accordant_lock(
             Ok(Some(SwapStateMachine::AliceAccordantLock(
                 AliceAccordantLock {
                     remote_params,
+                    core_arbitrating_setup,
                     wallet,
                 },
             )))
@@ -1685,6 +1701,7 @@ fn try_alice_accordant_lock_to_alice_buy_procedure_signature(
 ) -> Result<Option<SwapStateMachine>, Error> {
     let AliceAccordantLock {
         remote_params,
+        core_arbitrating_setup,
         mut wallet,
     } = alice_accordant_lock;
 
@@ -1698,7 +1715,12 @@ fn try_alice_accordant_lock_to_alice_buy_procedure_signature(
             // Handle the received buy procedure signature message with the wallet
             runtime.log_debug("Handling buy procedure signature with wallet");
             let HandleBuyProcedureSignatureRes { cancel_tx, buy_tx } = wallet
-                .handle_buy_procedure_signature(runtime, buy_procedure_signature, &remote_params)?;
+                .handle_buy_procedure_signature(
+                    runtime,
+                    buy_procedure_signature,
+                    &remote_params,
+                    core_arbitrating_setup,
+                )?;
 
             // Handle Cancel and Buy transactions
             log_tx_created(runtime.swap_id, TxLabel::Cancel);
