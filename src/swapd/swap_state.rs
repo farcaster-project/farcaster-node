@@ -11,7 +11,7 @@ use farcaster_core::{
     blockchain::Blockchain,
     role::SwapRole,
     swap::btcxmr::{
-        message::{BuyProcedureSignature, CommitBobParameters},
+        message::{BuyProcedureSignature, CommitAliceParameters, CommitBobParameters},
         Parameters,
     },
     transaction::TxLabel,
@@ -311,6 +311,7 @@ pub enum SwapStateMachine {
 
 #[derive(Clone, Debug, StrictEncode, StrictDecode)]
 pub struct BobInitMaker {
+    remote_commit: CommitAliceParameters,
     wallet: BobWallet,
 }
 
@@ -338,6 +339,7 @@ pub struct AliceTakerMakerCommit {
 
 #[derive(Clone, Debug, StrictEncode, StrictDecode)]
 pub struct BobTakerMakerCommit {
+    remote_commit: CommitAliceParameters,
     wallet: BobWallet,
 }
 
@@ -722,7 +724,6 @@ fn attempt_transition_to_init_maker(
                         target_bitcoin_address,
                         target_monero_address,
                         key_manager.0,
-                        remote_commit.clone(),
                     )?;
                     let local_commit = wallet.maker_commit(&mut event, runtime).map_err(|err| {
                         runtime.report_failure(
@@ -741,6 +742,7 @@ fn attempt_transition_to_init_maker(
                     )?;
 
                     Ok(Some(SwapStateMachine::BobInitMaker(BobInitMaker {
+                        remote_commit,
                         wallet,
                     })))
                 }
@@ -804,12 +806,15 @@ fn try_bob_init_taker_to_bob_taker_maker_commit(
         }
         BusMsg::P2p(PeerMsg::MakerCommit(Commit::AliceParameters(remote_commit))) => {
             runtime.log_debug("Received remote maker commitment");
-            let reveal = wallet.handle_maker_commit(runtime, remote_commit.clone())?;
+            let reveal = wallet.create_reveal_from_local_params(runtime)?;
             runtime.log_debug("Wallet handled maker commit and produced reveal");
             runtime.send_peer(event.endpoints, PeerMsg::Reveal(reveal))?;
             runtime.log_trace("Sent reveal peer message to peerd");
             Ok(Some(SwapStateMachine::BobTakerMakerCommit(
-                BobTakerMakerCommit { wallet },
+                BobTakerMakerCommit {
+                    remote_commit,
+                    wallet,
+                },
             )))
         }
         BusMsg::Ctl(CtlMsg::AbortSwap) => handle_bob_abort_swap(event, runtime, wallet),
@@ -855,8 +860,11 @@ fn try_bob_taker_maker_commit_to_bob_reveal(
     runtime: &mut Runtime,
     bob_taker_maker_commit: BobTakerMakerCommit,
 ) -> Result<Option<SwapStateMachine>, Error> {
-    let BobTakerMakerCommit { wallet } = bob_taker_maker_commit;
-    attempt_transition_to_bob_reveal(event, runtime, wallet)
+    let BobTakerMakerCommit {
+        wallet,
+        remote_commit,
+    } = bob_taker_maker_commit;
+    attempt_transition_to_bob_reveal(event, runtime, remote_commit, wallet)
 }
 
 fn try_alice_taker_maker_commit_to_alice_reveal(
@@ -876,8 +884,11 @@ fn try_bob_init_maker_to_bob_reveal(
     runtime: &mut Runtime,
     bob_init_maker: BobInitMaker,
 ) -> Result<Option<SwapStateMachine>, Error> {
-    let BobInitMaker { wallet } = bob_init_maker;
-    attempt_transition_to_bob_reveal(event, runtime, wallet)
+    let BobInitMaker {
+        wallet,
+        remote_commit,
+    } = bob_init_maker;
+    attempt_transition_to_bob_reveal(event, runtime, remote_commit, wallet)
 }
 
 fn try_alice_init_maker_to_alice_reveal(
@@ -2038,13 +2049,14 @@ fn try_bob_buy_sweeping_to_swap_end(
 fn attempt_transition_to_bob_reveal(
     event: Event,
     runtime: &mut Runtime,
+    remote_commit: CommitAliceParameters,
     mut wallet: BobWallet,
 ) -> Result<Option<SwapStateMachine>, Error> {
     match event.request.clone() {
         BusMsg::P2p(PeerMsg::Reveal(Reveal::Alice { parameters, proof })) => {
             runtime.log_info("Handling reveal with wallet");
             let (bob_reveal, remote_params) =
-                wallet.handle_alice_reveals(runtime, parameters, proof)?;
+                wallet.handle_alice_reveals(runtime, parameters, proof, remote_commit)?;
 
             // The wallet only returns reveal if we are Bob Maker
             if let Some(bob_reveal) = bob_reveal {

@@ -169,7 +169,6 @@ pub struct BobWallet {
     pub local_params: Parameters,
     pub key_manager: KeyManager,
     pub funding_tx: FundingTx,
-    pub remote_commit: Option<CommitAliceParameters>,
     pub remote_params: Option<Parameters>,
     pub remote_proof: Option<DLEQProof>,
     pub core_arb_setup: Option<CoreArbitratingSetup>,
@@ -185,7 +184,6 @@ impl Encodable for BobWallet {
         len += self.local_params.consensus_encode(writer)?;
         len += self.key_manager.consensus_encode(writer)?;
         len += self.funding_tx.consensus_encode(writer)?;
-        len += self.remote_commit.consensus_encode(writer)?;
         len += self.remote_params.consensus_encode(writer)?;
         len += self.remote_proof.consensus_encode(writer)?;
         len += self.core_arb_setup.consensus_encode(writer)?;
@@ -210,7 +208,6 @@ impl Decodable for BobWallet {
             local_params: Decodable::consensus_decode(d)?,
             key_manager: Decodable::consensus_decode(d)?,
             funding_tx: Decodable::consensus_decode(d)?,
-            remote_commit: Decodable::consensus_decode(d)?,
             remote_params: Decodable::consensus_decode(d)?,
             remote_proof: Decodable::consensus_decode(d)?,
             core_arb_setup: Decodable::consensus_decode(d)?,
@@ -232,7 +229,6 @@ impl BobWallet {
         local_params: Parameters,
         key_manager: KeyManager,
         funding_tx: FundingTx,
-        remote_commit: Option<CommitAliceParameters>,
         target_bitcoin_address: bitcoin::Address,
         target_monero_address: monero::Address,
     ) -> Self {
@@ -242,7 +238,6 @@ impl BobWallet {
             local_params,
             key_manager,
             funding_tx,
-            remote_commit,
             remote_params: None,
             remote_proof: None,
             core_arb_setup: None,
@@ -754,7 +749,6 @@ impl BobWallet {
             local_params,
             key_manager,
             funding,
-            None,
             target_bitcoin_address,
             target_monero_address,
         ))
@@ -789,7 +783,6 @@ impl BobWallet {
         target_bitcoin_address: bitcoin::Address,
         target_monero_address: monero::Address,
         mut key_manager: KeyManager,
-        remote_commit: CommitAliceParameters,
     ) -> Result<Self, Error> {
         let Deal {
             parameters: deal_parameters,
@@ -821,7 +814,6 @@ impl BobWallet {
             local_params,
             key_manager,
             funding,
-            Some(remote_commit),
             target_bitcoin_address,
             target_monero_address,
         ))
@@ -851,22 +843,11 @@ impl BobWallet {
         Ok(local_params.commit_bob(runtime.swap_id, &engine))
     }
 
-    pub fn handle_maker_commit(
+    pub fn create_reveal_from_local_params(
         &mut self,
         runtime: &mut Runtime,
-        commit: CommitAliceParameters,
     ) -> Result<Reveal, Error> {
-        let BobWallet {
-            remote_commit, // None
-            local_params,
-            ..
-        } = self;
-        if remote_commit.is_some() {
-            runtime.log_error("Alice Commit (remote) already set");
-        } else {
-            trace!("Setting Alice Commit");
-            *remote_commit = Some(commit);
-        }
+        let BobWallet { local_params, .. } = self;
         // craft the correct reveal depending on role
         Ok(Reveal::Bob {
             parameters: local_params.clone().reveal_bob(runtime.swap_id),
@@ -975,22 +956,15 @@ impl BobWallet {
         runtime: &mut Runtime,
         parameters: RevealAliceParameters,
         proof: RevealProof,
+        remote_commit: CommitAliceParameters,
     ) -> Result<(Option<Reveal>, Parameters), Error> {
         let BobWallet {
             local_params,
             key_manager,
-            remote_commit,
             remote_params, // None
             remote_proof,  // None
             ..
         } = self;
-        let remote_commit = if let Some(remote_commit) = remote_commit {
-            remote_commit
-        } else {
-            return Err(Error::Farcaster(
-                "Expected remote commit to be set".to_string(),
-            ));
-        };
         // set wallet params
         if remote_params.is_some() || remote_proof.is_some() {
             runtime.log_error("Alice params or proof already set");
