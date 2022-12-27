@@ -889,9 +889,6 @@ fn try_bob_reveal_to_bob_fee_estimated(
                 funding_address.clone(),
                 event.endpoints,
             )?;
-            runtime
-                .syncer_state
-                .set_address_creation_height(Blockchain::Bitcoin, &TxLabel::Funding);
 
             runtime.log_debug(format!("Watch arbitrating funding {}", funding_address));
             let watch_addr_task = runtime

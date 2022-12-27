@@ -232,9 +232,8 @@ impl SyncerState {
             });
     }
 
-    pub fn address_creation_or_current_height(
+    pub fn monero_address_creation_or_current_height(
         &self,
-        blockchain: Blockchain,
         tx_label: &TxLabel,
     ) -> u64 {
         self.address_creation_heights
@@ -246,10 +245,7 @@ impl SyncerState {
                     self.swap_id.swap_id(),
                     tx_label.label()
                 );
-                match blockchain {
-                    Blockchain::Bitcoin => self.bitcoin_height,
-                    Blockchain::Monero => self.monero_height,
-                }
+                self.monero_height,
             })
     }
 
@@ -283,7 +279,7 @@ impl SyncerState {
         let viewpair = monero::ViewPair { spend, view };
         let address = monero::Address::from_viewpair(self.network.into(), &viewpair);
         let from_height = from_height.unwrap_or_else(|| {
-            self.address_creation_or_current_height(Blockchain::Monero, &tx_label)
+            self.monero_address_creation_or_current_height(&tx_label)
         });
         let addendum = XmrAddressAddendum {
             spend_key: spend,
