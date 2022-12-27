@@ -190,20 +190,15 @@ impl SyncerState {
             );
         }
         let id = self.tasks.new_taskid();
-        let from_height = self.address_creation_or_current_height(Blockchain::Bitcoin, &tx_label);
         self.tasks.watched_addrs.insert(id, tx_label);
         info!(
-            "{} | Watching address {} for {} transaction from height {} - current height {}",
+            "{} | Watching address {} for {} transaction - current height {}",
             self.swap_id.swap_id(),
             address.addr(),
             tx_label.label(),
-            from_height,
             self.bitcoin_height,
         );
-        let addendum = BtcAddressAddendum {
-            from_height,
-            address,
-        };
+        let addendum = BtcAddressAddendum { address };
         let filter = if TxLabel::Cancel == tx_label {
             // If this is the cancel transaction, only look for outgoing transactions
             TxFilter::Outgoing

@@ -358,18 +358,6 @@ fn query_addr_history(
 
     let mut addr_txs = vec![];
     for hist in tx_hist {
-        // skip the transaction if it is too far back in the history by checking
-        // if it is not in the mempool (0 and -1) and confirmed below a certain
-        // block height
-        if hist.height > 0 && address.from_height >= hist.height as u64 {
-            trace!(
-                "Skipping old transaction, minimum height: {}, tx height: {}",
-                address.from_height,
-                hist.height
-            );
-            continue;
-        }
-
         let txid = hist.tx_hash;
         let tx = client.transaction_get(&txid)?;
         let mut output_found = false;

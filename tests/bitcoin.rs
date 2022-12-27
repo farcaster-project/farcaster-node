@@ -236,11 +236,9 @@ fn bitcoin_syncer_address_test() {
     let address2 = bitcoin_rpc.get_new_address(None, None).unwrap();
 
     let addendum_1 = AddressAddendum::Bitcoin(BtcAddressAddendum {
-        from_height: 0,
         address: address1.clone(),
     });
     let addendum_2 = AddressAddendum::Bitcoin(BtcAddressAddendum {
-        from_height: 0,
         address: address2.clone(),
     });
     let watch_address_task_1 = SyncerdTask {
@@ -361,7 +359,6 @@ fn bitcoin_syncer_address_test() {
 
     let address4 = bitcoin_rpc.get_new_address(None, None).unwrap();
     let addendum_4 = AddressAddendum::Bitcoin(BtcAddressAddendum {
-        from_height: 0,
         address: address4.clone(),
     });
     for i in 0..5 {
@@ -406,7 +403,6 @@ fn bitcoin_syncer_address_test() {
     let blocks = bitcoin_rpc.get_block_count().unwrap();
 
     let addendum_5 = AddressAddendum::Bitcoin(BtcAddressAddendum {
-        from_height: blocks,
         address: address5.clone(),
     });
     tx.send(SyncerdTask {
