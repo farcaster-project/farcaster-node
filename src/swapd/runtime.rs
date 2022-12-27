@@ -184,8 +184,6 @@ pub struct CheckpointSwapd {
     pub connected_counterparty_node_id: Option<NodeId>,
     pub deal: Deal,
     pub acc_lock_height_lower_bound: Option<u64>,
-    pub bitcoin_checkpoint_height: u64,
-    pub monero_checkpoint_height: u64,
 }
 
 impl CtlServer for Runtime {}
@@ -869,8 +867,6 @@ impl Runtime {
                     connected_counterparty_node_id: get_node_id(&self.peer_service),
                     deal: self.deal.clone(),
                     acc_lock_height_lower_bound: self.acc_lock_height_lower_bound,
-                    bitcoin_checkpoint_height: self.syncer_state.bitcoin_height,
-                    monero_checkpoint_height: self.syncer_state.monero_height,
                 },
             })),
         )?;
