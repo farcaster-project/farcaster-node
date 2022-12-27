@@ -27,8 +27,8 @@ pub struct TemporalSafety {
     /// Second timelock in the protocol, if this timelock is reached Bob miss-behaved and will lose
     /// money
     pub punish_timelock: BlockHeight,
-    /// The minimum number of blocks that should remain unmined before the next transaction to be
-    /// considered safe
+    /// Avoid broadcasting a transaction if a race can happen with the next available execution
+    /// fork in # blocks
     pub safety: BlockSpan,
     /// Number of confirmation required for the arbitrating blockchain to consider a tx final
     pub arb_finality: BlockSpan,
