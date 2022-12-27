@@ -30,8 +30,9 @@ use farcaster_core::{
         },
         Alice, Bob, Deal, EncryptedSignature, KeyManager, Parameters,
     },
-    transaction::{Broadcastable, Fundable, Transaction, Witnessable},
+    transaction::{Broadcastable, Fundable, Transaction, TxLabel, Witnessable},
 };
+use strict_encoding::{StrictDecode, StrictEncode};
 
 use crate::{
     bus::{
@@ -50,14 +51,12 @@ use super::runtime::Runtime;
 pub struct HandleRefundProcedureSignaturesRes {
     pub buy_procedure_signature: BuyProcedureSignature,
     pub lock_tx: bitcoin::Transaction,
-    pub cancel_tx: bitcoin::Transaction,
-    pub refund_tx: bitcoin::Transaction,
+    pub bob_txs: BobTxs,
 }
 
 pub struct HandleCoreArbitratingSetupRes {
     pub refund_procedure_signatures: RefundProcedureSignatures,
-    pub cancel_tx: bitcoin::Transaction,
-    pub punish_tx: bitcoin::Transaction,
+    pub alice_txs: AliceTxs,
     pub alice_cancel_signature: Signature,
     pub adaptor_refund: WrappedEncryptedSignature,
 }
@@ -65,6 +64,18 @@ pub struct HandleCoreArbitratingSetupRes {
 pub struct HandleBuyProcedureSignatureRes {
     pub cancel_tx: bitcoin::Transaction,
     pub buy_tx: bitcoin::Transaction,
+}
+
+#[derive(Clone, Debug, StrictEncode, StrictDecode)]
+pub struct BobTxs {
+    pub cancel_tx: bitcoin::Transaction,
+    pub refund_tx: bitcoin::Transaction,
+}
+
+#[derive(Clone, Debug, StrictEncode, StrictDecode)]
+pub struct AliceTxs {
+    pub cancel_tx: bitcoin::Transaction,
+    pub punish_tx: bitcoin::Transaction,
 }
 
 #[derive(Display, Clone, Debug)]
@@ -513,11 +524,15 @@ impl AliceSwapKeyManager {
         )?;
         let finalized_punish_tx =
             Broadcastable::<bitcoin::Transaction>::finalize_and_extract(&mut punish_tx)?;
+        runtime.log_info(format!("{} transaction created", TxLabel::Cancel));
+        runtime.log_info(format!("{} transaction created", TxLabel::Punish));
 
         Ok(HandleCoreArbitratingSetupRes {
             refund_procedure_signatures: refund_proc_signatures,
-            cancel_tx: finalized_cancel_tx,
-            punish_tx: finalized_punish_tx,
+            alice_txs: AliceTxs {
+                cancel_tx: finalized_cancel_tx,
+                punish_tx: finalized_punish_tx,
+            },
             alice_cancel_signature,
             adaptor_refund,
         })
@@ -980,11 +995,17 @@ impl BobSwapKeyManager {
         let finalized_refund_tx =
             Broadcastable::<bitcoin::Transaction>::finalize_and_extract(&mut refund_tx)?;
 
+        runtime.log_info(format!("{} transaction created", TxLabel::Cancel));
+        runtime.log_info(format!("{} transaction created", TxLabel::Refund));
+        runtime.log_info(format!("{} transaction created", TxLabel::Lock));
+
         Ok(HandleRefundProcedureSignaturesRes {
             buy_procedure_signature: adaptor_buy,
             lock_tx: finalized_lock_tx,
-            cancel_tx: finalized_cancel_tx,
-            refund_tx: finalized_refund_tx,
+            bob_txs: BobTxs {
+                cancel_tx: finalized_cancel_tx,
+                refund_tx: finalized_refund_tx,
+            },
         })
     }
 }

@@ -101,6 +101,11 @@ impl SyncerState {
         })
     }
 
+    pub fn broadcasted_tx(&self, tx_label: &TxLabel) -> bool {
+        self.broadcasted_txs.contains_key(tx_label)
+            || self.tasks.broadcasting_txs.values().any(|l| l == tx_label)
+    }
+
     pub fn estimate_fee_btc(&mut self) -> Task {
         let id = self.tasks.new_taskid();
         let task = Task::WatchEstimateFee(WatchEstimateFee {
@@ -482,21 +487,4 @@ impl SyncerState {
     pub fn get_confs(&self, label: TxLabel) -> Option<u32> {
         self.confirmations.get(&label).copied().flatten()
     }
-}
-
-pub fn log_tx_seen(swap_id: SwapId, txlabel: &TxLabel, txid: &Txid) {
-    info!(
-        "{} | {} transaction ({}) in mempool or blockchain",
-        swap_id.swap_id(),
-        txlabel.label(),
-        txid.tx_hash(),
-    );
-}
-
-pub fn log_tx_created(swap_id: SwapId, txlabel: TxLabel) {
-    info!(
-        "{} | {} transaction created",
-        swap_id.swap_id(),
-        txlabel.label(),
-    );
 }
