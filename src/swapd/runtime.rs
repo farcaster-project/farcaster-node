@@ -459,7 +459,7 @@ impl Runtime {
                         spend_key,
                         view_key,
                         TxLabel::AccLock,
-                        Some(from_height),
+                        from_height,
                     );
                     endpoints.send_to(
                         ServiceBus::Sync,

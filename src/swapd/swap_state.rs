@@ -1038,9 +1038,17 @@ fn try_bob_funded_to_bob_refund_procedure_signature(
             {
                 let (spend, view) = aggregate_xmr_spend_view(alice_params, bob_params);
                 let txlabel = TxLabel::AccLock;
-                let task = runtime
-                    .syncer_state
-                    .watch_addr_xmr(spend, view, txlabel, None);
+                let task = runtime.syncer_state.watch_addr_xmr(
+                    spend,
+                    view,
+                    txlabel,
+                    runtime.monero_address_creation_height.unwrap_or(
+                        runtime
+                            .syncer_state
+                            .monero_height
+                            .saturating_sub(runtime.temporal_safety.xmr_finality_thr.into()),
+                    ),
+                );
                 event
                     .send_sync_service(runtime.syncer_state.monero_syncer(), SyncMsg::Task(task))?
             } else {
@@ -1531,7 +1539,12 @@ fn try_alice_core_arbitrating_setup_to_alice_arbitrating_lock_final(
                     spend,
                     view,
                     txlabel,
-                    runtime.monero_address_creation_height,
+                    runtime.monero_address_creation_height.unwrap_or(
+                        runtime
+                            .syncer_state
+                            .monero_height
+                            .saturating_sub(runtime.temporal_safety.xmr_finality_thr.into()),
+                    ),
                 );
                 event.send_sync_service(
                     runtime.syncer_state.monero_syncer(),
