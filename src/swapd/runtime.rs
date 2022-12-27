@@ -13,6 +13,7 @@ use super::{
 use crate::swapd::Opts;
 use crate::syncerd::bitcoin_syncer::p2wpkh_signed_tx_fee;
 use crate::syncerd::types::{Event, TransactionConfirmations};
+use crate::syncerd::{Abort, Boolean, Task, TaskTarget};
 use crate::{
     bus::ctl::{BitcoinFundingInfo, Checkpoint, CtlMsg, FundingInfo, Params},
     bus::info::{InfoMsg, SwapInfo},
@@ -23,7 +24,7 @@ use crate::{
 };
 use crate::{
     service::{Endpoints, Reporter},
-    syncerd::{Abort, Boolean, Task, TaskTarget},
+    syncerd::AddressTransaction,
 };
 use crate::{CtlServer, Error, LogStyle, Service, ServiceConfig, ServiceId};
 
@@ -110,9 +111,7 @@ pub fn run(config: ServiceConfig, opts: Opts) -> Result<(), Error> {
         monero_height: 0,
         bitcoin_height: 0,
         confirmation_bound: 50000,
-        lock_tx_confs: None,
-        cancel_tx_confs: None,
-        buy_tx_confs: None,
+        last_tx_event: none!(),
         network,
         bitcoin_syncer: ServiceId::Syncer(Blockchain::Bitcoin, network),
         monero_syncer: ServiceId::Syncer(Blockchain::Monero, network),
@@ -142,7 +141,7 @@ pub fn run(config: ServiceConfig, opts: Opts) -> Result<(), Error> {
         local_trade_role,
         local_swap_role,
         latest_state_report: state_report,
-        monero_address_creation_height: None,
+        acc_lock_height_lower_bound: None,
         swap_state_machine,
         unhandled_peer_message: None, // The last message we received and was not handled by the state machine
     };
@@ -167,7 +166,7 @@ pub struct Runtime {
     pub local_trade_role: TradeRole,
     pub local_swap_role: SwapRole,
     pub latest_state_report: StateReport,
-    pub monero_address_creation_height: Option<u64>,
+    pub acc_lock_height_lower_bound: Option<u64>,
     pub swap_state_machine: SwapStateMachine,
     pub unhandled_peer_message: Option<PeerMsg>,
 }
@@ -186,7 +185,7 @@ pub struct CheckpointSwapd {
     pub local_trade_role: TradeRole,
     pub connected_counterparty_node_id: Option<NodeId>,
     pub deal: Deal,
-    pub monero_address_creation_height: Option<u64>,
+    pub acc_lock_height_lower_bound: Option<u64>,
 }
 
 impl CtlServer for Runtime {}
@@ -406,7 +405,7 @@ impl Runtime {
                     mut pending_broadcasts,
                     xmr_addr_addendum,
                     local_trade_role,
-                    monero_address_creation_height,
+                    acc_lock_height_lower_bound,
                     state,
                     ..
                 } = state;
@@ -414,7 +413,7 @@ impl Runtime {
                 self.swap_state_machine = state;
                 self.enquirer = enquirer;
                 self.temporal_safety = temporal_safety;
-                self.monero_address_creation_height = monero_address_creation_height;
+                self.acc_lock_height_lower_bound = acc_lock_height_lower_bound;
                 // We need to update the peerd for the pending requests in case of reconnect
                 self.local_trade_role = local_trade_role;
                 self.txs = txs.drain(..).collect();
@@ -455,7 +454,7 @@ impl Runtime {
                         address,
                         view_key,
                         TxLabel::AccLock,
-                        Some(from_height),
+                        from_height,
                     );
                     endpoints.send_to(
                         ServiceBus::Sync,
@@ -545,9 +544,23 @@ impl Runtime {
                             self.temporal_safety.xmr_finality_thr,
                             endpoints,
                         );
+
+                        // saving requests of interest for later replaying latest event
+                        if let Some(txlabel) = self.syncer_state.tasks.watched_txs.get(id) {
+                            self.syncer_state
+                                .last_tx_event
+                                .insert(*txlabel, request.clone());
+                        }
                     }
 
-                    Event::AddressTransaction(_) => {}
+                    Event::AddressTransaction(AddressTransaction { id, .. }) => {
+                        // saving requests of interest for later replaying latest event
+                        if let Some(txlabel) = self.syncer_state.tasks.watched_addrs.get(id) {
+                            self.syncer_state
+                                .last_tx_event
+                                .insert(*txlabel, request.clone());
+                        }
+                    }
 
                     Event::SweepSuccess(_) => {}
 
@@ -599,19 +612,11 @@ impl Runtime {
                             self.temporal_safety.btc_finality_thr,
                             endpoints,
                         );
-                        let txlabel = self.syncer_state.tasks.watched_txs.get(id);
                         // saving requests of interest for later replaying latest event
-                        match txlabel {
-                            Some(&TxLabel::Lock) => {
-                                self.syncer_state.lock_tx_confs = Some(request.clone());
-                            }
-                            Some(&TxLabel::Cancel) => {
-                                self.syncer_state.cancel_tx_confs = Some(request.clone());
-                            }
-                            Some(&TxLabel::Buy) => {
-                                self.syncer_state.buy_tx_confs = Some(request.clone())
-                            }
-                            _ => {}
+                        if let Some(txlabel) = self.syncer_state.tasks.watched_txs.get(id) {
+                            self.syncer_state
+                                .last_tx_event
+                                .insert(*txlabel, request.clone());
                         }
                     }
 
@@ -627,13 +632,27 @@ impl Runtime {
                             self.temporal_safety.btc_finality_thr,
                             endpoints,
                         );
+                        // saving requests of interest for later replaying latest event
+                        if let Some(txlabel) = self.syncer_state.tasks.watched_txs.get(id) {
+                            self.syncer_state
+                                .last_tx_event
+                                .insert(*txlabel, request.clone());
+                        }
                     }
 
                     Event::TransactionBroadcasted(event) => {
                         self.syncer_state.transaction_broadcasted(event);
                     }
 
-                    Event::AddressTransaction(_) => {}
+                    Event::AddressTransaction(AddressTransaction { id, .. }) => {
+                        // saving requests of interest for later replaying latest event
+                        if let Some(txlabel) = self.syncer_state.tasks.watched_addrs.get(id) {
+                            self.syncer_state
+                                .last_tx_event
+                                .insert(*txlabel, request.clone());
+                        }
+                        self.log_debug(event);
+                    }
 
                     Event::TaskAborted(event) => {
                         self.log_debug(event);
@@ -710,15 +729,9 @@ impl Runtime {
             if let Some(peer_msg) = self.unhandled_peer_message.clone() {
                 self.handle_msg(endpoints, source.clone(), peer_msg)?;
             }
-            // Replay confirmation events to ensure we immediately advance through states that can be skipped
-            if let Some(buy_tx_confs_req) = self.syncer_state.buy_tx_confs.clone() {
-                self.handle_sync(endpoints, source.clone(), buy_tx_confs_req)?;
-            }
-            if let Some(lock_tx_confs_req) = self.syncer_state.lock_tx_confs.clone() {
-                self.handle_sync(endpoints, source.clone(), lock_tx_confs_req)?;
-            }
-            if let Some(cancel_tx_confs_req) = self.syncer_state.cancel_tx_confs.clone() {
-                self.handle_sync(endpoints, source, cancel_tx_confs_req)?;
+            // Replay syncer events to ensure we immediately advance through states that can be skipped
+            for event in self.syncer_state.last_tx_event.clone().values() {
+                self.handle_sync(endpoints, source.clone(), event.clone())?;
             }
         } else if let BusMsg::P2p(peer_msg) = msg {
             self.unhandled_peer_message = Some(peer_msg);
@@ -871,7 +884,7 @@ impl Runtime {
                     local_trade_role: self.local_trade_role,
                     connected_counterparty_node_id: get_node_id(&self.peer_service),
                     deal: self.deal.clone(),
-                    monero_address_creation_height: self.monero_address_creation_height,
+                    acc_lock_height_lower_bound: self.acc_lock_height_lower_bound,
                 },
             })),
         )?;
@@ -897,6 +910,26 @@ impl Runtime {
             BusMsg::Sync(SyncMsg::Task(abort_all)),
         )?;
         Ok(())
+    }
+
+    pub fn bob_watch_cancel_output_task(&mut self) -> Option<Task> {
+        // add a watch for the cancel tx output address. This is necessary so Bob can detect punish:
+        // Since Alice can craft the punish tx at her leisure and Bob won't know its txid in advance,
+        // Bob needs to watch the address of the cancel script to detect the punish tx.
+        if let Some(cancel_tx) = self.txs.get(&TxLabel::Cancel) {
+            let cancel_script = &cancel_tx.output[0].script_pubkey;
+            let cancel_address =
+                bitcoin::Address::from_script(cancel_script, self.syncer_state.network.into())
+                    .expect("cancel script is valid");
+            self.log_debug(format!("Watching cancel address {}", cancel_address));
+            let watch_addr_task = self
+                .syncer_state
+                .watch_addr_btc(cancel_address, TxLabel::Cancel);
+            Some(watch_addr_task)
+        } else {
+            self.log_debug("Cancel tx not found - Bob already broadcasted".to_string());
+            None
+        }
     }
 
     pub fn log_monero_maturity(&self, address: monero::Address) {

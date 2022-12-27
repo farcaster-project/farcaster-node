@@ -48,8 +48,6 @@ pub enum AddressAddendum {
 )]
 #[display(Debug)]
 pub struct BtcAddressAddendum {
-    /// The blockchain height where to start the query (not inclusive).
-    pub from_height: u64,
     /// The address to be watched.
     pub address: bitcoin::Address,
 }

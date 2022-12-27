@@ -950,10 +950,7 @@ async fn syncer_state_addresses() {
         tokio::sync::mpsc::channel(120);
     let mut state = SyncerState::new(event_tx.clone(), Blockchain::Bitcoin);
     let address = bitcoin::Address::from_str("32BkaQeAVcd65Vn7pjEziohf5bCiryNQov").unwrap();
-    let addendum = AddressAddendum::Bitcoin(BtcAddressAddendum {
-        from_height: 0,
-        address,
-    });
+    let addendum = AddressAddendum::Bitcoin(BtcAddressAddendum { address });
     let address_task = WatchAddress {
         id: TaskId(0),
         lifetime: 1,

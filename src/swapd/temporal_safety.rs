@@ -113,4 +113,16 @@ impl TemporalSafety {
     pub fn blocks_until_punish_after_cancel(&self, cancel_confirmations: u32) -> i64 {
         self.punish_timelock as i64 - cancel_confirmations as i64
     }
+
+    pub fn block_height_reorg_lower_bound(
+        &self,
+        blockchain: Blockchain,
+        current_height: u64,
+    ) -> u64 {
+        let finality_thr = match blockchain {
+            Blockchain::Bitcoin => self.btc_finality_thr,
+            Blockchain::Monero => self.xmr_finality_thr,
+        };
+        current_height.saturating_sub(finality_thr as u64)
+    }
 }

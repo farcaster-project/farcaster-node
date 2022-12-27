@@ -495,7 +495,7 @@ impl Wallet {
         buy_tx: bitcoin::Transaction,
         endpoints: &mut Endpoints,
         swap_id: SwapId,
-        monero_address_creation_height: Option<u64>,
+        acc_lock_height_lower_bound: Option<u64>,
     ) -> Result<SweepMoneroAddress, Error> {
         if let Wallet::Bob(BobState {
             bob,
@@ -570,7 +570,7 @@ impl Wallet {
                         swap_id: Some(swap_id),
                         view: keypair.view.as_bytes().try_into().unwrap(),
                         spend: keypair.spend.as_bytes().try_into().unwrap(),
-                        creation_height: monero_address_creation_height,
+                        creation_height: acc_lock_height_lower_bound,
                     },
                 })),
             )?;
@@ -580,7 +580,7 @@ impl Wallet {
                 source_spend_key: spend,
                 destination_address: *target_monero_address,
                 minimum_balance: deal.parameters.accordant_amount,
-                from_height: monero_address_creation_height,
+                from_height: acc_lock_height_lower_bound,
             };
             Ok(sweep_keys)
         } else {
@@ -593,7 +593,7 @@ impl Wallet {
         endpoints: &mut Endpoints,
         refund_tx: bitcoin::Transaction,
         swap_id: SwapId,
-        monero_address_creation_height: Option<u64>,
+        acc_lock_height_lower_bound: Option<u64>,
     ) -> Result<SweepMoneroAddress, Error> {
         if let Wallet::Alice(AliceState {
             alice,
@@ -670,7 +670,7 @@ impl Wallet {
                         swap_id: Some(swap_id),
                         view: keypair.view.as_bytes().try_into().unwrap(),
                         spend: keypair.spend.as_bytes().try_into().unwrap(),
-                        creation_height: monero_address_creation_height,
+                        creation_height: acc_lock_height_lower_bound,
                     },
                 })),
             )?;
@@ -680,7 +680,7 @@ impl Wallet {
                 source_spend_key: spend,
                 destination_address: *target_monero_address,
                 minimum_balance: deal.parameters.accordant_amount,
-                from_height: monero_address_creation_height,
+                from_height: acc_lock_height_lower_bound,
             };
             Ok(sweep_keys)
         } else {
