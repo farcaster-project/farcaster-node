@@ -15,7 +15,7 @@ use crate::syncerd::runtime::Synclet;
 use crate::syncerd::syncer_state::create_set;
 use crate::syncerd::syncer_state::AddressTx;
 use crate::syncerd::syncer_state::SyncerState;
-use crate::syncerd::types::{AddressAddendum, Boolean, SweepAddressAddendum, Task};
+use crate::syncerd::types::{AddressAddendum, SweepAddressAddendum, Task};
 use crate::syncerd::TaskTarget;
 use crate::syncerd::TransactionBroadcasted;
 use crate::syncerd::XmrAddressAddendum;
@@ -485,12 +485,8 @@ async fn run_syncerd_task_receiver(
                         },
                         Task::Abort(task) => {
                             let mut state_guard = state.lock().await;
-                            let respond = match task.respond {
-                                Boolean::True => true,
-                                Boolean::False => false,
-                            };
                             state_guard
-                                .abort(task.task_target, syncerd_task.source, respond)
+                                .abort(task.task_target, syncerd_task.source, task.respond)
                                 .await;
                         }
                         Task::BroadcastTransaction(task) => {

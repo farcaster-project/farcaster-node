@@ -48,7 +48,7 @@ use crate::{
         swap_key_manager::{HandleBuyProcedureSignatureRes, HandleRefundProcedureSignaturesRes},
         syncer_client::{log_tx_created, log_tx_seen},
     },
-    syncerd::{Abort, Boolean, SweepSuccess, Task, TaskTarget, TransactionConfirmations},
+    syncerd::{Abort, SweepSuccess, Task, TaskTarget, TransactionConfirmations},
     Endpoints, Error,
 };
 use crate::{
@@ -1355,7 +1355,7 @@ fn try_bob_cancel_final_to_swap_end(
                 Some(&TxLabel::Refund) => {
                     let abort_all = Task::Abort(Abort {
                         task_target: TaskTarget::AllTasks,
-                        respond: Boolean::False,
+                        respond: false,
                     });
                     event.send_sync_service(
                         runtime.syncer_state.monero_syncer(),
@@ -1376,7 +1376,7 @@ fn try_bob_cancel_final_to_swap_end(
                 Some(&TxLabel::Punish) => {
                     let abort_all = Task::Abort(Abort {
                         task_target: TaskTarget::AllTasks,
-                        respond: Boolean::False,
+                        respond: false,
                     });
                     event.send_sync_service(
                         runtime.syncer_state.monero_syncer(),
@@ -1901,7 +1901,7 @@ fn try_alice_buy_procedure_signature_to_swap_end(
         {
             let abort_all = Task::Abort(Abort {
                 task_target: TaskTarget::AllTasks,
-                respond: Boolean::False,
+                respond: false,
             });
             event.send_sync_service(
                 runtime.syncer_state.monero_syncer(),
@@ -1972,7 +1972,7 @@ fn try_alice_canceled_to_alice_refund_or_alice_punish(
                 {
                     let abort_all = Task::Abort(Abort {
                         task_target: TaskTarget::AllTasks,
-                        respond: Boolean::False,
+                        respond: false,
                     });
                     event.send_sync_service(
                         runtime.syncer_state.monero_syncer(),
@@ -2080,7 +2080,7 @@ fn try_alice_canceled_to_alice_refund_or_alice_punish(
                         }
                         let abort_all = Task::Abort(Abort {
                             task_target: TaskTarget::AllTasks,
-                            respond: Boolean::False,
+                            respond: false,
                         });
                         event.send_sync_service(
                             runtime.syncer_state.monero_syncer(),
@@ -2153,7 +2153,7 @@ fn try_alice_refund_sweeping_to_swap_end(
             }
             let abort_all = Task::Abort(Abort {
                 task_target: TaskTarget::AllTasks,
-                respond: Boolean::False,
+                respond: false,
             });
             event.send_sync_service(
                 runtime.syncer_state.monero_syncer(),
@@ -2194,7 +2194,7 @@ fn try_bob_buy_sweeping_to_swap_end(
             }
             let abort_all = Task::Abort(Abort {
                 task_target: TaskTarget::AllTasks,
-                respond: Boolean::False,
+                respond: false,
             });
             event.send_sync_service(
                 runtime.syncer_state.monero_syncer(),
