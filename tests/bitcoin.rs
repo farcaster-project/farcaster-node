@@ -211,10 +211,6 @@ the complete existing transaction history
 - Submit a WatchAddress task many times with the same address, ensure we receive
 many times the same event
 
-- Submit a WatchAddress task with a minimum height to an address with a
-transaction below said height, ensure we receive only a later transaction above
-the minimum height
-
 */
 
 #[test]
@@ -225,8 +221,6 @@ fn bitcoin_syncer_address_test() {
     let bitcoin_rpc = bitcoin_setup();
     let (tx, rx_event) = create_bitcoin_syncer("address");
 
-    // generate some blocks to an address
-    let address = bitcoin_rpc.get_new_address(None, None).unwrap();
     // 294 Satoshi is the dust limit for a segwit transaction
     let amount = bitcoin::Amount::ONE_SAT * 294;
     let blocks = bitcoin_rpc.get_block_count().unwrap();
@@ -236,11 +230,9 @@ fn bitcoin_syncer_address_test() {
     let address2 = bitcoin_rpc.get_new_address(None, None).unwrap();
 
     let addendum_1 = AddressAddendum::Bitcoin(BtcAddressAddendum {
-        from_height: 0,
         address: address1.clone(),
     });
     let addendum_2 = AddressAddendum::Bitcoin(BtcAddressAddendum {
-        from_height: 0,
         address: address2.clone(),
     });
     let watch_address_task_1 = SyncerdTask {
@@ -345,7 +337,6 @@ fn bitcoin_syncer_address_test() {
 
     let address4 = bitcoin_rpc.get_new_address(None, None).unwrap();
     let addendum_4 = AddressAddendum::Bitcoin(BtcAddressAddendum {
-        from_height: 0,
         address: address4.clone(),
     });
     for i in 0..5 {
@@ -381,45 +372,6 @@ fn bitcoin_syncer_address_test() {
         let request = misc::get_request_from_message(message);
         assert::address_transaction(request, amount.as_sat(), vec![txid.into()]);
     }
-
-    let address5 = bitcoin_rpc.get_new_address(None, None).unwrap();
-    bitcoin_rpc
-        .send_to_address(&address5, amount, None, None, None, None, None, None)
-        .unwrap();
-    bitcoin_rpc.generate_to_address(1, &address).unwrap();
-    let blocks = bitcoin_rpc.get_block_count().unwrap();
-
-    let addendum_5 = AddressAddendum::Bitcoin(BtcAddressAddendum {
-        from_height: blocks,
-        address: address5.clone(),
-    });
-    tx.send(SyncerdTask {
-        task: Task::WatchAddress(WatchAddress {
-            id: TaskId(5),
-            lifetime: blocks + 5,
-            addendum: addendum_5,
-            include_tx: Boolean::False,
-            filter: TxFilter::All,
-        }),
-        source: SOURCE1.clone(),
-    })
-    .unwrap();
-
-    info!("waiting for empty message");
-    let message = rx_event.recv_multipart(0).unwrap();
-    info!("received empty message");
-    let request = misc::get_request_from_message(message);
-    assert::empty_message(request);
-
-    let txid = bitcoin_rpc
-        .send_to_address(&address5, amount, None, None, None, None, None, None)
-        .unwrap();
-    bitcoin_rpc.generate_to_address(1, &address).unwrap();
-    info!("waiting for address transaction message");
-    let message = rx_event.recv_multipart(0).unwrap();
-    info!("received address transaction message");
-    let request = misc::get_request_from_message(message);
-    assert::address_transaction(request, amount.as_sat(), vec![txid.into()]);
 
     tx.send(SyncerdTask {
         task: Task::Terminate,
