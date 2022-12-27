@@ -17,7 +17,7 @@ use serde_with::{DisplayFromStr, DurationSeconds};
 use strict_encoding::{NetworkDecode, NetworkEncode};
 
 use crate::bus::{
-    AddressSecretKey, CheckpointEntry, DealStatusPair, Failure, List, OptionDetails, Progress,
+    AddressSecretKey, CheckpointEntry, DealInfo, Failure, List, OptionDetails, Progress,
 };
 use crate::cli::DealSelector;
 use crate::farcasterd::stats::Stats;
@@ -146,7 +146,7 @@ pub enum InfoMsg {
     DealList(List<DealInfo>),
 
     #[display(inner)]
-    DealStatusList(List<DealStatusPair>),
+    DealInfoList(List<DealInfo>),
     // - End ListDeals section
 
     // - ListListen section
@@ -215,7 +215,7 @@ pub struct MoneroAddressSwapIdPair {
 #[display(MadeDeal::to_yaml_string)]
 pub struct MadeDeal {
     pub message: String,
-    pub deal_info: DealInfo,
+    pub viewable_deal: ViewableDeal,
 }
 
 #[cfg_attr(feature = "serde", serde_as)]
@@ -380,11 +380,11 @@ impl FromStr for Address {
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         bitcoin::Address::from_str(s)
             .map(Address::Bitcoin)
-            .map_err(|e| Error::Farcaster(e.to_string()))
+            .map_err(Error::from)
             .or_else(|_| {
                 monero::Address::from_str(s)
                     .map(Address::Monero)
-                    .map_err(|e| Error::Farcaster(e.to_string()))
+                    .map_err(Error::from)
             })
     }
 }
@@ -444,8 +444,8 @@ impl FromStr for DealStatusSelector {
     derive(Serialize, Deserialize),
     serde(crate = "serde_crate")
 )]
-#[display(DealInfo::to_yaml_string)]
-pub struct DealInfo {
+#[display(ViewableDeal::to_yaml_string)]
+pub struct ViewableDeal {
     pub deal: String,
     pub details: Deal,
 }
@@ -455,7 +455,7 @@ impl ToYamlString for BitcoinAddressSwapIdPair {}
 #[cfg(feature = "serde")]
 impl ToYamlString for MoneroAddressSwapIdPair {}
 #[cfg(feature = "serde")]
-impl ToYamlString for DealInfo {}
+impl ToYamlString for ViewableDeal {}
 #[cfg(feature = "serde")]
 impl ToYamlString for MadeDeal {}
 #[cfg(feature = "serde")]

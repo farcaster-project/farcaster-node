@@ -4,9 +4,9 @@
 // license that can be found in the LICENSE file or at
 // https://opensource.org/licenses/MIT.
 
-use farcaster_core::blockchain::Blockchain;
 use farcaster_core::swap::btcxmr::Deal;
 use farcaster_core::swap::SwapId;
+use farcaster_core::{blockchain::Blockchain, role::TradeRole};
 use lmdb::{Cursor, Transaction as LMDBTransaction};
 use std::io::Cursor as IoCursor;
 use std::path::PathBuf;
@@ -16,8 +16,8 @@ use crate::bus::{
     ctl::{Checkpoint, CtlMsg},
     info::{Address, InfoMsg},
     info::{BitcoinAddressSwapIdPair, DealStatusSelector, MoneroAddressSwapIdPair},
-    AddressSecretKey, BitcoinSecretKeyInfo, BusMsg, CheckpointEntry, DealStatus, DealStatusPair,
-    Failure, FailureCode, MoneroSecretKeyInfo, Outcome, ServiceBus,
+    AddressSecretKey, BitcoinSecretKeyInfo, BusMsg, CheckpointEntry, DealInfo, DealStatus, Failure,
+    FailureCode, MoneroSecretKeyInfo, Outcome, ServiceBus,
 };
 use crate::{swapd::CheckpointSwapd, Endpoints};
 use crate::{CtlServer, Error, LogStyle, Service, ServiceConfig, ServiceId};
@@ -167,8 +167,19 @@ impl Runtime {
                     .set_monero_address(&address, &secret_key_info)?;
             }
 
-            CtlMsg::SetDealStatus(DealStatusPair { deal, status }) => {
-                self.database.set_deal_status(&deal, &status)?;
+            CtlMsg::SetDealInfo(DealInfo {
+                deal,
+                status,
+                local_trade_role,
+                ..
+            }) => {
+                self.database.set_deal(
+                    &deal,
+                    &DealValue {
+                        status,
+                        local_trade_role,
+                    },
+                )?;
             }
 
             CtlMsg::CleanDanglingDeals => {
@@ -178,19 +189,26 @@ impl Runtime {
                     .drain(..)
                     .map(|info| info.deal)
                     .collect();
+                let mut in_progress = self.database.get_deals(DealStatusSelector::InProgress)?;
                 self.database
-                    .get_deals(DealStatusSelector::InProgress)?
+                    .get_deals(DealStatusSelector::Open)?
                     .drain(..)
+                    .chain(in_progress.drain(..))
                     .filter_map(|o| {
                         if !checkpointed_pub_deals.contains(&o.deal) {
-                            Some(o.deal)
+                            Some((o.deal, o.local_trade_role))
                         } else {
                             None
                         }
                     })
-                    .try_for_each(|deal| {
-                        self.database
-                            .set_deal_status(&deal, &DealStatus::Ended(Outcome::FailureAbort))
+                    .try_for_each(|(deal, local_trade_role)| {
+                        self.database.set_deal(
+                            &deal,
+                            &DealValue {
+                                status: DealStatus::Ended(Outcome::FailureAbort),
+                                local_trade_role,
+                            },
+                        )
                     })?;
             }
 
@@ -210,12 +228,8 @@ impl Runtime {
     ) -> Result<(), Error> {
         match request {
             InfoMsg::ListDeals(selector) => {
-                let deal_status_pairs = self.database.get_deals(selector)?;
-                self.send_client_info(
-                    endpoints,
-                    source,
-                    InfoMsg::DealStatusList(deal_status_pairs.into()),
-                )?;
+                let deal_infos = self.database.get_deals(selector)?;
+                self.send_client_info(endpoints, source, InfoMsg::DealInfoList(deal_infos.into()))?;
             }
 
             InfoMsg::RetrieveAllCheckpointInfo => {
@@ -373,6 +387,12 @@ struct CheckpointKey {
     service_id: ServiceId,
 }
 
+#[derive(Debug, Clone, StrictEncode, StrictDecode)]
+struct DealValue {
+    status: DealStatus,
+    local_trade_role: TradeRole,
+}
+
 struct Database(lmdb::Environment);
 
 const LMDB_CHECKPOINTS: &str = "checkpoints";
@@ -395,7 +415,7 @@ impl Database {
         Ok(Database(env))
     }
 
-    fn set_deal_status(&mut self, deal: &Deal, status: &DealStatus) -> Result<(), Error> {
+    fn set_deal(&mut self, deal: &Deal, value: &DealValue) -> Result<(), Error> {
         let db = self.0.open_db(Some(LMDB_DEAL_HISTORY))?;
         let mut tx = self.0.begin_rw_txn()?;
         let mut key = vec![];
@@ -404,41 +424,46 @@ impl Database {
             tx.del(db, &key, None)?;
         }
         let mut val = vec![];
-        status.strict_encode(&mut val)?;
+        value.strict_encode(&mut val)?;
         tx.put(db, &key, &val, lmdb::WriteFlags::empty())?;
         tx.commit()?;
         Ok(())
     }
 
-    fn get_deals(&mut self, selector: DealStatusSelector) -> Result<Vec<DealStatusPair>, Error> {
+    fn get_deals(&mut self, selector: DealStatusSelector) -> Result<Vec<DealInfo>, Error> {
         let db = self.0.open_db(Some(LMDB_DEAL_HISTORY))?;
         let tx = self.0.begin_ro_txn()?;
         let mut cursor = tx.open_ro_cursor(db)?;
         cursor
             .iter()
             .filter_map(|(key, val)| {
-                let status = DealStatus::strict_decode(IoCursor::new(val.to_vec()));
-                let filtered_status = match status {
+                let DealValue {
+                    local_trade_role,
+                    status,
+                } = match DealValue::strict_decode(IoCursor::new(val.to_vec())) {
                     Err(err) => {
                         return Some(Err(Error::from(err)));
                     }
-                    Ok(DealStatus::Open) if selector == DealStatusSelector::Open => {
-                        Some(status.unwrap())
+                    Ok(val) => val,
+                };
+                let filtered_status = match status {
+                    DealStatus::Open if selector == DealStatusSelector::Open => Some(status),
+                    DealStatus::InProgress if selector == DealStatusSelector::InProgress => {
+                        Some(status)
                     }
-                    Ok(DealStatus::InProgress) if selector == DealStatusSelector::InProgress => {
-                        Some(status.unwrap())
-                    }
-                    Ok(DealStatus::Ended(_)) if selector == DealStatusSelector::Ended => {
-                        Some(status.unwrap())
-                    }
-                    _ if selector == DealStatusSelector::All => Some(status.unwrap()),
+                    // match all ended and revoked deals on Ended selector
+                    DealStatus::Ended(_) if selector == DealStatusSelector::Ended => Some(status),
+                    DealStatus::Revoked if selector == DealStatusSelector::Ended => Some(status),
+                    _ if selector == DealStatusSelector::All => Some(status),
                     _ => None,
                 }?;
                 Some(
                     Deal::strict_decode(IoCursor::new(key.to_vec()))
-                        .map(|deal| DealStatusPair {
+                        .map(|deal| DealInfo {
+                            serialized_deal: deal.to_string(),
                             deal,
                             status: filtered_status,
+                            local_trade_role,
                         })
                         .map_err(Error::from),
                 )
@@ -672,7 +697,7 @@ fn test_lmdb_state() {
         service_id: ServiceId::Database,
     };
     let path = std::env::current_dir().unwrap();
-    let mut database = Database::new(path.to_path_buf()).unwrap();
+    let mut database = Database::new(path).unwrap();
     database.set_checkpoint_state(&key1, &val1).unwrap();
     let res = database.get_checkpoint_state(&key1).unwrap();
     assert_eq!(val1, res);
@@ -688,7 +713,7 @@ fn test_lmdb_state() {
 
     let key_info = SwapId(Uuid::new());
     let val_info = CheckpointEntry {
-        swap_id: key_info.clone(),
+        swap_id: key_info,
         trade_role: TradeRole::Maker,
         deal: Deal::from_str("Deal:Cke4ftrP5A781Vq85dgBQJNwYgBS4nuUV1LQM2fvVdFMNR4h5TrWhRR11111uMFuZTAsNgpdK8DiK11111TB9zym113GTvtvqfD1111114A4TTfFfmZoWyvpcjDBtTZCdWFSUWcRKYfEC3Y17hqaXZ3dWz11111111111111111111111111111111111111111AfZ113SEBTEspU3a").unwrap(),
         expected_counterparty_node_id: None,
@@ -711,7 +736,7 @@ fn test_lmdb_state() {
     let val_retrieved = database.get_bitcoin_address_secret_key(&addr).unwrap();
     assert_eq!(addr_info, val_retrieved);
     let addrs = database.get_all_bitcoin_addresses().unwrap();
-    assert!(addrs.iter().find(|(a, _)| *a == addr).is_some());
+    assert!(addrs.iter().any(|(a, _)| *a == addr));
     let key_pair = monero::KeyPair {
         spend: monero::PrivateKey::from_str(
             "77916d0cd56ed1920aef6ca56d8a41bac915b68e4c46a589e0956e27a7b77404",
@@ -734,13 +759,19 @@ fn test_lmdb_state() {
     let val_retrieved = database.get_monero_address_secret_key(&addr).unwrap();
     assert_eq!(addr_info, val_retrieved);
     let addrs = database.get_all_monero_addresses().unwrap();
-    assert!(addrs.iter().find(|(a, _)| *a == addr).is_some());
+    assert!(addrs.iter().any(|(a, _)| *a == addr));
 
     let deal_1 = Deal::from_str("Deal:Cke4ftrP5A7MgLMaQZLZUMTC6TfkqUKBu1LQM2fvVdFMNR4gmBqNCsR11111uMFuZTAsNgpdK8DiK11111TB9zym113GTvtvqfD1111114A4TTF4h53Tv4MR6eS9sdDxV5JCH9xZcKejCqKShnphqndeeD11111111111111111111111111111111111111111AfZ113XRBtrLeA3t").unwrap();
     let deal_2 = Deal::from_str("Deal:Cke4ftrP5A7Km9Kmc2UDBePio1p7wM56P1LQM2fvVdFMNR4gmBqNCsR11111uMFuZTAsNgpdK8DiK11111TB9zym113GTvtvqfD1111114A4TTF4h53Tv4MR6eS9sdDxV5JCH9xZcKejCqKShnphqndeeD11111111111111111111111111111111111111111AfZ113XRBuLWyw3M").unwrap();
 
     database
-        .set_deal_status(&deal_1, &DealStatus::Open)
+        .set_deal(
+            &deal_1,
+            &DealValue {
+                status: DealStatus::Open,
+                local_trade_role: TradeRole::Taker,
+            },
+        )
         .unwrap();
     let deals_retrieved = database.get_deals(DealStatusSelector::All).unwrap();
     assert_eq!(deal_1, deals_retrieved[0].deal);
@@ -749,28 +780,50 @@ fn test_lmdb_state() {
     assert_eq!(deal_1, deals_retrieved[0].deal);
 
     database
-        .set_deal_status(&deal_1, &DealStatus::InProgress)
+        .set_deal(
+            &deal_1,
+            &DealValue {
+                status: DealStatus::InProgress,
+                local_trade_role: TradeRole::Maker,
+            },
+        )
         .unwrap();
     let deals_retrieved = database.get_deals(DealStatusSelector::InProgress).unwrap();
     assert_eq!(deal_1, deals_retrieved[0].deal);
 
     database
-        .set_deal_status(&deal_1, &DealStatus::Ended(Outcome::SuccessSwap))
+        .set_deal(
+            &deal_1,
+            &DealValue {
+                status: DealStatus::Ended(Outcome::SuccessSwap),
+                local_trade_role: TradeRole::Maker,
+            },
+        )
         .unwrap();
     let deals_retrieved = database.get_deals(DealStatusSelector::Ended).unwrap();
     assert_eq!(deal_1, deals_retrieved[0].deal);
 
     database
-        .set_deal_status(&deal_2, &DealStatus::Open)
+        .set_deal(
+            &deal_2,
+            &DealValue {
+                status: DealStatus::Open,
+                local_trade_role: TradeRole::Maker,
+            },
+        )
         .unwrap();
     let deals_retrieved = database.get_deals(DealStatusSelector::All).unwrap();
-    let status_1 = DealStatusPair {
+    let status_1 = DealInfo {
+        serialized_deal: deal_1.to_string(),
         deal: deal_1,
         status: DealStatus::Ended(Outcome::SuccessSwap),
+        local_trade_role: TradeRole::Maker,
     };
-    let status_2 = DealStatusPair {
+    let status_2 = DealInfo {
+        serialized_deal: deal_2.to_string(),
         deal: deal_2,
         status: DealStatus::Open,
+        local_trade_role: TradeRole::Maker,
     };
     assert!(deals_retrieved.len() == 2);
     assert!(deals_retrieved.contains(&status_1));

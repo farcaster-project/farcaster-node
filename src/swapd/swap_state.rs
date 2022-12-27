@@ -12,6 +12,7 @@ use farcaster_core::{
     transaction::TxLabel,
 };
 use microservices::esb::Handler;
+use monero::ViewPair;
 use strict_encoding::{StrictDecode, StrictEncode};
 
 use crate::{
@@ -937,7 +938,7 @@ fn try_bob_fee_estimated_to_bob_funded(
                 "Received AddressTransaction, processing tx {}",
                 &tx.txid().tx_hash()
             ));
-            log_tx_seen(runtime.swap_id, &TxLabel::Funding, &tx.txid());
+            log_tx_seen(runtime.swap_id, &TxLabel::Funding, &tx.txid().into());
             runtime.syncer_state.awaiting_funding = false;
             // If the bitcoin amount does not match the expected funding amount, abort the swap
             let amount = bitcoin::Amount::from_sat(*amount);
@@ -1040,17 +1041,16 @@ fn try_bob_funded_to_bob_refund_procedure_signature(
                 (&local_params, &remote_params)
             {
                 let (spend, view) = aggregate_xmr_spend_view(alice_params, bob_params);
+                let address = monero::Address::from_viewpair(
+                    runtime.syncer_state.network.into(),
+                    &ViewPair { spend, view },
+                );
                 let txlabel = TxLabel::AccLock;
                 let task = runtime.syncer_state.watch_addr_xmr(
                     spend,
                     view,
                     txlabel,
-                    runtime.acc_lock_height_lower_bound.unwrap_or_else(|| {
-                        runtime.temporal_safety.block_height_reorg_lower_bound(
-                            Blockchain::Monero,
-                            runtime.syncer_state.height(Blockchain::Monero),
-                        )
-                    }),
+                    runtime.acc_lock_height_lower_bound,
                 );
                 event
                     .send_sync_service(runtime.syncer_state.monero_syncer(), SyncMsg::Task(task))?
@@ -1127,7 +1127,7 @@ fn try_bob_refund_procedure_signatures_to_bob_accordant_lock(
             }
             if let Some(tx_label) = runtime.syncer_state.tasks.watched_addrs.remove(id) {
                 let abort_task = runtime.syncer_state.abort_task(*id);
-                let watch_tx = runtime.syncer_state.watch_tx_xmr(hash.clone(), tx_label);
+                let watch_tx = runtime.syncer_state.watch_tx_xmr(*hash, tx_label);
                 event.send_sync_service(
                     runtime.syncer_state.monero_syncer(),
                     SyncMsg::Task(watch_tx),
@@ -1220,7 +1220,7 @@ fn try_bob_accordant_lock_final_to_bob_buy_final(
                 .txids
                 .remove_entry(&TxLabel::Buy)
                 .unwrap();
-            let task = runtime.syncer_state.retrieve_tx_btc(txid, txlabel);
+            let task = runtime.syncer_state.retrieve_tx_btc(txid.into(), txlabel);
             event.send_sync_service(runtime.syncer_state.bitcoin_syncer(), SyncMsg::Task(task))?;
             Ok(Some(SwapStateMachine::BobAccordantLockFinal(
                 BobAccordantLockFinal {
@@ -1235,10 +1235,10 @@ fn try_bob_accordant_lock_final_to_bob_buy_final(
             tx: Some(tx),
         }))) if matches!(
             runtime.syncer_state.tasks.retrieving_txs.remove(&id),
-            Some((TxLabel::Buy, _))
+            Some(TxLabel::Buy)
         ) =>
         {
-            log_tx_seen(runtime.swap_id, &TxLabel::Buy, &tx.txid());
+            log_tx_seen(runtime.swap_id, &TxLabel::Buy, &tx.txid().into());
             let sweep_xmr = wallet.process_buy_tx(
                 tx,
                 event.endpoints,
@@ -1530,7 +1530,7 @@ fn try_alice_core_arbitrating_setup_to_alice_arbitrating_lock_final(
                             runtime.syncer_state.height(Blockchain::Monero),
                         ));
                 }
-                let viewpair = monero::ViewPair { spend, view };
+                let viewpair = ViewPair { spend, view };
                 let address =
                     monero::Address::from_viewpair(runtime.syncer_state.network.into(), &viewpair);
                 let swap_id = runtime.swap_id();
@@ -1542,7 +1542,7 @@ fn try_alice_core_arbitrating_setup_to_alice_arbitrating_lock_final(
                 };
                 let txlabel = TxLabel::AccLock;
                 let watch_addr_task = runtime.syncer_state.watch_addr_xmr(
-                    spend,
+                    address,
                     view,
                     txlabel,
                     runtime.acc_lock_height_lower_bound.unwrap_or_else(|| {
@@ -1654,7 +1654,7 @@ fn try_alice_arbitrating_lock_final_to_alice_accordant_lock(
                 id, hash, amount, block, tx
             ));
             let txlabel = TxLabel::AccLock;
-            let task = runtime.syncer_state.watch_tx_xmr(hash.clone(), txlabel);
+            let task = runtime.syncer_state.watch_tx_xmr(*hash, txlabel);
             if runtime.syncer_state.awaiting_funding {
                 event.send_ctl_service(
                     ServiceId::Farcasterd,
@@ -1843,7 +1843,7 @@ fn try_alice_canceled_to_alice_refund_or_alice_punish(
                         .txids
                         .remove_entry(&TxLabel::Refund)
                         .unwrap();
-                    let task = runtime.syncer_state.retrieve_tx_btc(txid, txlabel);
+                    let task = runtime.syncer_state.retrieve_tx_btc(txid.into(), txlabel);
                     event.send_sync_service(
                         runtime.syncer_state.bitcoin_syncer(),
                         SyncMsg::Task(task),
@@ -1924,16 +1924,16 @@ fn try_alice_canceled_to_alice_refund_or_alice_punish(
             tx: Some(ref tx),
         }))) if matches!(
             runtime.syncer_state.tasks.retrieving_txs.get(&id),
-            Some((TxLabel::Refund, _))
+            Some(TxLabel::Refund)
         ) =>
         {
-            let (txlabel, _) = runtime
+            let txlabel = runtime
                 .syncer_state
                 .tasks
                 .retrieving_txs
                 .remove(&id)
                 .unwrap();
-            log_tx_seen(runtime.swap_id, &txlabel, &tx.txid());
+            log_tx_seen(runtime.swap_id, &txlabel, &tx.txid().into());
             let sweep_xmr = wallet.process_refund_tx(
                 event.endpoints,
                 tx.clone(),

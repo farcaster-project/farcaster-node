@@ -88,8 +88,7 @@ async fn swap_taker_reconnects() {
 
     // run until bob has the btc funding address
     let (_, _) =
-        retry_until_bitcoin_funding_address(swap_id.clone(), cli_bob_needs_funding_args.clone())
-            .await;
+        retry_until_bitcoin_funding_address(swap_id, cli_bob_needs_funding_args.clone()).await;
 
     let (_, _, swap_id) = make_and_take_deal_with_reconnect(
         data_dir_maker.clone(),
@@ -108,8 +107,7 @@ async fn swap_taker_reconnects() {
 
     // run until bob has the btc funding address
     let (_, _) =
-        retry_until_bitcoin_funding_address(swap_id.clone(), cli_bob_needs_funding_args.clone())
-            .await;
+        retry_until_bitcoin_funding_address(swap_id, cli_bob_needs_funding_args.clone()).await;
 
     kill_all();
 }
@@ -246,10 +244,6 @@ async fn swap_bob_maker_user_abort_sweep_btc() {
     .await;
 
     kill_all();
-}
-
-pub mod farcaster {
-    tonic::include_proto!("farcaster");
 }
 
 #[tokio::test]
@@ -857,7 +851,7 @@ async fn run_restore_alice_pre_lock(
 
     // run until the funding infos are cleared again
     info!("waiting for the monero funding info to clear");
-    retry_until_funding_info_cleared(swap_id.clone(), cli_alice_needs_funding_args.clone()).await;
+    retry_until_funding_info_cleared(swap_id, cli_alice_needs_funding_args.clone()).await;
 
     // generate some monero blocks to finalize the monero acc lock tx
     monero_regtest
@@ -2116,12 +2110,10 @@ async fn make_and_revoke_deal(
     // get deal string
     let deal = retry_until_deal(maker_info_args.clone()).await;
     revoke_deal(deal[0].clone(), data_dir_maker);
-
-    assert!(get_info(maker_info_args)
+    assert!(!get_info(maker_info_args)
         .deals
         .iter()
-        .find(|o| format!("{}", o) == deal[0].clone())
-        .is_none());
+        .any(|o| format!("{}", o) == deal[0].clone()));
 }
 
 async fn make_and_take_deal(
@@ -2554,8 +2546,7 @@ async fn run_swap_bob_maker_manual_bitcoin_sweep(
 
     // run until bob has the btc funding address
     let (address, amount) =
-        retry_until_bitcoin_funding_address(swap_id.clone(), cli_bob_needs_funding_args.clone())
-            .await;
+        retry_until_bitcoin_funding_address(swap_id, cli_bob_needs_funding_args.clone()).await;
 
     cleanup_processes(vec![farcasterd_taker]);
 
@@ -2759,9 +2750,8 @@ async fn run_swap(
     monero_dest_wallet_name: String,
     execution_mutex: Arc<Mutex<u8>>,
 ) {
-    let cli_alice_progress_args: Vec<String> =
-        progress_args(data_dir_alice.clone(), swap_id.clone());
-    let cli_bob_progress_args: Vec<String> = progress_args(data_dir_bob.clone(), swap_id.clone());
+    let cli_alice_progress_args: Vec<String> = progress_args(data_dir_alice.clone(), swap_id);
+    let cli_bob_progress_args: Vec<String> = progress_args(data_dir_bob.clone(), swap_id);
     let cli_bob_needs_funding_args: Vec<String> =
         needs_funding_args(data_dir_bob, "bitcoin".to_string());
     let cli_alice_needs_funding_args: Vec<String> =
@@ -2775,8 +2765,7 @@ async fn run_swap(
 
     // run until bob has the btc funding address
     let (address, amount) =
-        retry_until_bitcoin_funding_address(swap_id.clone(), cli_bob_needs_funding_args.clone())
-            .await;
+        retry_until_bitcoin_funding_address(swap_id, cli_bob_needs_funding_args.clone()).await;
 
     // fund the bitcoin address
     bitcoin_rpc
@@ -2800,7 +2789,7 @@ async fn run_swap(
 
     // run until the funding infos are cleared again
     info!("waiting for the bitcoin funding info to clear");
-    retry_until_funding_info_cleared(swap_id.clone(), cli_bob_needs_funding_args.clone()).await;
+    retry_until_funding_info_cleared(swap_id, cli_bob_needs_funding_args.clone()).await;
 
     tokio::time::sleep(time::Duration::from_secs(10)).await;
 
@@ -2816,7 +2805,7 @@ async fn run_swap(
 
     // run until the funding infos are cleared again
     info!("waiting for the monero funding info to clear");
-    retry_until_funding_info_cleared(swap_id.clone(), cli_alice_needs_funding_args.clone()).await;
+    retry_until_funding_info_cleared(swap_id, cli_alice_needs_funding_args.clone()).await;
 
     // generate some monero blocks to finalize the monero acc lock tx
     monero_regtest
@@ -2919,7 +2908,7 @@ fn kill_connected_peerd() {
         proc[1]
     };
     nix::sys::signal::kill(
-        nix::unistd::Pid::from_raw(peerd_proc.pid().into()),
+        nix::unistd::Pid::from_raw(peerd_proc.pid()),
         nix::sys::signal::Signal::SIGINT,
     )
     .expect("Sending CTR-C to peerd failed");
@@ -3255,7 +3244,7 @@ async fn retry_until_funding_info_cleared(swap_id: SwapId, args: Vec<String>) {
     for _ in 0..ALLOWED_RETRIES {
         let (stdout, _stderr) = run("../swap-cli", args.clone()).unwrap();
 
-        let funding_infos: Vec<FundingInfo> = cli_output_to_funding_infos(stdout)
+        if cli_output_to_funding_infos(stdout)
             .swaps_need_funding
             .iter()
             .filter_map(|f| match f {
@@ -3274,11 +3263,12 @@ async fn retry_until_funding_info_cleared(swap_id: SwapId, args: Vec<String>) {
                     }
                 }
             })
-            .collect();
-
-        if funding_infos.is_empty() {
+            .next()
+            .is_none()
+        {
             return;
         }
+
         tokio::time::sleep(time::Duration::from_secs(1)).await;
     }
     panic!("timeout before any bitcoin funding address could be retrieved");
@@ -3336,11 +3326,7 @@ async fn retry_until_bob_finish_state_transition(
         let progress = output_to_progress(stdout);
         if progress.progress.iter().any(|v| {
             if let ProgressEvent::StateTransition(StateTransition { new_state, .. }) = v {
-                if new_state.state.contains(&finish_state) {
-                    true
-                } else {
-                    false
-                }
+                new_state.state.contains(&finish_state)
             } else {
                 false
             }
@@ -3391,11 +3377,7 @@ async fn retry_until_finish_transition(args: Vec<String>, finish_state: String) 
         let progress = output_to_progress(stdout);
         if progress.progress.iter().any(|v| {
             if let ProgressEvent::StateTransition(StateTransition { new_state, .. }) = v {
-                if new_state.state.contains(&finish_state) {
-                    true
-                } else {
-                    false
-                }
+                new_state.state.contains(&finish_state)
             } else {
                 false
             }

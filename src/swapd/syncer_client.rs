@@ -10,12 +10,12 @@ use crate::{
     syncerd::{
         Abort, AddressAddendum, Boolean, BroadcastTransaction, BtcAddressAddendum, GetTx,
         SweepAddress, SweepAddressAddendum, SweepBitcoinAddress, SweepMoneroAddress, TaskTarget,
-        TransactionBroadcasted, TxFilter, WatchAddress, WatchEstimateFee, WatchHeight,
+        TransactionBroadcasted, TxFilter, Txid, WatchAddress, WatchEstimateFee, WatchHeight,
         WatchTransaction, XmrAddressAddendum,
     },
     Error,
 };
-use bitcoin::{consensus::Decodable, Txid};
+use bitcoin::consensus::Decodable;
 use farcaster_core::{blockchain::Blockchain, swap::SwapId, transaction::TxLabel};
 use std::collections::HashMap;
 
@@ -31,11 +31,11 @@ pub struct SyncerTasks {
     pub watched_txs: HashMap<TaskId, TxLabel>,
     pub final_txs: HashMap<TxLabel, bool>,
     pub watched_addrs: HashMap<TaskId, TxLabel>,
-    pub retrieving_txs: HashMap<TaskId, (TxLabel, Task)>,
+    pub retrieving_txs: HashMap<TaskId, TxLabel>,
     pub broadcasting_txs: HashMap<TaskId, TxLabel>,
     pub sweeping_addr: Option<TaskId>,
     // external address: needed to subscribe for buy (bob) or refund (alice) address_txs
-    pub txids: HashMap<TxLabel, Txid>,
+    pub txids: HashMap<TxLabel, bitcoin::Txid>,
     pub tasks: HashMap<TaskId, Task>,
 }
 
@@ -113,7 +113,7 @@ impl SyncerState {
         task
     }
 
-    pub fn watch_tx_btc(&mut self, txid: Txid, tx_label: TxLabel) -> Task {
+    pub fn watch_tx_btc(&mut self, txid: bitcoin::Txid, tx_label: TxLabel) -> Task {
         if self.is_watched_tx(&tx_label) {
             warn!(
                 "{} | Already watching for tx with label {} - notifications will be repeated",
@@ -133,7 +133,7 @@ impl SyncerState {
         let task = Task::WatchTransaction(WatchTransaction {
             id,
             lifetime: self.task_lifetime(Blockchain::Bitcoin),
-            hash: txid.to_vec(),
+            hash: txid.into(),
             confirmation_bound: self.confirmation_bound,
         });
         self.tasks.tasks.insert(id, task.clone());
@@ -142,7 +142,7 @@ impl SyncerState {
     pub fn is_watched_tx(&self, tx_label: &TxLabel) -> bool {
         self.tasks.watched_txs.values().any(|tx| tx == tx_label)
     }
-    pub fn watch_tx_xmr(&mut self, hash: Vec<u8>, tx_label: TxLabel) -> Task {
+    pub fn watch_tx_xmr(&mut self, hash: Txid, tx_label: TxLabel) -> Task {
         if self.is_watched_tx(&tx_label) {
             warn!(
                 "{} | Already watching for tx with label {} - notifications will be repeated",
@@ -156,9 +156,9 @@ impl SyncerState {
             "{} | Watching {} transaction ({})",
             self.swap_id.swap_id(),
             tx_label.label(),
-            hex::encode(&hash).tx_hash(),
+            hash,
         );
-        debug!("Watching transaction {} with {}", hex::encode(&hash), id);
+        debug!("Watching transaction {} with {}", hash, id);
         let task = Task::WatchTransaction(WatchTransaction {
             id,
             lifetime: self.task_lifetime(Blockchain::Monero),
@@ -170,13 +170,8 @@ impl SyncerState {
     }
     pub fn retrieve_tx_btc(&mut self, txid: Txid, tx_label: TxLabel) -> Task {
         let id = self.tasks.new_taskid();
-        let task = Task::GetTx(GetTx {
-            id,
-            hash: txid.to_vec(),
-        });
-        self.tasks
-            .retrieving_txs
-            .insert(id, (tx_label, task.clone()));
+        let task = Task::GetTx(GetTx { id, hash: txid });
+        self.tasks.retrieving_txs.insert(id, tx_label);
         self.tasks.tasks.insert(id, task.clone());
         task
     }
@@ -221,20 +216,22 @@ impl SyncerState {
     /// Watches an xmr address from provided height.
     pub fn watch_addr_xmr(
         &mut self,
-        spend: monero::PublicKey,
+        address: monero::Address,
         view: monero::PrivateKey,
         tx_label: TxLabel,
         from_height: u64,
     ) -> Task {
         if self.is_watched_addr(&tx_label) {
             warn!(
-                "{} | Address already watched for {} - notifications will be repeated",
+                "{} | Address {} already watched for {} - notifications will be repeated",
+                address,
                 self.swap_id.swap_id(),
                 tx_label.label()
             );
         }
         debug!(
-            "{} | Address's secret view key for {}: {}",
+            "{} | Address {} secret view key for {}: {}",
+            address,
             self.swap_id.bright_blue_italic(),
             tx_label.bright_white_bold(),
             view.bright_white_italic()
@@ -248,7 +245,7 @@ impl SyncerState {
         let viewpair = monero::ViewPair { spend, view };
         let address = monero::Address::from_viewpair(self.network.into(), &viewpair);
         let addendum = XmrAddressAddendum {
-            spend_key: spend,
+            address,
             view_key: view,
             from_height,
         };
@@ -381,7 +378,7 @@ impl SyncerState {
                             broadcast_tx.tx.clone(),
                         ))
                         .ok()?,
-                        label.clone(),
+                        *label,
                     ))
                 } else {
                     None
@@ -449,17 +446,18 @@ impl SyncerState {
                     }
                     None => {
                         if let Some(tx) = self.broadcasted_txs.get(&txlabel) {
+                            let tx = tx.clone();
                             warn!("{} | Tx {} was re-orged or dropped from the mempool. Re-broadcasting tx", swapid.swap_id(), txlabel.label());
-                            let task = self.broadcast(tx.clone(), txlabel.clone());
-                            if let Err(_) = endpoints.send_to(
+                            let task = self.broadcast(tx, txlabel);
+                            if let Err(err) = endpoints.send_to(
                                 ServiceBus::Sync,
                                 ServiceId::Swap(self.swap_id),
                                 self.bitcoin_syncer(),
                                 BusMsg::Sync(SyncMsg::Task(task)),
                             ) {
                                 error!(
-                                    "{} | failed to send task for re-broadcasting {} transaction",
-                                    swapid, txlabel
+                                    "{} | failed to send task for re-broadcasting {} transaction: {}",
+                                    swapid, txlabel, err
                                 );
                             }
                         }

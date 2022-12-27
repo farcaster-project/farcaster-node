@@ -127,7 +127,7 @@ impl Config {
         } else {
             format!("{}:{}", FARCASTER_BIND_IP, FARCASTER_BIND_PORT)
         };
-        InetSocketAddr::from_str(&addr).map_err(|e| Error::Farcaster(e.to_string()))
+        Ok(InetSocketAddr::from_str(&addr)?)
     }
 
     /// Returns a syncer configuration, if found in config, for the specified network
@@ -153,18 +153,22 @@ impl Config {
                         .bitcoin
                         .get_for_network(network)
                         .or_else(|| ArbConfig::get(arb, network))
-                        .ok_or(config::ConfigError::Message(
-                            "No configuration nor defaults founds!".to_string(),
-                        ))?,
+                        .ok_or_else(|| {
+                            config::ConfigError::Message(
+                                "No configuration nor defaults founds!".to_string(),
+                            )
+                        })?,
                 };
                 let accordant = match acc {
                     AccordantBlockchain::Monero => swap
                         .monero
                         .get_for_network(network)
                         .or_else(|| AccConfig::get(acc, network))
-                        .ok_or(config::ConfigError::Message(
-                            "No configuration nor defaults founds!".to_string(),
-                        ))?,
+                        .ok_or_else(|| {
+                            config::ConfigError::Message(
+                                "No configuration nor defaults founds!".to_string(),
+                            )
+                        })?,
                 };
                 Ok(ParsedSwapConfig {
                     arbitrating,
@@ -172,12 +176,12 @@ impl Config {
                 })
             }
             None => {
-                let arbitrating = ArbConfig::get(arb, network).ok_or(
-                    config::ConfigError::Message("No defaults founds!".to_string()),
-                )?;
-                let accordant = AccConfig::get(acc, network).ok_or(
-                    config::ConfigError::Message("No defaults founds!".to_string()),
-                )?;
+                let arbitrating = ArbConfig::get(arb, network).ok_or_else(|| {
+                    config::ConfigError::Message("No defaults founds!".to_string())
+                })?;
+                let accordant = AccConfig::get(acc, network).ok_or_else(|| {
+                    config::ConfigError::Message("No defaults founds!".to_string())
+                })?;
                 Ok(ParsedSwapConfig {
                     arbitrating,
                     accordant,

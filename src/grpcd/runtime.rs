@@ -12,6 +12,7 @@ use crate::bus::info::Address;
 use crate::bus::info::DealStatusSelector;
 use crate::bus::info::ProgressEvent;
 use crate::bus::AddressSecretKey;
+use crate::bus::DealStatus;
 use crate::bus::Failure;
 use crate::bus::HealthCheckSelector;
 use crate::bus::OptionDetails;
@@ -19,6 +20,7 @@ use crate::bus::Outcome;
 use crate::grpcd::runtime::farcaster::NetworkSelector;
 use crate::service::Endpoints;
 use crate::swapd::StateReport;
+use crate::syncerd::Health;
 use crate::syncerd::SweepAddressAddendum;
 use crate::syncerd::SweepBitcoinAddress;
 use crate::syncerd::SweepMoneroAddress;
@@ -59,6 +61,7 @@ use tonic::{transport::Server, Request as GrpcRequest, Response as GrpcResponse,
 
 use self::farcaster::*;
 
+#[allow(clippy::all)]
 pub mod farcaster {
     tonic::include_proto!("farcaster");
 }
@@ -142,10 +145,10 @@ impl From<Blockchain> for farcaster::Blockchain {
 impl From<farcaster::DealSelector> for DealStatusSelector {
     fn from(t: farcaster::DealSelector) -> DealStatusSelector {
         match t {
-            farcaster::DealSelector::All => DealStatusSelector::All,
-            farcaster::DealSelector::Open => DealStatusSelector::Open,
-            farcaster::DealSelector::InProgress => DealStatusSelector::InProgress,
-            farcaster::DealSelector::Ended => DealStatusSelector::Ended,
+            farcaster::DealSelector::AllDeals => DealStatusSelector::All,
+            farcaster::DealSelector::OpenDeals => DealStatusSelector::Open,
+            farcaster::DealSelector::InProgressDeals => DealStatusSelector::InProgress,
+            farcaster::DealSelector::EndedDeals => DealStatusSelector::Ended,
         }
     }
 }
@@ -178,9 +181,9 @@ impl From<Outcome> for farcaster::Outcome {
     }
 }
 
-impl From<Deal> for DealInfo {
-    fn from(deal: Deal) -> DealInfo {
-        DealInfo {
+impl From<Deal> for DeserializedDeal {
+    fn from(deal: Deal) -> DeserializedDeal {
+        DeserializedDeal {
             arbitrating_amount: deal.parameters.arbitrating_amount.as_sat(),
             accordant_amount: deal.parameters.accordant_amount.as_pico(),
             cancel_timelock: deal.parameters.cancel_timelock.as_u32(),
@@ -197,7 +200,33 @@ impl From<Deal> for DealInfo {
                 .into(),
             node_id: deal.node_id.to_string(),
             peer_address: deal.peer_address.to_string(),
-            encoded_deal: deal.to_string(),
+        }
+    }
+}
+
+impl From<DealStatus> for farcaster::DealStatus {
+    fn from(t: DealStatus) -> farcaster::DealStatus {
+        match t {
+            DealStatus::Open => farcaster::DealStatus::DealOpen,
+            DealStatus::InProgress => farcaster::DealStatus::DealInProgress,
+            DealStatus::Revoked => farcaster::DealStatus::DealRevoked,
+            DealStatus::Ended(outcome) => match outcome {
+                Outcome::SuccessSwap => farcaster::DealStatus::DealEndedSuccessSwap,
+                Outcome::FailureAbort => farcaster::DealStatus::DealEndedFailureAbort,
+                Outcome::FailurePunish => farcaster::DealStatus::DealEndedFailurePunish,
+                Outcome::FailureRefund => farcaster::DealStatus::DealEndedFailureRefund,
+            },
+        }
+    }
+}
+
+impl DealInfo {
+    fn new(deal: Deal, local_trade_role: TradeRole, status: DealStatus) -> DealInfo {
+        DealInfo {
+            serialized_deal: deal.to_string(),
+            deserialized_deal: Some(deal.into()),
+            local_trade_role: farcaster::TradeRole::from(local_trade_role).into(),
+            deal_status: farcaster::DealStatus::from(status).into(),
         }
     }
 }
@@ -291,6 +320,24 @@ impl FarcasterService {
         pending_requests.insert(id, oneshot_tx);
         drop(pending_requests);
         Ok(oneshot_rx)
+    }
+
+    async fn check_health(
+        &self,
+        blockchain: Blockchain,
+        network: Network,
+    ) -> Result<Health, Status> {
+        let oneshot_rx = self
+            .process_request(BusMsg::Bridge(BridgeMsg::Ctl {
+                request: CtlMsg::HealthCheck(blockchain, network),
+                service_id: ServiceId::Farcasterd,
+            }))
+            .await?;
+
+        match oneshot_rx.await {
+            Ok(BusMsg::Ctl(CtlMsg::HealthResult(health))) => Ok(health),
+            _ => Err(Status::internal("Error during health check".to_string())),
+        }
     }
 }
 
@@ -398,7 +445,11 @@ impl Farcaster for FarcasterService {
                     connected,
                     uptime: uptime.as_secs(),
                     since,
-                    deal: Some(deal.into()),
+                    deal: Some(DealInfo::new(
+                        deal,
+                        local_trade_role,
+                        DealStatus::InProgress,
+                    )),
                     trade_role: farcaster::TradeRole::from(local_trade_role).into(),
                     swap_role: farcaster::SwapRole::from(local_swap_role).into(),
                     connected_counterparty_node_id: connected_counterparty_node_id
@@ -442,17 +493,20 @@ impl Farcaster for FarcasterService {
                         .drain(..)
                         .filter(|d| {
                             network_selector == NetworkSelector::AllNetworks
-                                || Some(d.details.parameters.network) == network_selector.into()
+                                || Some(d.deal.parameters.network) == network_selector.into()
                         })
-                        .map(|d| DealInfo::from(d.details))
+                        .map(|d| DealInfo::new(d.deal, d.local_trade_role, d.status))
                         .collect(),
                 };
                 Ok(GrpcResponse::new(reply))
             }
-            Ok(BusMsg::Info(InfoMsg::DealStatusList(mut deals))) => {
+            Ok(BusMsg::Info(InfoMsg::DealInfoList(mut deals))) => {
                 let reply = ListDealsResponse {
                     id,
-                    deals: deals.drain(..).map(|d| DealInfo::from(d.deal)).collect(),
+                    deals: deals
+                        .drain(..)
+                        .map(|d| DealInfo::new(d.deal, d.local_trade_role, d.status))
+                        .collect(),
                 };
                 Ok(GrpcResponse::new(reply))
             }
@@ -476,7 +530,8 @@ impl Farcaster for FarcasterService {
 
         let reply = DealInfoResponse {
             id,
-            deal_info: Some(deal.into()),
+            deal: deal.to_string(),
+            deserialized_deal: Some(deal.into()),
         };
         Ok(GrpcResponse::new(reply))
     }
@@ -547,7 +602,11 @@ impl Farcaster for FarcasterService {
                         })
                         .map(|entry| farcaster::CheckpointEntry {
                             swap_id: entry.swap_id.to_string(),
-                            deal: Some(entry.deal.clone().into()),
+                            deal: Some(DealInfo::new(
+                                entry.deal.clone(),
+                                entry.trade_role,
+                                DealStatus::InProgress,
+                            )),
                             trade_role: farcaster::TradeRole::from(entry.trade_role) as i32,
                         })
                         .collect(),
@@ -766,7 +825,8 @@ impl Farcaster for FarcasterService {
             Ok(BusMsg::Info(InfoMsg::MadeDeal(made_deal))) => {
                 let reply = farcaster::MakeResponse {
                     id,
-                    deal: Some(made_deal.deal_info.details.into()),
+                    deal: made_deal.viewable_deal.deal,
+                    deserialized_deal: Some(made_deal.viewable_deal.details.into()),
                 };
                 Ok(GrpcResponse::new(reply))
             }
@@ -987,33 +1047,9 @@ impl Farcaster for FarcasterService {
 
         match selector {
             HealthCheckSelector::Network(network) => {
-                let oneshot_rx = self
-                    .process_request(BusMsg::Bridge(BridgeMsg::Ctl {
-                        request: CtlMsg::HealthCheck(Blockchain::Bitcoin, network),
-                        service_id: ServiceId::Farcasterd,
-                    }))
-                    .await?;
+                let bitcoin_health = self.check_health(Blockchain::Bitcoin, network).await?;
+                let monero_health = self.check_health(Blockchain::Monero, network).await?;
 
-                let bitcoin_health = match oneshot_rx.await {
-                    Ok(BusMsg::Ctl(CtlMsg::HealthResult(health))) => health,
-                    _ => {
-                        return Err(Status::internal("Error during health check".to_string()));
-                    }
-                };
-
-                let oneshot_rx = self
-                    .process_request(BusMsg::Bridge(BridgeMsg::Ctl {
-                        request: CtlMsg::HealthCheck(Blockchain::Monero, network),
-                        service_id: ServiceId::Farcasterd,
-                    }))
-                    .await?;
-
-                let monero_health = match oneshot_rx.await {
-                    Ok(BusMsg::Ctl(CtlMsg::HealthResult(health))) => health,
-                    _ => {
-                        return Err(Status::internal("Error during health check".to_string()));
-                    }
-                };
                 Ok(GrpcResponse::new(HealthCheckResponse {
                     id,
                     health_report: Some(
@@ -1027,89 +1063,24 @@ impl Farcaster for FarcasterService {
                 }))
             }
             HealthCheckSelector::All => {
-                let oneshot_rx = self
-                    .process_request(BusMsg::Bridge(BridgeMsg::Ctl {
-                        request: CtlMsg::HealthCheck(Blockchain::Bitcoin, Network::Testnet),
-                        service_id: ServiceId::Farcasterd,
-                    }))
+                let bitcoin_testnet_health = self
+                    .check_health(Blockchain::Bitcoin, Network::Testnet)
                     .await?;
-
-                let bitcoin_testnet_health = match oneshot_rx.await {
-                    Ok(BusMsg::Ctl(CtlMsg::HealthResult(health))) => health,
-                    _ => {
-                        return Err(Status::internal("Error during health check".to_string()));
-                    }
-                };
-
-                let oneshot_rx = self
-                    .process_request(BusMsg::Bridge(BridgeMsg::Ctl {
-                        request: CtlMsg::HealthCheck(Blockchain::Bitcoin, Network::Mainnet),
-                        service_id: ServiceId::Farcasterd,
-                    }))
+                let bitcoin_mainnet_health = self
+                    .check_health(Blockchain::Bitcoin, Network::Mainnet)
                     .await?;
-
-                let bitcoin_mainnet_health = match oneshot_rx.await {
-                    Ok(BusMsg::Ctl(CtlMsg::HealthResult(health))) => health,
-                    _ => {
-                        return Err(Status::internal("Error during health check".to_string()));
-                    }
-                };
-
-                let oneshot_rx = self
-                    .process_request(BusMsg::Bridge(BridgeMsg::Ctl {
-                        request: CtlMsg::HealthCheck(Blockchain::Bitcoin, Network::Local),
-                        service_id: ServiceId::Farcasterd,
-                    }))
+                let bitcoin_local_health = self
+                    .check_health(Blockchain::Bitcoin, Network::Local)
                     .await?;
-
-                let bitcoin_local_health = match oneshot_rx.await {
-                    Ok(BusMsg::Ctl(CtlMsg::HealthResult(health))) => health,
-                    _ => {
-                        return Err(Status::internal("Error during health check".to_string()));
-                    }
-                };
-
-                let oneshot_rx = self
-                    .process_request(BusMsg::Bridge(BridgeMsg::Ctl {
-                        request: CtlMsg::HealthCheck(Blockchain::Monero, Network::Testnet),
-                        service_id: ServiceId::Farcasterd,
-                    }))
+                let monero_testnet_health = self
+                    .check_health(Blockchain::Monero, Network::Testnet)
                     .await?;
-
-                let monero_testnet_health = match oneshot_rx.await {
-                    Ok(BusMsg::Ctl(CtlMsg::HealthResult(health))) => health,
-                    _ => {
-                        return Err(Status::internal("Error during health check".to_string()));
-                    }
-                };
-
-                let oneshot_rx = self
-                    .process_request(BusMsg::Bridge(BridgeMsg::Ctl {
-                        request: CtlMsg::HealthCheck(Blockchain::Monero, Network::Mainnet),
-                        service_id: ServiceId::Farcasterd,
-                    }))
+                let monero_mainnet_health = self
+                    .check_health(Blockchain::Monero, Network::Mainnet)
                     .await?;
-
-                let monero_mainnet_health = match oneshot_rx.await {
-                    Ok(BusMsg::Ctl(CtlMsg::HealthResult(health))) => health,
-                    _ => {
-                        return Err(Status::internal("Error during health check".to_string()));
-                    }
-                };
-
-                let oneshot_rx = self
-                    .process_request(BusMsg::Bridge(BridgeMsg::Ctl {
-                        request: CtlMsg::HealthCheck(Blockchain::Monero, Network::Local),
-                        service_id: ServiceId::Farcasterd,
-                    }))
+                let monero_local_health = self
+                    .check_health(Blockchain::Monero, Network::Local)
                     .await?;
-
-                let monero_local_health = match oneshot_rx.await {
-                    Ok(BusMsg::Ctl(CtlMsg::HealthResult(health))) => health,
-                    _ => {
-                        return Err(Status::internal("Error during health check".to_string()));
-                    }
-                };
 
                 Ok(GrpcResponse::new(HealthCheckResponse {
                     id,
@@ -1332,7 +1303,7 @@ fn request_loop(
                     "Error encountered while sending request to GRPC runtime: {}",
                     err
                 );
-                return Err(Error::Farcaster(err.to_string()));
+                return Err(err.into());
             }
         }
         Ok(())
@@ -1352,10 +1323,9 @@ fn response_loop(
                     if let Some(sender) = pending_requests.remove(&id) {
                         if let Err(err) = sender.send(request) {
                             error!(
-                                "Error encountered while sending response to Grpc server: {}",
+                                "Error {} encountered while sending response to Grpc server handle: The client probably disconnected.",
                                 err
                             );
-                            break;
                         }
                     } else {
                         error!("id {} not found in pending grpc requests", id);
@@ -1371,7 +1341,6 @@ fn response_loop(
                 }
             };
         }
-        Ok(())
     })
 }
 
@@ -1391,7 +1360,7 @@ fn server_loop(
             .await
         {
             error!("Error encountered while running grpc server: {}", err);
-            Err(Error::Farcaster(err.to_string()))
+            Err(err.into())
         } else {
             Ok(())
         }
@@ -1468,8 +1437,10 @@ impl GrpcServer {
     }
 }
 
+type IdBusMsgPair = (u64, BusMsg);
+
 pub fn run(config: ServiceConfig, grpc_port: u16, grpc_ip: String) -> Result<(), Error> {
-    let (tx_response, rx_response): (Sender<(u64, BusMsg)>, Receiver<(u64, BusMsg)>) =
+    let (tx_response, rx_response): (Sender<IdBusMsgPair>, Receiver<IdBusMsgPair>) =
         std::sync::mpsc::channel();
 
     let tx_request = ZMQ_CONTEXT.socket(zmq::PUSH)?;
@@ -1601,7 +1572,7 @@ impl Runtime {
             }) => endpoints.send_to(ServiceBus::Info, source, service_id, BusMsg::Info(request))?,
             BusMsg::Bridge(BridgeMsg::GrpcServerTerminated) => {
                 // Re-create the grpc server runtime.
-                let (tx_response, rx_response): (Sender<(u64, BusMsg)>, Receiver<(u64, BusMsg)>) =
+                let (tx_response, rx_response): (Sender<IdBusMsgPair>, Receiver<IdBusMsgPair>) =
                     std::sync::mpsc::channel();
 
                 let tx_request = ZMQ_CONTEXT.socket(zmq::PUSH)?;

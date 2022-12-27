@@ -16,6 +16,10 @@ use crate::service::LogStyle;
 use crate::syncerd::*;
 use hex;
 
+pub type BalanceServiceIdPair = (GetAddressBalance, ServiceId);
+pub type TransactionServiceIdPair = (BroadcastTransaction, ServiceId);
+pub type GetTxServiceIdPair = (GetTx, ServiceId);
+
 #[derive(Debug, Clone, Copy, Eq, PartialEq, PartialOrd, Hash, Display)]
 #[display(Debug)]
 pub struct InternalId(u32);
@@ -72,7 +76,7 @@ pub struct AddressTransactions {
 #[derive(Debug, Clone, PartialEq, Hash, Eq)]
 pub struct AddressTx {
     pub amount: u64,
-    pub tx_id: Vec<u8>,
+    pub tx_id: Txid,
     pub tx: Vec<u8>,
     pub incoming: bool,
 }
@@ -490,10 +494,10 @@ impl SyncerState {
                     }
                     // create events for new transactions
                     for new_tx in txs_diff {
-                        debug!("new tx seen: {}", hex::encode(&new_tx.tx_id));
+                        debug!("new tx seen: {}", new_tx.tx_id);
                         let address_transaction = AddressTransaction {
                             id: addr.task.id,
-                            hash: new_tx.tx_id.clone(),
+                            hash: new_tx.tx_id,
                             amount: new_tx.amount,
                             block: vec![], // eventually this should be removed from the event
                             tx: new_tx
@@ -533,7 +537,7 @@ impl SyncerState {
 
     pub async fn change_transaction(
         &mut self,
-        tx_id: Vec<u8>,
+        tx_id: Txid,
         block_hash: Option<Vec<u8>>,
         confirmations: Option<u32>,
         tx: Vec<u8>,
@@ -557,7 +561,7 @@ impl SyncerState {
             unseen_transactions: &mut HashSet<InternalId>,
             events: &mut Vec<(Event, ServiceId)>,
             tasks_sources: &mut HashMap<InternalId, ServiceId>,
-            tx_id: Vec<u8>,
+            tx_id: Txid,
             block_hash: Option<Vec<u8>>,
             confirmations: Option<u32>,
             tx: Vec<u8>,
@@ -620,7 +624,7 @@ impl SyncerState {
         send_event(&self.tx_event, &mut events).await;
     }
 
-    pub async fn success_sweep(&mut self, id: &InternalId, txids: Vec<Vec<u8>>) {
+    pub async fn success_sweep(&mut self, id: &InternalId, txids: Vec<Txid>) {
         if let Some(sweep_address) = self.sweep_addresses.get(id) {
             send_event(
                 &self.tx_event,
@@ -823,13 +827,13 @@ async fn syncer_state_transaction() {
     let transaction_task_one = WatchTransaction {
         id: TaskId(0),
         lifetime: 1,
-        hash: vec![0],
+        hash: monero::Hash::new(vec![0]).into(),
         confirmation_bound: 4,
     };
     let transaction_task_two = WatchTransaction {
         id: TaskId(0),
         lifetime: 3,
-        hash: vec![1],
+        hash: monero::Hash::new(vec![1]).into(),
         confirmation_bound: 4,
     };
     let height_task = WatchHeight {
@@ -854,7 +858,7 @@ async fn syncer_state_transaction() {
     assert!(event_rx.try_recv().is_err());
 
     state
-        .change_transaction(vec![0], none!(), none!(), none!())
+        .change_transaction(monero::Hash::new(vec![0]).into(), none!(), none!(), none!())
         .await;
     assert_eq!(state.lifetimes.len(), 3);
     assert_eq!(state.transactions.len(), 2);
@@ -863,7 +867,7 @@ async fn syncer_state_transaction() {
     assert!(event_rx.try_recv().is_ok());
 
     state
-        .change_transaction(vec![0], none!(), Some(0), none!())
+        .change_transaction(monero::Hash::new(vec![0]).into(), none!(), Some(0), none!())
         .await;
     assert_eq!(state.lifetimes.len(), 3);
     assert_eq!(state.transactions.len(), 2);
@@ -872,7 +876,7 @@ async fn syncer_state_transaction() {
     assert!(event_rx.try_recv().is_ok());
 
     state
-        .change_transaction(vec![0], none!(), Some(0), none!())
+        .change_transaction(monero::Hash::new(vec![0]).into(), none!(), Some(0), none!())
         .await;
     assert_eq!(state.lifetimes.len(), 3);
     assert_eq!(state.transactions.len(), 2);
@@ -881,7 +885,12 @@ async fn syncer_state_transaction() {
     assert!(event_rx.try_recv().is_err());
 
     state
-        .change_transaction(vec![0], Some(vec![1]), Some(1), none!())
+        .change_transaction(
+            monero::Hash::new(vec![0]).into(),
+            Some(vec![1]),
+            Some(1),
+            none!(),
+        )
         .await;
     assert_eq!(state.lifetimes.len(), 3);
     assert_eq!(state.transactions.len(), 2);
@@ -890,7 +899,12 @@ async fn syncer_state_transaction() {
     assert!(event_rx.try_recv().is_ok());
 
     state
-        .change_transaction(vec![0], Some(vec![1]), Some(1), none!())
+        .change_transaction(
+            monero::Hash::new(vec![0]).into(),
+            Some(vec![1]),
+            Some(1),
+            none!(),
+        )
         .await;
     assert_eq!(state.lifetimes.len(), 3);
     assert_eq!(state.transactions.len(), 2);
@@ -899,7 +913,7 @@ async fn syncer_state_transaction() {
     assert!(event_rx.try_recv().is_err());
 
     state
-        .change_transaction(vec![0], none!(), none!(), none!())
+        .change_transaction(monero::Hash::new(vec![0]).into(), none!(), none!(), none!())
         .await;
     assert_eq!(state.lifetimes.len(), 3);
     assert_eq!(state.transactions.len(), 2);
@@ -978,25 +992,25 @@ async fn syncer_state_addresses() {
     assert_eq!(state.addresses.len(), 1);
     let address_tx_one = AddressTx {
         amount: 1,
-        tx_id: vec![0; 32],
+        tx_id: monero::Hash::new(vec![0]).into(),
         tx: vec![0],
         incoming: true,
     };
     let address_tx_two = AddressTx {
         amount: 1,
-        tx_id: vec![1; 32],
+        tx_id: monero::Hash::new(vec![1]).into(),
         tx: vec![0],
         incoming: true,
     };
     let address_tx_three = AddressTx {
         amount: 1,
-        tx_id: vec![2; 32],
+        tx_id: monero::Hash::new(vec![2]).into(),
         tx: vec![0],
         incoming: true,
     };
     let address_tx_four = AddressTx {
         amount: 1,
-        tx_id: vec![3; 32],
+        tx_id: monero::Hash::new(vec![3]).into(),
         tx: vec![0],
         incoming: true,
     };
@@ -1143,7 +1157,9 @@ async fn syncer_state_sweep_addresses() {
     assert_eq!(state.lifetimes.len(), 1);
     assert_eq!(state.tasks_sources.len(), 1);
     assert_eq!(state.sweep_addresses.len(), 1);
-    state.success_sweep(&InternalId(2), vec![vec![0]]).await;
+    state
+        .success_sweep(&InternalId(2), vec![monero::Hash::new(vec![0]).into()])
+        .await;
     assert_eq!(state.lifetimes.len(), 0);
     assert_eq!(state.tasks_sources.len(), 0);
     assert_eq!(state.sweep_addresses.len(), 0);

@@ -104,14 +104,16 @@ pub enum Command {
         select: CheckpointSelector,
     },
 
-    /// Checks the health of the syncers
+    /// Checks the health of the syncers. By default 'mainnet' and 'testnet' are checked, use the
+    /// selector to change this behavior.
     #[clap(aliases = &["hc"])]
     HealthCheck {
         #[clap(
-            default_value = "all",
+            short,
+            long,
             possible_values = &["Mainnet", "mainnet", "Testnet", "testnet", "Local", "local", "all", "All"]
         )]
-        selector: HealthCheckSelector,
+        selector: Option<HealthCheckSelector>,
     },
 
     /// Restores saved checkpoint of a swap

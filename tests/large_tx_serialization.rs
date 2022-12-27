@@ -11,7 +11,7 @@ fn strict_encode_test() {
     let vec_tx = hex::decode(tx).unwrap();
     assert!(vec_tx.len() > 65535);
     let val = vec![];
-    assert!(vec_tx.clone().strict_encode(val).is_err());
+    assert!(vec_tx.strict_encode(val).is_err());
     let chunks: Vec<Vec<u8>> = vec_tx.chunks(65534).map(|c| c.to_vec()).collect();
     for chunk in chunks.iter() {
         let val = vec![];
