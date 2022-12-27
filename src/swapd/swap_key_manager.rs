@@ -605,7 +605,7 @@ impl BobSwapKeyManager {
                 runtime.log_warn("Funding was previously updated, ignoring");
                 return Err(Error::Farcaster("Funding already updated".to_string()));
             }
-            funding_update(&mut self.funding_tx, tx)?;
+            self.funding_tx.update(tx)?;
             runtime.log_debug(
                 "Bob's swap key manager informs swapd that funding was successfully updated",
             );
@@ -1016,8 +1016,4 @@ pub fn create_funding(
 ) -> Result<FundingTx, Error> {
     let pk = key_manager.get_pubkey(ArbitratingKeyId::Lock)?;
     Ok(FundingTx::initialize(pk, net)?)
-}
-
-pub fn funding_update(funding: &mut FundingTx, tx: bitcoin::Transaction) -> Result<(), Error> {
-    funding.update(tx).map_err(Into::into)
 }
