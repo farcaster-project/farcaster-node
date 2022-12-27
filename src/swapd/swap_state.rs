@@ -22,6 +22,7 @@ use microservices::esb::Handler;
 use monero::ViewPair;
 use strict_encoding::{StrictDecode, StrictEncode};
 
+use crate::swapd::temporal_safety::SWEEP_MONERO_THRESHOLD;
 use crate::{
     bus::{ctl::MoneroFundingInfo, p2p::Reveal},
     syncerd::AddressTransaction,
@@ -1325,7 +1326,7 @@ fn try_bob_buy_seen_to_bob_buy_sweeping(
                 confirmations: Some(confirmations),
                 ..
             },
-        ))) if confirmations >= runtime.temporal_safety.sweep_monero_thr => {
+        ))) if confirmations >= SWEEP_MONERO_THRESHOLD => {
             // safe cast
             let request = SyncMsg::Task(Task::SweepAddress(task));
             runtime.log_info(format!(
@@ -2119,7 +2120,7 @@ fn try_alice_refund_to_alice_refund_sweeping(
                 confirmations: Some(confirmations),
                 ..
             },
-        ))) if confirmations >= runtime.temporal_safety.sweep_monero_thr => {
+        ))) if confirmations >= SWEEP_MONERO_THRESHOLD => {
             runtime.log_info(format!(
                 "Monero are spendable now (height {}), sweeping ephemeral swap_key_manager",
                 runtime.syncer_state.monero_height.label(),
