@@ -221,8 +221,6 @@ fn bitcoin_syncer_address_test() {
     let bitcoin_rpc = bitcoin_setup();
     let (tx, rx_event) = create_bitcoin_syncer("address");
 
-    // generate some blocks to an address
-    let address = bitcoin_rpc.get_new_address(None, None).unwrap();
     // 294 Satoshi is the dust limit for a segwit transaction
     let amount = bitcoin::Amount::ONE_SAT * 294;
     let blocks = bitcoin_rpc.get_block_count().unwrap();
