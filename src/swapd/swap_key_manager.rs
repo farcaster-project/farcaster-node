@@ -458,7 +458,7 @@ impl AliceSwapKeyManager {
                     swap_id: Some(runtime.swap_id),
                     view: keypair.view.as_bytes().try_into().unwrap(),
                     spend: keypair.spend.as_bytes().try_into().unwrap(),
-                    creation_height: runtime.monero_address_creation_height,
+                    creation_height: runtime.acc_lock_height_lower_bound,
                 },
             }),
         )?;
@@ -468,7 +468,7 @@ impl AliceSwapKeyManager {
             source_spend_key: spend,
             destination_address: *target_monero_address,
             minimum_balance: runtime.deal.parameters.accordant_amount,
-            from_height: runtime.monero_address_creation_height,
+            from_height: runtime.acc_lock_height_lower_bound,
         })
     }
 
@@ -855,7 +855,7 @@ impl BobSwapKeyManager {
                     swap_id: Some(runtime.swap_id),
                     view: keypair.view.as_bytes().try_into().unwrap(),
                     spend: keypair.spend.as_bytes().try_into().unwrap(),
-                    creation_height: runtime.monero_address_creation_height,
+                    creation_height: runtime.acc_lock_height_lower_bound,
                 },
             }),
         )?;
@@ -865,7 +865,7 @@ impl BobSwapKeyManager {
             source_spend_key: spend,
             destination_address: *target_monero_address,
             minimum_balance: runtime.deal.parameters.accordant_amount,
-            from_height: runtime.monero_address_creation_height,
+            from_height: runtime.acc_lock_height_lower_bound,
         })
     }
 

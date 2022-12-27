@@ -34,7 +34,7 @@ use crate::{
     },
     event::{Event, StateMachine},
     service::Reporter,
-    syncerd::{FeeEstimation, FeeEstimations, SweepAddress, TaskAborted},
+    syncerd::{FeeEstimation, FeeEstimations, SweepAddress, TaskAborted, Txid},
     ServiceId,
 };
 use crate::{
@@ -274,7 +274,7 @@ pub enum SwapStateMachine {
     // TransactionConfirmations, or to AliceCanceled on
     // TransactionConfirmations. Completes Funding, watches Monero transaction,
     // aborts watch address.
-    #[display("Alice Abitrating Lock Final")]
+    #[display("Alice Arbitrating Lock Final")]
     AliceArbitratingLockFinal(AliceArbitratingLockFinal),
     // AliceAccordantLock state - transitions to AliceBuyProcedureSignature on
     // message BuyProcedureSignature, or to AliceCanceled on
@@ -1052,9 +1052,12 @@ fn try_bob_fee_estimated_to_bob_funded(
             }
 
             // Set the monero address creation height for Bob before setting the first checkpoint
-            if runtime.monero_address_creation_height.is_none() {
-                runtime.monero_address_creation_height =
-                    Some(runtime.syncer_state.height(Blockchain::Monero));
+            if runtime.acc_lock_height_lower_bound.is_none() {
+                runtime.acc_lock_height_lower_bound =
+                    Some(runtime.temporal_safety.block_height_reorg_lower_bound(
+                        Blockchain::Monero,
+                        runtime.syncer_state.height(Blockchain::Monero),
+                    ));
             }
 
             // checkpoint swap pre lock bob
@@ -1118,9 +1121,18 @@ fn try_bob_funded_to_bob_refund_procedure_signature(
                 &ViewPair { spend, view },
             );
             let txlabel = TxLabel::AccLock;
-            let task = runtime
-                .syncer_state
-                .watch_addr_xmr(address, view, txlabel, None);
+            let task = runtime.syncer_state.watch_addr_xmr(
+                address,
+                view,
+                txlabel,
+                runtime.acc_lock_height_lower_bound.unwrap_or_else(|| {
+                    runtime.temporal_safety.block_height_reorg_lower_bound(
+                        Blockchain::Monero,
+                        runtime.syncer_state.height(Blockchain::Monero),
+                    )
+                }),
+            );
+
             event.send_sync_service(runtime.syncer_state.monero_syncer(), SyncMsg::Task(task))?;
             // Handle Cancel and Refund transaction
             log_tx_created(runtime.swap_id, TxLabel::Cancel);
@@ -1337,29 +1349,75 @@ fn try_bob_cancel_final_to_swap_end(
             },
         ))) if runtime
             .temporal_safety
-            .final_tx(confirmations, Blockchain::Bitcoin)
-            && runtime.syncer_state.tasks.watched_txs.get(&id) == Some(&TxLabel::Refund) =>
+            .final_tx(confirmations, Blockchain::Bitcoin) =>
         {
-            let abort_all = Task::Abort(Abort {
-                task_target: TaskTarget::AllTasks,
-                respond: Boolean::False,
-            });
-            event.send_sync_service(
-                runtime.syncer_state.monero_syncer(),
-                SyncMsg::Task(abort_all.clone()),
-            )?;
-            event.send_sync_service(
-                runtime.syncer_state.bitcoin_syncer(),
-                SyncMsg::Task(abort_all),
-            )?;
-            // remove txs to invalidate outdated states
-            runtime.txs.remove(&TxLabel::Cancel);
-            runtime.txs.remove(&TxLabel::Refund);
-            runtime.txs.remove(&TxLabel::Buy);
-            runtime.txs.remove(&TxLabel::Punish);
-            // send swap outcome to farcasterd
-            Ok(Some(SwapStateMachine::SwapEnd(Outcome::FailureRefund)))
+            match runtime.syncer_state.tasks.watched_txs.get(&id) {
+                Some(&TxLabel::Refund) => {
+                    let abort_all = Task::Abort(Abort {
+                        task_target: TaskTarget::AllTasks,
+                        respond: Boolean::False,
+                    });
+                    event.send_sync_service(
+                        runtime.syncer_state.monero_syncer(),
+                        SyncMsg::Task(abort_all.clone()),
+                    )?;
+                    event.send_sync_service(
+                        runtime.syncer_state.bitcoin_syncer(),
+                        SyncMsg::Task(abort_all),
+                    )?;
+                    // remove txs to invalidate outdated states
+                    runtime.txs.remove(&TxLabel::Cancel);
+                    runtime.txs.remove(&TxLabel::Refund);
+                    runtime.txs.remove(&TxLabel::Buy);
+                    runtime.txs.remove(&TxLabel::Punish);
+                    // send swap outcome to farcasterd
+                    Ok(Some(SwapStateMachine::SwapEnd(Outcome::FailureRefund)))
+                }
+                Some(&TxLabel::Punish) => {
+                    let abort_all = Task::Abort(Abort {
+                        task_target: TaskTarget::AllTasks,
+                        respond: Boolean::False,
+                    });
+                    event.send_sync_service(
+                        runtime.syncer_state.monero_syncer(),
+                        SyncMsg::Task(abort_all.clone()),
+                    )?;
+                    event.send_sync_service(
+                        runtime.syncer_state.bitcoin_syncer(),
+                        SyncMsg::Task(abort_all),
+                    )?;
+                    // remove txs to invalidate outdated states
+                    runtime.txs.remove(&TxLabel::Cancel);
+                    runtime.txs.remove(&TxLabel::Refund);
+                    runtime.txs.remove(&TxLabel::Buy);
+                    Ok(Some(SwapStateMachine::SwapEnd(Outcome::FailurePunish)))
+                }
+                _ => Ok(None),
+            }
         }
+
+        BusMsg::Sync(SyncMsg::Event(SyncEvent::AddressTransaction(AddressTransaction {
+            id,
+            hash: Txid::Bitcoin(ref hash),
+            incoming,
+            ..
+        }))) if runtime.syncer_state.tasks.watched_addrs.get(&id) == Some(&TxLabel::Cancel)
+            && !incoming =>
+        {
+            let tasks = &runtime.syncer_state.tasks.txids;
+            debug_assert!(tasks.get(&TxLabel::Refund).is_some());
+            if Some(hash) != tasks.get(&TxLabel::Refund)
+                && Some(hash) != tasks.get(&TxLabel::Punish)
+            {
+                let watch_punish_task = runtime.syncer_state.watch_tx_btc(*hash, TxLabel::Punish);
+                event.send_sync_service(
+                    runtime.syncer_state.bitcoin_syncer(),
+                    SyncMsg::Task(watch_punish_task),
+                )?;
+            }
+            Ok(None)
+        }
+
         _ => Ok(None),
     }
 }
@@ -1523,9 +1581,12 @@ fn try_alice_core_arbitrating_setup_to_alice_arbitrating_lock_final(
             let (spend, view) =
                 aggregate_xmr_spend_view(&swap_key_manager.local_params(), &remote_params);
             // Set the monero address creation height for Alice right after the first aggregation
-            if runtime.monero_address_creation_height.is_none() {
-                runtime.monero_address_creation_height =
-                    Some(runtime.syncer_state.height(Blockchain::Monero));
+            if runtime.acc_lock_height_lower_bound.is_none() {
+                runtime.acc_lock_height_lower_bound =
+                    Some(runtime.temporal_safety.block_height_reorg_lower_bound(
+                        Blockchain::Monero,
+                        runtime.syncer_state.height(Blockchain::Monero),
+                    ));
             }
             let viewpair = ViewPair { spend, view };
             let address =
@@ -1542,7 +1603,12 @@ fn try_alice_core_arbitrating_setup_to_alice_arbitrating_lock_final(
                 address,
                 view,
                 txlabel,
-                runtime.monero_address_creation_height,
+                runtime.acc_lock_height_lower_bound.unwrap_or_else(|| {
+                    runtime.temporal_safety.block_height_reorg_lower_bound(
+                        Blockchain::Monero,
+                        runtime.syncer_state.height(Blockchain::Monero),
+                    )
+                }),
             );
             event.send_sync_service(
                 runtime.syncer_state.monero_syncer(),
@@ -2208,7 +2274,7 @@ fn attempt_transition_to_alice_reveal(
 /// Checks whether Bob can cancel the swap and does so if possible.
 /// Throws a warning if Bob tries to abort since swap already locked in.
 fn handle_bob_swap_interrupt_after_lock(
-    event: Event,
+    mut event: Event,
     runtime: &mut Runtime,
 ) -> Result<Option<SwapStateMachine>, Error> {
     match event.request {
@@ -2227,6 +2293,14 @@ fn handle_bob_swap_interrupt_after_lock(
             && runtime.temporal_safety.valid_cancel(confirmations)
             && runtime.txs.contains_key(&TxLabel::Cancel) =>
         {
+            let watch_addr_task = runtime
+                .bob_watch_cancel_output_task()
+                .expect("just checked TxLabel::Cancel exists");
+            event.send_sync_service(
+                runtime.syncer_state.bitcoin_syncer(),
+                SyncMsg::Task(watch_addr_task),
+            )?;
+
             let (tx_label, cancel_tx) = runtime.txs.remove_entry(&TxLabel::Cancel).unwrap();
             runtime.broadcast(cancel_tx, tx_label, event.endpoints)?;
             Ok(None)
@@ -2239,6 +2313,12 @@ fn handle_bob_swap_interrupt_after_lock(
                 ..
             },
         ))) if runtime.syncer_state.tasks.watched_txs.get(&id) == Some(&TxLabel::Cancel) => {
+            if let Some(watch_addr_task) = runtime.bob_watch_cancel_output_task() {
+                event.send_sync_service(
+                    runtime.syncer_state.bitcoin_syncer(),
+                    SyncMsg::Task(watch_addr_task),
+                )?;
+            };
             Ok(Some(SwapStateMachine::BobCanceled))
         }
         _ => Ok(None),

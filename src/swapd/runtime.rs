@@ -19,7 +19,7 @@ use crate::{
     bus::p2p::PeerMsg,
     bus::sync::SyncMsg,
     bus::{BusMsg, Outcome, ServiceBus},
-    syncerd::{HeightChanged, TransactionRetrieved, XmrAddressAddendum},
+    syncerd::{HeightChanged, Task, TransactionRetrieved, XmrAddressAddendum},
 };
 use crate::{
     service::{Endpoints, Reporter},
@@ -140,7 +140,7 @@ pub fn run(config: ServiceConfig, opts: Opts) -> Result<(), Error> {
         local_trade_role,
         local_swap_role,
         latest_state_report: state_report,
-        monero_address_creation_height: None,
+        acc_lock_height_lower_bound: None,
         swap_state_machine,
         unhandled_peer_message: None, // The last message we received and was not handled by the state machine
     };
@@ -165,7 +165,7 @@ pub struct Runtime {
     pub local_trade_role: TradeRole,
     pub local_swap_role: SwapRole,
     pub latest_state_report: StateReport,
-    pub monero_address_creation_height: Option<u64>,
+    pub acc_lock_height_lower_bound: Option<u64>,
     pub swap_state_machine: SwapStateMachine,
     pub unhandled_peer_message: Option<PeerMsg>,
 }
@@ -184,7 +184,7 @@ pub struct CheckpointSwapd {
     pub local_trade_role: TradeRole,
     pub connected_counterparty_node_id: Option<NodeId>,
     pub deal: Deal,
-    pub monero_address_creation_height: Option<u64>,
+    pub acc_lock_height_lower_bound: Option<u64>,
 }
 
 impl CtlServer for Runtime {}
@@ -404,7 +404,7 @@ impl Runtime {
                     mut pending_broadcasts,
                     xmr_addr_addendum,
                     local_trade_role,
-                    monero_address_creation_height,
+                    acc_lock_height_lower_bound,
                     state,
                     ..
                 } = state;
@@ -412,7 +412,7 @@ impl Runtime {
                 self.swap_state_machine = state;
                 self.enquirer = enquirer;
                 self.temporal_safety = temporal_safety;
-                self.monero_address_creation_height = monero_address_creation_height;
+                self.acc_lock_height_lower_bound = acc_lock_height_lower_bound;
                 // We need to update the peerd for the pending requests in case of reconnect
                 self.local_trade_role = local_trade_role;
                 self.txs = txs.drain(..).collect();
@@ -453,7 +453,7 @@ impl Runtime {
                         address,
                         view_key,
                         TxLabel::AccLock,
-                        Some(from_height),
+                        from_height,
                     );
                     endpoints.send_to(
                         ServiceBus::Sync,
@@ -817,11 +817,31 @@ impl Runtime {
                     local_trade_role: self.local_trade_role,
                     connected_counterparty_node_id: get_node_id(&self.peer_service),
                     deal: self.deal.clone(),
-                    monero_address_creation_height: self.monero_address_creation_height,
+                    acc_lock_height_lower_bound: self.acc_lock_height_lower_bound,
                 },
             })),
         )?;
         Ok(())
+    }
+
+    pub fn bob_watch_cancel_output_task(&mut self) -> Option<Task> {
+        // add a watch for the cancel tx output address. This is necessary so Bob can detect punish:
+        // Since Alice can craft the punish tx at her leisure and Bob won't know its txid in advance,
+        // Bob needs to watch the address of the cancel script to detect the punish tx.
+        if let Some(cancel_tx) = self.txs.get(&TxLabel::Cancel) {
+            let cancel_script = &cancel_tx.output[0].script_pubkey;
+            let cancel_address =
+                bitcoin::Address::from_script(cancel_script, self.syncer_state.network.into())
+                    .expect("cancel script is valid");
+            self.log_debug(format!("Watching cancel address {}", cancel_address));
+            let watch_addr_task = self
+                .syncer_state
+                .watch_addr_btc(cancel_address, TxLabel::Cancel);
+            Some(watch_addr_task)
+        } else {
+            self.log_debug("Cancel tx not found - Bob already broadcasted".to_string());
+            None
+        }
     }
 
     pub fn log_monero_maturity(&self, address: monero::Address) {

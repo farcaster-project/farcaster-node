@@ -182,18 +182,14 @@ impl SyncerState {
             );
         }
         let id = self.tasks.new_taskid();
-        let from_height = self.from_height(Blockchain::Bitcoin, 6);
         self.tasks.watched_addrs.insert(id, tx_label);
         info!(
-            "{} | Watching address {} for {} transaction",
+            "{} | Watching {} on address {}",
             self.swap_id.swap_id(),
-            address.addr(),
             tx_label.label(),
+            address.addr(),
         );
-        let addendum = BtcAddressAddendum {
-            from_height,
-            address,
-        };
+        let addendum = BtcAddressAddendum { address };
         let filter = if TxLabel::Cancel == tx_label {
             // If this is the cancel transaction, only look for outgoing transactions
             TxFilter::Outgoing
@@ -215,20 +211,13 @@ impl SyncerState {
         self.tasks.watched_addrs.values().any(|tx| tx == tx_label)
     }
 
-    #[allow(clippy::wrong_self_convention)]
-    pub fn from_height(&self, blockchain: Blockchain, delta: u64) -> u64 {
-        let height = self.height(blockchain);
-        let delta = if height > delta { delta } else { height };
-        height - delta
-    }
-
-    /// Watches an xmr address. If no `from_height` is provided, it will be set to current_height - 20.
+    /// Watches an xmr address from provided height.
     pub fn watch_addr_xmr(
         &mut self,
         address: monero::Address,
         view: monero::PrivateKey,
         tx_label: TxLabel,
-        from_height: Option<u64>,
+        from_height: u64,
     ) -> Task {
         if self.is_watched_addr(&tx_label) {
             warn!(
@@ -245,7 +234,6 @@ impl SyncerState {
             tx_label.bright_white_bold(),
             view.bright_white_italic()
         );
-        let from_height = from_height.unwrap_or_else(|| self.from_height(Blockchain::Monero, 20));
         let addendum = XmrAddressAddendum {
             address,
             view_key: view,
@@ -258,10 +246,12 @@ impl SyncerState {
         self.tasks.watched_addrs.insert(id, tx_label);
 
         info!(
-            "{} | Watching {} on address {}",
+            "{} | Watching {} on address {} from height {} - current height {}",
             self.swap_id.swap_id(),
             tx_label.label(),
             address.addr(),
+            from_height,
+            self.monero_height,
         );
 
         let watch_addr = WatchAddress {
