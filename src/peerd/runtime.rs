@@ -7,6 +7,7 @@
 use farcaster_core::swap::SwapId;
 use internet2::addr::LocalNode;
 use microservices::peer::RecvMessage;
+use std::net::SocketAddr;
 use std::sync::Arc;
 use std::thread::spawn;
 use std::time::{Duration, SystemTime};
@@ -39,7 +40,14 @@ pub fn start_connect_peer_listener_runtime(
     remote_node_addr: NodeAddr,
     local_node: LocalNode,
     peerd_service_id: ServiceId,
+    tor_proxy: Option<SocketAddr>,
 ) -> Result<(PeerSender, std::sync::mpsc::Sender<()>), Error> {
+    if tor_proxy.is_none() && matches!(remote_node_addr.addr, InetSocketAddr::Tor(_)) {
+        return Err(Error::Farcaster(format!(
+            "Can only connect to remote peer on Tor address {} when Tor proxy is set too",
+            remote_node_addr
+        )));
+    }
     let connection = PeerConnection::connect_brontozaur(local_node, remote_node_addr)?;
     debug!("Connected to remote peer: {}", remote_node_addr);
 
@@ -115,6 +123,7 @@ pub fn run_from_connect(
     remote_node_addr: NodeAddr,
     local_socket: Option<InetSocketAddr>,
     local_node: LocalNode,
+    tor_proxy: Option<SocketAddr>,
 ) -> Result<(), Error> {
     debug!("Opening bridge between runtime and peer receiver threads");
     let rx = ZMQ_CONTEXT.socket(zmq::PULL)?;
@@ -132,6 +141,7 @@ pub fn run_from_connect(
         remote_node_addr: Some(remote_node_addr),
         local_socket,
         local_node,
+        tor_proxy,
         peer_sender: None, // As connector we create the sender on is_ready
         forked_from_listener: false,
         started: SystemTime::now(),
@@ -237,6 +247,7 @@ pub fn run_from_listener(
         remote_node_addr,
         local_socket,
         local_node,
+        tor_proxy: None,
         peer_sender: Some(peer_sender),
         forked_from_listener: true,
         started: SystemTime::now(),
@@ -372,6 +383,7 @@ pub struct Runtime {
     remote_node_addr: Option<NodeAddr>,
     local_socket: Option<InetSocketAddr>,
     local_node: LocalNode,
+    tor_proxy: Option<SocketAddr>,
 
     peer_sender: Option<PeerSender>,
     // TODO: make this an enum instead with a descriptive distinction of listening and connecting to a listener
@@ -404,6 +416,7 @@ impl esb::Handler<ServiceBus> for Runtime {
                 self.remote_node_addr.expect("Checked for connecter"),
                 self.local_node,
                 self.identity(),
+                self.tor_proxy,
             ) {
                 Ok(val) => {
                     debug!(
@@ -666,6 +679,7 @@ impl Runtime {
                 self.remote_node_addr.expect("Checked for connnecter"),
                 self.local_node,
                 self.identity(),
+                self.tor_proxy,
             ) {
                 Err(err) => {
                     attempt += 1;
