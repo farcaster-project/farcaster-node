@@ -1525,8 +1525,12 @@ fn try_alice_core_arbitrating_setup_to_alice_arbitrating_lock_final(
                 let (spend, view) = aggregate_xmr_spend_view(alice_params, bob_params);
                 // Set the monero address creation height for Alice right after the first aggregation
                 if runtime.acc_lock_height_lower_bound.is_none() {
-                    runtime.acc_lock_height_lower_bound =
-                        Some(runtime.syncer_state.height(Blockchain::Monero));
+                    runtime.acc_lock_height_lower_bound = Some(
+                        runtime
+                            .syncer_state
+                            .height(Blockchain::Monero)
+                            .saturating_sub(runtime.temporal_safety.xmr_finality_thr.into()),
+                    );
                 }
                 let viewpair = monero::ViewPair { spend, view };
                 let address =
