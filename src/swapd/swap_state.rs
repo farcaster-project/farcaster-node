@@ -1045,12 +1045,12 @@ fn try_bob_funded_to_bob_refund_procedure_signature(
                     spend,
                     view,
                     txlabel,
-                    runtime.acc_lock_height_lower_bound.unwrap_or(
+                    runtime.acc_lock_height_lower_bound.unwrap_or_else(|| {
                         runtime.temporal_safety.block_height_reorg_lower_bound(
                             Blockchain::Monero,
                             runtime.syncer_state.height(Blockchain::Monero),
-                        ),
-                    ),
+                        )
+                    }),
                 );
                 event
                     .send_sync_service(runtime.syncer_state.monero_syncer(), SyncMsg::Task(task))?
@@ -1545,12 +1545,12 @@ fn try_alice_core_arbitrating_setup_to_alice_arbitrating_lock_final(
                     spend,
                     view,
                     txlabel,
-                    runtime.acc_lock_height_lower_bound.unwrap_or(
+                    runtime.acc_lock_height_lower_bound.unwrap_or_else(|| {
                         runtime.temporal_safety.block_height_reorg_lower_bound(
                             Blockchain::Monero,
                             runtime.syncer_state.height(Blockchain::Monero),
-                        ),
-                    ),
+                        )
+                    }),
                 );
                 event.send_sync_service(
                     runtime.syncer_state.monero_syncer(),
