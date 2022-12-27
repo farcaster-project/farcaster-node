@@ -28,6 +28,7 @@ pub trait StateMachineExecutor<
         let event = Event::with(endpoints, runtime.identity(), source, request);
         let sm_display = sm.to_string();
         let sm_name = sm.name();
+        let sm_log_level = sm.log_level();
         if let Some(new_sm) = sm.next(event, runtime)? {
             let new_sm_display = new_sm.to_string();
             // relegate state transitions staying the same to debug
@@ -38,7 +39,8 @@ pub trait StateMachineExecutor<
                     new_sm.bright_green_bold()
                 );
             } else {
-                info!(
+                log!(
+                    new_sm.log_level(),
                     "{} state transition {} -> {}",
                     new_sm.name(),
                     sm_display.red_bold(),
@@ -47,7 +49,8 @@ pub trait StateMachineExecutor<
             }
             Ok(Some(new_sm))
         } else {
-            info!(
+            log!(
+                sm_log_level,
                 "{} state machine ended {} -> {}",
                 sm_name,
                 sm_display.red_bold(),
@@ -70,7 +73,13 @@ where
     where
         Self: Sized;
 
+    /// Return the display name of the state machine
     fn name(&self) -> String;
+
+    /// Return the log level to use for state transitions. Info by default
+    fn log_level(&self) -> log::Level {
+        log::Level::Info
+    }
 }
 
 /// Event changing state machine state, consisting of a certain P2P or RPC `request` sent from some

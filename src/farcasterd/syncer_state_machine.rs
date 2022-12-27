@@ -90,6 +90,10 @@ impl StateMachine<Runtime, Error> for SyncerStateMachine {
     fn name(&self) -> String {
         "Syncer".to_string()
     }
+
+    fn log_level(&self) -> log::Level {
+        log::Level::Debug
+    }
 }
 
 pub struct SyncerStateMachineExecutor {}
