@@ -10,7 +10,6 @@ use super::{
     temporal_safety::TemporalSafety,
     StateReport,
 };
-use crate::service::{Endpoints, Reporter};
 use crate::swapd::Opts;
 use crate::syncerd::bitcoin_syncer::p2wpkh_signed_tx_fee;
 use crate::syncerd::types::{Event, TransactionConfirmations};
@@ -21,6 +20,10 @@ use crate::{
     bus::sync::SyncMsg,
     bus::{BusMsg, Outcome, ServiceBus},
     syncerd::{HeightChanged, TransactionRetrieved, XmrAddressAddendum},
+};
+use crate::{
+    service::{Endpoints, Reporter},
+    syncerd::AddressTransaction,
 };
 use crate::{CtlServer, Error, LogStyle, Service, ServiceConfig, ServiceId};
 
@@ -107,9 +110,7 @@ pub fn run(config: ServiceConfig, opts: Opts) -> Result<(), Error> {
         monero_height: 0,
         bitcoin_height: 0,
         confirmation_bound: 50000,
-        lock_tx_confs: None,
-        cancel_tx_confs: None,
-        buy_tx_confs: None,
+        last_tx_event: none!(),
         network,
         bitcoin_syncer: ServiceId::Syncer(Blockchain::Bitcoin, network),
         monero_syncer: ServiceId::Syncer(Blockchain::Monero, network),
@@ -542,9 +543,23 @@ impl Runtime {
                             self.temporal_safety.xmr_finality_thr,
                             endpoints,
                         );
+
+                        // saving requests of interest for later replaying latest event
+                        if let Some(txlabel) = self.syncer_state.tasks.watched_txs.get(id) {
+                            self.syncer_state
+                                .last_tx_event
+                                .insert(*txlabel, request.clone());
+                        }
                     }
 
-                    Event::AddressTransaction(_) => {}
+                    Event::AddressTransaction(AddressTransaction { id, .. }) => {
+                        // saving requests of interest for later replaying latest event
+                        if let Some(txlabel) = self.syncer_state.tasks.watched_addrs.get(id) {
+                            self.syncer_state
+                                .last_tx_event
+                                .insert(*txlabel, request.clone());
+                        }
+                    }
 
                     Event::SweepSuccess(_) => {}
 
@@ -596,19 +611,11 @@ impl Runtime {
                             self.temporal_safety.btc_finality_thr,
                             endpoints,
                         );
-                        let txlabel = self.syncer_state.tasks.watched_txs.get(id);
                         // saving requests of interest for later replaying latest event
-                        match txlabel {
-                            Some(&TxLabel::Lock) => {
-                                self.syncer_state.lock_tx_confs = Some(request.clone());
-                            }
-                            Some(&TxLabel::Cancel) => {
-                                self.syncer_state.cancel_tx_confs = Some(request.clone());
-                            }
-                            Some(&TxLabel::Buy) => {
-                                self.syncer_state.buy_tx_confs = Some(request.clone())
-                            }
-                            _ => {}
+                        if let Some(txlabel) = self.syncer_state.tasks.watched_txs.get(id) {
+                            self.syncer_state
+                                .last_tx_event
+                                .insert(*txlabel, request.clone());
                         }
                     }
 
@@ -624,13 +631,27 @@ impl Runtime {
                             self.temporal_safety.btc_finality_thr,
                             endpoints,
                         );
+                        // saving requests of interest for later replaying latest event
+                        if let Some(txlabel) = self.syncer_state.tasks.watched_txs.get(id) {
+                            self.syncer_state
+                                .last_tx_event
+                                .insert(*txlabel, request.clone());
+                        }
                     }
 
                     Event::TransactionBroadcasted(event) => {
                         self.syncer_state.transaction_broadcasted(event);
                     }
 
-                    Event::AddressTransaction(_) => {}
+                    Event::AddressTransaction(AddressTransaction { id, .. }) => {
+                        // saving requests of interest for later replaying latest event
+                        if let Some(txlabel) = self.syncer_state.tasks.watched_addrs.get(id) {
+                            self.syncer_state
+                                .last_tx_event
+                                .insert(*txlabel, request.clone());
+                        }
+                        self.log_debug(event);
+                    }
 
                     Event::TaskAborted(event) => {
                         self.log_debug(event);
@@ -705,15 +726,9 @@ impl Runtime {
             if let Some(peer_msg) = self.unhandled_peer_message.clone() {
                 self.handle_msg(endpoints, source.clone(), peer_msg)?;
             }
-            // Replay confirmation events to ensure we immediately advance through states that can be skipped
-            if let Some(buy_tx_confs_req) = self.syncer_state.buy_tx_confs.clone() {
-                self.handle_sync(endpoints, source.clone(), buy_tx_confs_req)?;
-            }
-            if let Some(lock_tx_confs_req) = self.syncer_state.lock_tx_confs.clone() {
-                self.handle_sync(endpoints, source.clone(), lock_tx_confs_req)?;
-            }
-            if let Some(cancel_tx_confs_req) = self.syncer_state.cancel_tx_confs.clone() {
-                self.handle_sync(endpoints, source, cancel_tx_confs_req)?;
+            // Replay syncer events to ensure we immediately advance through states that can be skipped
+            for event in self.syncer_state.last_tx_event.clone().values() {
+                self.handle_sync(endpoints, source.clone(), event.clone())?;
             }
         } else if let BusMsg::P2p(peer_msg) = msg {
             self.unhandled_peer_message = Some(peer_msg);

@@ -1644,9 +1644,9 @@ fn try_alice_accordant_lock_to_alice_buy_procedure_signature(
                     confirmations: Some(confirmations),
                     ..
                 },
-            ))) = runtime.syncer_state.lock_tx_confs.clone()
+            ))) = runtime.syncer_state.last_tx_event.get(&TxLabel::Lock)
             {
-                if runtime.temporal_safety.valid_cancel(confirmations) {
+                if runtime.temporal_safety.valid_cancel(*confirmations) {
                     runtime.broadcast(cancel_tx, TxLabel::Cancel, event.endpoints)?;
                     return Ok(Some(SwapStateMachine::AliceCanceled(AliceCanceled {
                         wallet,
