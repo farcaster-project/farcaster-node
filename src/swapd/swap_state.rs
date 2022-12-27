@@ -1878,7 +1878,7 @@ fn try_alice_canceled_to_alice_refund_or_alice_punish(
                         event.endpoints,
                         tx,
                         runtime.swap_id,
-                        runtime.monero_address_creation_height,
+                        runtime.acc_lock_height_lower_bound,
                     )?;
 
                     runtime
