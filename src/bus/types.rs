@@ -65,7 +65,7 @@ pub struct WrapOnionAddressV3(pub OnionAddressV3);
 impl StrictEncode for WrapOnionAddressV3 {
     fn strict_encode<E: std::io::Write>(&self, mut e: E) -> Result<usize, strict_encoding::Error> {
         let address_encoding = self.0.get_public_key().as_bytes().to_vec();
-        Ok(address_encoding.strict_encode(&mut e)?)
+        address_encoding.strict_encode(&mut e)
     }
 }
 

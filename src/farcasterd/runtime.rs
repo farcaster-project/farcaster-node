@@ -1134,7 +1134,6 @@ impl Runtime {
         endpoints: &mut Endpoints,
         bind_addr: InetSocketAddr,
         public_port: u16,
-        tor_control_socket: InetSocketAddr,
     ) -> Result<(InetSocketAddr, NodeId), Error> {
         self.services_ready()?;
         let (peer_secret_key, peer_public_key) = self.peer_keys_ready()?;
@@ -1158,14 +1157,14 @@ impl Runtime {
         );
 
         let address = bind_addr.address();
-        let port = bind_addr.port().ok_or(Error::Farcaster(
-            "listen requires the port to listen on".to_string(),
-        ))?;
+        let port = bind_addr
+            .port()
+            .ok_or_else(|| Error::Farcaster("listen requires the port to listen on".to_string()))?;
 
         let public_onion_address = create_v3_onion_service(
             bind_addr,
             public_port,
-            tor_control_socket,
+            self.config.get_tor_control_socket()?,
             &self.old_hidden_services,
         )
         .unwrap();
@@ -1201,7 +1200,7 @@ impl Runtime {
         debug!("Instantiating peerd...");
         let child = launch(
             "peerd",
-            &[
+            [
                 "--listen",
                 &format!("{}", address),
                 "--port",

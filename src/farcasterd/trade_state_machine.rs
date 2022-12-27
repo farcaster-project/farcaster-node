@@ -459,7 +459,21 @@ fn attempt_transition_to_make_deal(
                 }
                 Ok(bind_addr) => bind_addr,
             };
-            match runtime.listen(bind_addr) {
+            let res = if runtime.config.create_hidden_service() {
+                runtime.listen_tor(
+                    event.endpoints,
+                    bind_addr,
+                    public_addr.port().ok_or_else(|| {
+                        Error::Farcaster(
+                        "Cannot combine create hidden service with passed in Tor public address"
+                            .to_string(),
+                    )
+                    })?,
+                )
+            } else {
+                runtime.listen(bind_addr).map(|n| (public_addr, n))
+            };
+            match res {
                 Err(err) => {
                     warn!("Failed to start peerd listen, cannot make deal: {}", err);
                     event.complete_client_ctl(CtlMsg::Failure(Failure {
@@ -468,7 +482,7 @@ fn attempt_transition_to_make_deal(
                     }))?;
                     Ok(None)
                 }
-                Ok(node_id) => {
+                Ok((public_addr, node_id)) => {
                     let deal = deal_parameters.to_v1(node_id.public_key(), public_addr);
                     let msg = s!("Deal registered, please share with taker.");
                     info!(
