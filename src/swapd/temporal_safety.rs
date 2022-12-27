@@ -114,8 +114,8 @@ impl TemporalSafety {
         current_height: u64,
     ) -> u64 {
         let finality_thr = match blockchain {
-            Blockchain::Bitcoin => self.btc_finality_thr,
-            Blockchain::Monero => self.xmr_finality_thr,
+            Blockchain::Bitcoin => self.arb_finality,
+            Blockchain::Monero => self.acc_finality,
         };
         current_height.saturating_sub(finality_thr as u64)
     }
