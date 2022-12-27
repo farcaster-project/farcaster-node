@@ -50,9 +50,8 @@ pub struct SyncerState {
     pub swap_id: SwapId,
     pub tasks: SyncerTasks,
     pub bitcoin_height: u64,
-    pub bitcoin_checkpoint_height: Option<u64>,
     pub monero_height: u64,
-    pub monero_checkpoint_height: Option<u64>,
+    pub address_creation_heights: HashMap<TxLabel, u64>,
     pub confirmation_bound: u32,
     pub lock_tx_confs: Option<SyncMsg>,
     pub cancel_tx_confs: Option<SyncMsg>,
@@ -191,7 +190,7 @@ impl SyncerState {
             );
         }
         let id = self.tasks.new_taskid();
-        let from_height = self.from_checkpoint_or_current_height(Blockchain::Bitcoin);
+        let from_height = self.address_creation_or_current_height(Blockchain::Bitcoin, &tx_label);
         self.tasks.watched_addrs.insert(id, tx_label);
         info!(
             "{} | Watching address {} for {} transaction from height {} - current height {}",
@@ -226,16 +225,40 @@ impl SyncerState {
         self.tasks.watched_addrs.values().any(|tx| tx == tx_label)
     }
 
-    #[allow(clippy::wrong_self_convention)]
-    pub fn from_checkpoint_or_current_height(&self, blockchain: Blockchain) -> u64 {
-        let checkpoint_height = match blockchain {
-            Blockchain::Bitcoin => self.bitcoin_checkpoint_height,
-            Blockchain::Monero => self.monero_checkpoint_height,
+    pub fn set_address_creation_height(&mut self, blockchain: Blockchain, tx_label: &TxLabel) {
+        let current_height = match blockchain {
+            Blockchain::Bitcoin => self.bitcoin_height,
+            Blockchain::Monero => self.monero_height,
         };
-        checkpoint_height.unwrap_or_else(|| self.height(blockchain))
+        self.address_creation_heights
+            .entry(*tx_label)
+            .and_modify(|saved_height| {
+                *saved_height = std::cmp::min(*saved_height, current_height)
+            });
     }
 
-    /// Watches an xmr address. If no `from_height` is provided, it will be set to current_height - 20.
+    pub fn address_creation_or_current_height(
+        &self,
+        blockchain: Blockchain,
+        tx_label: &TxLabel,
+    ) -> u64 {
+        self.address_creation_heights
+            .get(tx_label)
+            .copied()
+            .unwrap_or_else(|| {
+                warn!(
+                    "{} | No address creation height for {} - using current height",
+                    self.swap_id.swap_id(),
+                    tx_label.label()
+                );
+                match blockchain {
+                    Blockchain::Bitcoin => self.bitcoin_height,
+                    Blockchain::Monero => self.monero_height,
+                }
+            })
+    }
+
+    /// Watches an xmr address. If no `from_height` is provided, it will be set to current_height.
     pub fn watch_addr_xmr(
         &mut self,
         spend: monero::PublicKey,
@@ -264,8 +287,9 @@ impl SyncerState {
         );
         let viewpair = monero::ViewPair { spend, view };
         let address = monero::Address::from_viewpair(self.network.into(), &viewpair);
-        let from_height = from_height
-            .unwrap_or_else(|| self.from_checkpoint_or_current_height(Blockchain::Monero));
+        let from_height = from_height.unwrap_or_else(|| {
+            self.address_creation_or_current_height(Blockchain::Monero, &tx_label)
+        });
         let addendum = XmrAddressAddendum {
             spend_key: spend,
             view_key: view,
