@@ -106,7 +106,6 @@ pub fn run(config: ServiceConfig, opts: Opts) -> Result<(), Error> {
         tasks,
         monero_height: 0,
         bitcoin_height: 0,
-        address_creation_heights: HashMap::new(),
         confirmation_bound: 50000,
         lock_tx_confs: None,
         cancel_tx_confs: None,
@@ -185,7 +184,6 @@ pub struct CheckpointSwapd {
     pub connected_counterparty_node_id: Option<NodeId>,
     pub deal: Deal,
     pub acc_lock_height_lower_bound: Option<u64>,
-    pub address_creation_heights: Vec<(TxLabel, u64)>,
     pub bitcoin_checkpoint_height: u64,
     pub monero_checkpoint_height: u64,
 }
@@ -407,7 +405,6 @@ impl Runtime {
                     mut pending_broadcasts,
                     xmr_addr_addendum,
                     local_trade_role,
-                    mut address_creation_heights,
                     acc_lock_height_lower_bound,
                     state,
                     ..
@@ -416,8 +413,6 @@ impl Runtime {
                 self.swap_state_machine = state;
                 self.enquirer = enquirer;
                 self.temporal_safety = temporal_safety;
-                self.syncer_state.address_creation_heights =
-                    address_creation_heights.drain(..).collect();
                 self.acc_lock_height_lower_bound = acc_lock_height_lower_bound;
                 // We need to update the peerd for the pending requests in case of reconnect
                 self.local_trade_role = local_trade_role;
@@ -874,11 +869,6 @@ impl Runtime {
                     connected_counterparty_node_id: get_node_id(&self.peer_service),
                     deal: self.deal.clone(),
                     acc_lock_height_lower_bound: self.acc_lock_height_lower_bound,
-                    address_creation_heights: self
-                        .syncer_state
-                        .address_creation_heights
-                        .drain()
-                        .collect(),
                     bitcoin_checkpoint_height: self.syncer_state.bitcoin_height,
                     monero_checkpoint_height: self.syncer_state.monero_height,
                 },

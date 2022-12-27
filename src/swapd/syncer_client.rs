@@ -51,7 +51,6 @@ pub struct SyncerState {
     pub tasks: SyncerTasks,
     pub bitcoin_height: u64,
     pub monero_height: u64,
-    pub address_creation_heights: HashMap<TxLabel, u64>,
     pub confirmation_bound: u32,
     pub lock_tx_confs: Option<SyncMsg>,
     pub cancel_tx_confs: Option<SyncMsg>,
