@@ -7,10 +7,10 @@
 use crate::{AccordantBlockchain, ArbitratingBlockchain, Error};
 use farcaster_core::blockchain::Network;
 use internet2::addr::InetSocketAddr;
-use std::fs::File;
 use std::io::prelude::*;
 use std::path::Path;
 use std::str::FromStr;
+use std::{fs::File, net::SocketAddr};
 
 use serde::{Deserialize, Serialize};
 
@@ -141,15 +141,15 @@ impl Config {
 
     /// Returns the addr of the tor control socket if it is set, or the default
     /// socket at localhost:9051 if not.
-    pub fn get_tor_control_socket(&self) -> Result<InetSocketAddr, Error> {
+    pub fn get_tor_control_socket(&self) -> Result<SocketAddr, Error> {
         if let Some(FarcasterdConfig {
             tor_control_socket: Some(addr),
             ..
         }) = &self.farcasterd
         {
-            Ok(InetSocketAddr::from_str(addr)?)
+            Ok(SocketAddr::from_str(addr)?)
         } else {
-            Ok(InetSocketAddr::from_str("127.0.0.1:9051")?)
+            Ok(SocketAddr::from_str("127.0.0.1:9051")?)
         }
     }
 

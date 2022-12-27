@@ -12,7 +12,7 @@ use crate::bus::HiddenServiceInfo;
 pub fn create_v3_onion_service(
     bind_addr: InetSocketAddr,
     public_port: u16,
-    control_addr: InetSocketAddr,
+    control_addr: SocketAddr,
     existing_hidden_services: &Vec<HiddenServiceInfo>,
 ) -> Result<OnionAddressV3, ConnError> {
     use tokio::runtime::Builder;
