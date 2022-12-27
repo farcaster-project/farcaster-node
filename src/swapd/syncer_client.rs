@@ -191,11 +191,10 @@ impl SyncerState {
         let id = self.tasks.new_taskid();
         self.tasks.watched_addrs.insert(id, tx_label);
         info!(
-            "{} | Watching address {} for {} transaction - current height {}",
+            "{} | Watching {} on address {}",
             self.swap_id.swap_id(),
-            address.addr(),
             tx_label.label(),
-            self.bitcoin_height,
+            address.addr(),
         );
         let addendum = BtcAddressAddendum { address };
         let filter = if TxLabel::Cancel == tx_label {
