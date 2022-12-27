@@ -11,6 +11,7 @@ use super::{
     StateReport,
 };
 use crate::service::{Endpoints, Reporter};
+use crate::swapd::temporal_safety::SWEEP_MONERO_THRESHOLD;
 use crate::swapd::Opts;
 use crate::syncerd::bitcoin_syncer::p2wpkh_signed_tx_fee;
 use crate::syncerd::types::{Event, TransactionConfirmations};
@@ -83,10 +84,9 @@ pub fn run(config: ServiceConfig, opts: Opts) -> Result<(), Error> {
     let temporal_safety = TemporalSafety {
         cancel_timelock: cancel_timelock.as_u32(),
         punish_timelock: punish_timelock.as_u32(),
-        btc_finality_thr: arbitrating_finality.into(),
-        race_thr: arbitrating_safety.into(),
-        xmr_finality_thr: accordant_finality.into(),
-        sweep_monero_thr: crate::swapd::temporal_safety::SWEEP_MONERO_THRESHOLD,
+        arb_finality: arbitrating_finality.into(),
+        safety: arbitrating_safety.into(),
+        acc_finality: accordant_finality.into(),
     };
 
     temporal_safety.valid_params()?;
@@ -539,7 +539,7 @@ impl Runtime {
                             id,
                             confirmations,
                             self.swap_id(),
-                            self.temporal_safety.xmr_finality_thr,
+                            self.temporal_safety.acc_finality,
                             endpoints,
                         );
                     }
@@ -593,7 +593,7 @@ impl Runtime {
                             id,
                             &Some(*confirmations),
                             self.swap_id(),
-                            self.temporal_safety.btc_finality_thr,
+                            self.temporal_safety.arb_finality,
                             endpoints,
                         );
                         let txlabel = self.syncer_state.tasks.watched_txs.get(id);
@@ -621,7 +621,7 @@ impl Runtime {
                             id,
                             confirmations,
                             self.swap_id(),
-                            self.temporal_safety.btc_finality_thr,
+                            self.temporal_safety.arb_finality,
                             endpoints,
                         );
                     }
@@ -877,8 +877,8 @@ impl Runtime {
         let acc_confs_needs = self
             .syncer_state
             .get_confs(TxLabel::AccLock)
-            .map(|confs| self.temporal_safety.sweep_monero_thr.saturating_sub(confs))
-            .unwrap_or(self.temporal_safety.sweep_monero_thr);
+            .map(|confs| SWEEP_MONERO_THRESHOLD.saturating_sub(confs))
+            .unwrap_or(SWEEP_MONERO_THRESHOLD);
         let sweep_block = self.syncer_state.height(Blockchain::Monero) + acc_confs_needs as u64;
         self.log_info(format!(
             "Tx {} needs {} more confirmations to spending maturity, and has {} confirmations.\n\

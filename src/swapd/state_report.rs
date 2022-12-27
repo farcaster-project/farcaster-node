@@ -8,6 +8,7 @@ use farcaster_core::{blockchain::Blockchain, transaction::TxLabel};
 use strict_encoding::{NetworkDecode, NetworkEncode};
 
 use crate::bus::{Progress, StateTransition};
+use crate::swapd::temporal_safety::SWEEP_MONERO_THRESHOLD;
 
 use super::{syncer_client::SyncerState, temporal_safety::TemporalSafety};
 
@@ -70,13 +71,13 @@ impl StateReport {
                 .map(|confs| temp_safety.blocks_until_cancel(confs)),
             blocks_until_safe_buy: syncer_state
                 .get_confs(TxLabel::Lock)
-                .map(|c| temp_safety.btc_finality_thr.saturating_sub(c)),
+                .map(|c| temp_safety.arb_finality.saturating_sub(c)),
             blocks_until_punish_possible: syncer_state
                 .get_confs(TxLabel::Cancel)
                 .map(|confs| temp_safety.blocks_until_punish_after_cancel(confs)),
             blocks_until_safe_monero_buy_sweep: syncer_state
                 .get_confs(TxLabel::AccLock)
-                .map(|c| temp_safety.sweep_monero_thr.saturating_sub(c)),
+                .map(|c| SWEEP_MONERO_THRESHOLD.saturating_sub(c)),
         }
     }
 
