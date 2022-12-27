@@ -979,8 +979,8 @@ fn try_bob_fee_estimated_to_bob_funded(
             }
 
             // Set the monero address creation height for Bob before setting the first checkpoint
-            if runtime.monero_address_creation_height.is_none() {
-                runtime.monero_address_creation_height = Some(
+            if runtime.acc_lock_height_lower_bound.is_none() {
+                runtime.acc_lock_height_lower_bound = Some(
                     runtime
                         .syncer_state
                         .height(Blockchain::Monero)
@@ -1046,7 +1046,7 @@ fn try_bob_funded_to_bob_refund_procedure_signature(
                     spend,
                     view,
                     txlabel,
-                    runtime.monero_address_creation_height.unwrap_or(
+                    runtime.acc_lock_height_lower_bound.unwrap_or(
                         runtime
                             .syncer_state
                             .monero_height
@@ -1244,7 +1244,7 @@ fn try_bob_accordant_lock_final_to_bob_buy_final(
                 tx,
                 event.endpoints,
                 runtime.swap_id,
-                runtime.monero_address_creation_height,
+                runtime.acc_lock_height_lower_bound,
             )?;
             let task = runtime.syncer_state.sweep_xmr(sweep_xmr.clone(), true);
             let sweep_address = if let Task::SweepAddress(sweep_address) = task {
@@ -1524,8 +1524,8 @@ fn try_alice_core_arbitrating_setup_to_alice_arbitrating_lock_final(
             {
                 let (spend, view) = aggregate_xmr_spend_view(alice_params, bob_params);
                 // Set the monero address creation height for Alice right after the first aggregation
-                if runtime.monero_address_creation_height.is_none() {
-                    runtime.monero_address_creation_height =
+                if runtime.acc_lock_height_lower_bound.is_none() {
+                    runtime.acc_lock_height_lower_bound =
                         Some(runtime.syncer_state.height(Blockchain::Monero));
                 }
                 let viewpair = monero::ViewPair { spend, view };
@@ -1543,7 +1543,7 @@ fn try_alice_core_arbitrating_setup_to_alice_arbitrating_lock_final(
                     spend,
                     view,
                     txlabel,
-                    runtime.monero_address_creation_height.unwrap_or(
+                    runtime.acc_lock_height_lower_bound.unwrap_or(
                         runtime
                             .syncer_state
                             .monero_height
@@ -1936,7 +1936,7 @@ fn try_alice_canceled_to_alice_refund_or_alice_punish(
                 event.endpoints,
                 tx.clone(),
                 runtime.swap_id,
-                runtime.monero_address_creation_height,
+                runtime.acc_lock_height_lower_bound,
             )?;
             // Check if we already registered the lock transaction, if so, initiate sweeping procedure
             runtime.log_debug(format!("{:?}", runtime.syncer_state.confirmations));

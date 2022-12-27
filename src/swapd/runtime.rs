@@ -407,8 +407,8 @@ impl Runtime {
                     mut pending_broadcasts,
                     xmr_addr_addendum,
                     local_trade_role,
-                    acc_lock_height_lower_bound: monero_address_creation_height,
                     mut address_creation_heights,
+                    acc_lock_height_lower_bound,
                     state,
                     ..
                 } = state;
@@ -416,9 +416,9 @@ impl Runtime {
                 self.swap_state_machine = state;
                 self.enquirer = enquirer;
                 self.temporal_safety = temporal_safety;
-                self.acc_lock_height_lower_bound = monero_address_creation_height;
                 self.syncer_state.address_creation_heights =
                     address_creation_heights.drain(..).collect();
+                self.acc_lock_height_lower_bound = acc_lock_height_lower_bound;
                 // We need to update the peerd for the pending requests in case of reconnect
                 self.local_trade_role = local_trade_role;
                 self.txs = txs.drain(..).collect();
