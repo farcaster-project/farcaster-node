@@ -1031,13 +1031,14 @@ fn try_bob_fee_estimated_to_bob_funded(
 
             // process tx with swap_key_manager
             swap_key_manager.process_funding_tx(runtime, Tx::Funding(tx))?;
-            let core_arb_setup = swap_key_manager.create_core_arb(runtime, &remote_params)?;
+            let core_arbitrating_setup =
+                swap_key_manager.create_core_arb(runtime, &remote_params)?;
 
             // register a watch task for arb lock, cancel, and refund
             for (&tx, tx_label) in [
-                &core_arb_setup.lock,
-                &core_arb_setup.cancel,
-                &core_arb_setup.refund,
+                &core_arbitrating_setup.lock,
+                &core_arbitrating_setup.cancel,
+                &core_arbitrating_setup.refund,
             ]
             .iter()
             .zip([TxLabel::Lock, TxLabel::Cancel, TxLabel::Refund])
@@ -1065,12 +1066,14 @@ fn try_bob_fee_estimated_to_bob_funded(
             // transition to new state
             let new_ssm = SwapStateMachine::BobFunded(BobFunded {
                 remote_params,
-                core_arbitrating_setup: core_arb_setup.clone(),
+                core_arbitrating_setup: core_arbitrating_setup.clone(),
                 swap_key_manager,
             });
             runtime.checkpoint_state(
                 event.endpoints,
-                Some(PeerMsg::CoreArbitratingSetup(core_arb_setup.clone())),
+                Some(PeerMsg::CoreArbitratingSetup(
+                    core_arbitrating_setup.clone(),
+                )),
                 new_ssm.clone(),
             )?;
 
@@ -1078,7 +1081,7 @@ fn try_bob_fee_estimated_to_bob_funded(
             runtime.log_debug("sending core arb setup to peer");
             runtime.send_peer(
                 event.endpoints,
-                PeerMsg::CoreArbitratingSetup(core_arb_setup),
+                PeerMsg::CoreArbitratingSetup(core_arbitrating_setup),
             )?;
             Ok(Some(new_ssm))
         }

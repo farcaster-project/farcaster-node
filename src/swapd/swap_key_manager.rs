@@ -484,12 +484,12 @@ impl AliceSwapKeyManager {
             key_manager,
             ..
         } = self;
-        let core_arb_txs = core_arbitrating_setup.clone().into_arbitrating_tx();
+        let core_arbitrating_txs = core_arbitrating_setup.clone().into_arbitrating_tx();
         let signed_adaptor_refund = alice.sign_adaptor_refund(
             key_manager,
             local_params,
             bob_parameters,
-            &core_arb_txs,
+            &core_arbitrating_txs,
             runtime.deal.to_arbitrating_params(),
         )?;
         let adaptor_refund = WrappedEncryptedSignature(signed_adaptor_refund.clone());
@@ -497,7 +497,7 @@ impl AliceSwapKeyManager {
             key_manager,
             local_params,
             bob_parameters,
-            &core_arb_txs,
+            &core_arbitrating_txs,
             runtime.deal.to_arbitrating_params(),
         )?;
         let refund_proc_signatures = RefundProcedureSignatures {
@@ -519,7 +519,7 @@ impl AliceSwapKeyManager {
             key_manager,
             local_params,
             bob_parameters,
-            &core_arb_txs,
+            &core_arbitrating_txs,
             runtime.deal.to_arbitrating_params(),
         )?;
         let mut punish_tx = PunishTx::from_partial(punish);
@@ -544,7 +544,7 @@ impl AliceSwapKeyManager {
         runtime: &mut Runtime,
         buy_procedure_signature: BuyProcedureSignature,
         bob_parameters: &Parameters,
-        core_arb_setup: CoreArbitratingSetup,
+        core_arbitrating_setup: CoreArbitratingSetup,
         alice_cancel_signature: Signature,
     ) -> Result<HandleBuyProcedureSignatureRes, Error> {
         runtime.log_trace("Swap key manager handling buy procedure signature.");
@@ -554,12 +554,12 @@ impl AliceSwapKeyManager {
             key_manager,
             ..
         } = self;
-        let core_arb_txs = core_arb_setup.clone().into_arbitrating_tx();
+        let core_arbitrating_txs = core_arbitrating_setup.clone().into_arbitrating_tx();
 
         // cancel
-        let mut cancel_tx = CancelTx::from_partial(core_arb_setup.cancel);
+        let mut cancel_tx = CancelTx::from_partial(core_arbitrating_setup.cancel);
         cancel_tx.add_witness(alice_params.cancel, alice_cancel_signature)?;
-        cancel_tx.add_witness(bob_parameters.cancel, core_arb_setup.cancel_sig)?;
+        cancel_tx.add_witness(bob_parameters.cancel, core_arbitrating_setup.cancel_sig)?;
         let finalized_cancel_tx =
             Broadcastable::<bitcoin::Transaction>::finalize_and_extract(&mut cancel_tx)?;
 
@@ -569,7 +569,7 @@ impl AliceSwapKeyManager {
             key_manager,
             alice_params,
             bob_parameters,
-            &core_arb_txs,
+            &core_arbitrating_txs,
             runtime.deal.to_arbitrating_params(),
             &buy_procedure_signature,
         )?;
@@ -577,7 +577,7 @@ impl AliceSwapKeyManager {
             key_manager,
             alice_params,
             bob_parameters,
-            &core_arb_txs,
+            &core_arbitrating_txs,
             runtime.deal.to_arbitrating_params(),
             &buy_procedure_signature,
         )?;
@@ -945,7 +945,7 @@ impl BobSwapKeyManager {
         runtime: &mut Runtime,
         refund_procedure_signatures: RefundProcedureSignatures,
         remote_params: &Parameters,
-        core_arb_setup: CoreArbitratingSetup,
+        core_arbitrating_setup: CoreArbitratingSetup,
     ) -> Result<HandleRefundProcedureSignaturesRes, Error> {
         let RefundProcedureSignatures {
             cancel_sig: alice_cancel_sig,
@@ -958,13 +958,13 @@ impl BobSwapKeyManager {
             key_manager,
             ..
         } = self;
-        let core_arb_txs = core_arb_setup.clone().into_arbitrating_tx();
+        let core_arbitrating_txs = core_arbitrating_setup.clone().into_arbitrating_tx();
 
         bob.validate_adaptor_refund(
             key_manager,
             remote_params,
             local_params,
-            &core_arb_txs,
+            &core_arbitrating_txs,
             &refund_adaptor_sig,
         )?;
 
@@ -973,29 +973,29 @@ impl BobSwapKeyManager {
             key_manager,
             remote_params,
             local_params,
-            &core_arb_txs,
+            &core_arbitrating_txs,
             runtime.deal.to_arbitrating_params(),
         )?;
 
         // lock
-        let sig = bob.sign_arbitrating_lock(key_manager, &core_arb_txs)?;
-        let mut lock_tx = LockTx::from_partial(core_arb_setup.lock);
+        let sig = bob.sign_arbitrating_lock(key_manager, &core_arbitrating_txs)?;
+        let mut lock_tx = LockTx::from_partial(core_arbitrating_setup.lock);
         let lock_pubkey = key_manager.get_pubkey(ArbitratingKeyId::Lock)?;
         lock_tx.add_witness(lock_pubkey, sig)?;
         let finalized_lock_tx =
             Broadcastable::<bitcoin::Transaction>::finalize_and_extract(&mut lock_tx)?;
 
         // cancel
-        let mut cancel_tx = CancelTx::from_partial(core_arb_setup.cancel);
+        let mut cancel_tx = CancelTx::from_partial(core_arbitrating_setup.cancel);
         cancel_tx.add_witness(remote_params.cancel, alice_cancel_sig)?;
-        cancel_tx.add_witness(local_params.cancel, core_arb_setup.cancel_sig)?;
+        cancel_tx.add_witness(local_params.cancel, core_arbitrating_setup.cancel_sig)?;
         let finalized_cancel_tx =
             Broadcastable::<bitcoin::Transaction>::finalize_and_extract(&mut cancel_tx)?;
 
         // refund
         let TxSignatures { sig, adapted_sig } =
-            bob.fully_sign_refund(key_manager, &core_arb_txs, &refund_adaptor_sig)?;
-        let mut refund_tx = RefundTx::from_partial(core_arb_setup.refund);
+            bob.fully_sign_refund(key_manager, &core_arbitrating_txs, &refund_adaptor_sig)?;
+        let mut refund_tx = RefundTx::from_partial(core_arbitrating_setup.refund);
         refund_tx.add_witness(local_params.refund, sig)?;
         refund_tx.add_witness(remote_params.refund, adapted_sig)?;
         let finalized_refund_tx =
