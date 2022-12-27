@@ -980,8 +980,12 @@ fn try_bob_fee_estimated_to_bob_funded(
 
             // Set the monero address creation height for Bob before setting the first checkpoint
             if runtime.monero_address_creation_height.is_none() {
-                runtime.monero_address_creation_height =
-                    Some(runtime.syncer_state.height(Blockchain::Monero));
+                runtime.monero_address_creation_height = Some(
+                    runtime
+                        .syncer_state
+                        .height(Blockchain::Monero)
+                        .saturating_sub(runtime.temporal_safety.xmr_finality_thr.into()),
+                );
             }
 
             // checkpoint swap pre lock bob

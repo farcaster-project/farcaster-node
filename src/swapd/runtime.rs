@@ -140,7 +140,7 @@ pub fn run(config: ServiceConfig, opts: Opts) -> Result<(), Error> {
         local_trade_role,
         local_swap_role,
         latest_state_report: state_report,
-        monero_address_creation_height: None,
+        acc_lock_block_height_lower_bound: None,
         swap_state_machine,
         unhandled_peer_message: None, // The last message we received and was not handled by the state machine
     };
@@ -165,7 +165,7 @@ pub struct Runtime {
     pub local_trade_role: TradeRole,
     pub local_swap_role: SwapRole,
     pub latest_state_report: StateReport,
-    pub monero_address_creation_height: Option<u64>,
+    pub acc_lock_block_height_lower_bound: Option<u64>,
     pub swap_state_machine: SwapStateMachine,
     pub unhandled_peer_message: Option<PeerMsg>,
 }
@@ -184,7 +184,7 @@ pub struct CheckpointSwapd {
     pub local_trade_role: TradeRole,
     pub connected_counterparty_node_id: Option<NodeId>,
     pub deal: Deal,
-    pub monero_address_creation_height: Option<u64>,
+    pub acc_lock_block_height_lower_bound: Option<u64>,
     pub address_creation_heights: Vec<(TxLabel, u64)>,
     pub bitcoin_checkpoint_height: u64,
     pub monero_checkpoint_height: u64,
@@ -407,7 +407,7 @@ impl Runtime {
                     mut pending_broadcasts,
                     xmr_addr_addendum,
                     local_trade_role,
-                    monero_address_creation_height,
+                    acc_lock_block_height_lower_bound: monero_address_creation_height,
                     mut address_creation_heights,
                     state,
                     ..
@@ -416,7 +416,7 @@ impl Runtime {
                 self.swap_state_machine = state;
                 self.enquirer = enquirer;
                 self.temporal_safety = temporal_safety;
-                self.monero_address_creation_height = monero_address_creation_height;
+                self.acc_lock_block_height_lower_bound = monero_address_creation_height;
                 self.syncer_state.address_creation_heights =
                     address_creation_heights.drain(..).collect();
                 // We need to update the peerd for the pending requests in case of reconnect
@@ -873,7 +873,7 @@ impl Runtime {
                     local_trade_role: self.local_trade_role,
                     connected_counterparty_node_id: get_node_id(&self.peer_service),
                     deal: self.deal.clone(),
-                    monero_address_creation_height: self.monero_address_creation_height,
+                    acc_lock_block_height_lower_bound: self.acc_lock_block_height_lower_bound,
                     address_creation_heights: self
                         .syncer_state
                         .address_creation_heights
