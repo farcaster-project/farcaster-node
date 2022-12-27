@@ -255,7 +255,7 @@ impl AliceSwapKeyManager {
     }
 
     pub fn taker_commit(
-        &mut self,
+        &self,
         event: &mut Event,
         runtime: &mut Runtime,
     ) -> Result<CommitAliceParameters, Error> {
@@ -303,7 +303,7 @@ impl AliceSwapKeyManager {
     }
 
     pub fn maker_commit(
-        &mut self,
+        &self,
         event: &mut Event,
         runtime: &mut Runtime,
     ) -> Result<CommitAliceParameters, Error> {
@@ -372,10 +372,7 @@ impl AliceSwapKeyManager {
         // Nothing to do yet, waiting for Msg CoreArbitratingSetup to proceed
     }
 
-    pub fn create_reveal_from_local_params(
-        &mut self,
-        runtime: &mut Runtime,
-    ) -> Result<Reveal, Error> {
+    pub fn create_reveal_from_local_params(&self, runtime: &mut Runtime) -> Result<Reveal, Error> {
         let AliceSwapKeyManager { local_params, .. } = self;
         runtime.log_debug("Generating reveal alice message");
         Ok(Reveal::Alice {
@@ -681,7 +678,7 @@ impl BobSwapKeyManager {
     }
 
     pub fn taker_commit(
-        &mut self,
+        &self,
         event: &mut Event,
         runtime: &mut Runtime,
     ) -> Result<CommitBobParameters, Error> {
@@ -746,7 +743,7 @@ impl BobSwapKeyManager {
     }
 
     pub fn maker_commit(
-        &mut self,
+        &self,
         event: &mut Event,
         runtime: &mut Runtime,
     ) -> Result<CommitBobParameters, Error> {
@@ -769,10 +766,7 @@ impl BobSwapKeyManager {
         Ok(local_params.commit_bob(runtime.swap_id, &engine))
     }
 
-    pub fn create_reveal_from_local_params(
-        &mut self,
-        runtime: &mut Runtime,
-    ) -> Result<Reveal, Error> {
+    pub fn create_reveal_from_local_params(&self, runtime: &mut Runtime) -> Result<Reveal, Error> {
         let BobSwapKeyManager { local_params, .. } = self;
         // craft the correct reveal depending on role
         Ok(Reveal::Bob {
