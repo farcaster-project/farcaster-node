@@ -236,14 +236,6 @@ impl SyncerState {
             tx_label.bright_white_bold(),
             view.bright_white_italic()
         );
-        debug!(
-            "{} | Address's public spend key for {}: {}",
-            self.swap_id.bright_blue_italic(),
-            tx_label.bright_white_bold(),
-            spend.bright_white_italic()
-        );
-        let viewpair = monero::ViewPair { spend, view };
-        let address = monero::Address::from_viewpair(self.network.into(), &viewpair);
         let addendum = XmrAddressAddendum {
             address,
             view_key: view,

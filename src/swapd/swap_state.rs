@@ -6,7 +6,7 @@
 
 use std::cmp::Ordering;
 
-use bitcoin::{hashes::Hash, psbt::serialize::Deserialize};
+use bitcoin::psbt::serialize::Deserialize;
 use farcaster_core::{
     blockchain::Blockchain, role::SwapRole, swap::btcxmr::message::BuyProcedureSignature,
     transaction::TxLabel,
@@ -27,7 +27,7 @@ use crate::{
     },
     event::{Event, StateMachine},
     service::Reporter,
-    syncerd::{FeeEstimation, FeeEstimations, SweepAddress, TaskAborted},
+    syncerd::{FeeEstimation, FeeEstimations, SweepAddress, TaskAborted, Txid},
     ServiceId,
 };
 use crate::{
@@ -1047,10 +1047,15 @@ fn try_bob_funded_to_bob_refund_procedure_signature(
                 );
                 let txlabel = TxLabel::AccLock;
                 let task = runtime.syncer_state.watch_addr_xmr(
-                    spend,
+                    address,
                     view,
                     txlabel,
-                    runtime.acc_lock_height_lower_bound,
+                    runtime.acc_lock_height_lower_bound.unwrap_or_else(|| {
+                        runtime.temporal_safety.block_height_reorg_lower_bound(
+                            Blockchain::Monero,
+                            runtime.syncer_state.height(Blockchain::Monero),
+                        )
+                    }),
                 );
                 event
                     .send_sync_service(runtime.syncer_state.monero_syncer(), SyncMsg::Task(task))?
@@ -1345,19 +1350,18 @@ fn try_bob_cancel_final_to_swap_end(
 
         BusMsg::Sync(SyncMsg::Event(SyncEvent::AddressTransaction(AddressTransaction {
             id,
-            ref hash,
+            hash: Txid::Bitcoin(ref hash),
             incoming,
             ..
         }))) if runtime.syncer_state.tasks.watched_addrs.get(&id) == Some(&TxLabel::Cancel)
             && !incoming =>
         {
-            let txid = bitcoin::Txid::from_slice(hash)?;
             let tasks = &runtime.syncer_state.tasks.txids;
             debug_assert!(tasks.get(&TxLabel::Refund).is_some());
-            if Some(&txid) != tasks.get(&TxLabel::Refund)
-                && Some(&txid) != tasks.get(&TxLabel::Punish)
+            if Some(hash) != tasks.get(&TxLabel::Refund)
+                && Some(hash) != tasks.get(&TxLabel::Punish)
             {
-                let watch_punish_task = runtime.syncer_state.watch_tx_btc(txid, TxLabel::Punish);
+                let watch_punish_task = runtime.syncer_state.watch_tx_btc(*hash, TxLabel::Punish);
                 event.send_sync_service(
                     runtime.syncer_state.bitcoin_syncer(),
                     SyncMsg::Task(watch_punish_task),
