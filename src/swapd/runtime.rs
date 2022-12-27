@@ -10,14 +10,15 @@ use super::{
     temporal_safety::TemporalSafety,
     StateReport,
 };
+use crate::swapd::temporal_safety::SWEEP_MONERO_THRESHOLD;
 use crate::swapd::Opts;
 use crate::syncerd::bitcoin_syncer::p2wpkh_signed_tx_fee;
 use crate::syncerd::types::{Event, TransactionConfirmations};
 use crate::syncerd::{Abort, Boolean, Task, TaskTarget};
 use crate::{
-    bus::ctl::{BitcoinFundingInfo, Checkpoint, CtlMsg, FundingInfo, Params},
+    bus::ctl::{BitcoinFundingInfo, Checkpoint, CtlMsg, FundingInfo},
     bus::info::{InfoMsg, SwapInfo},
-    bus::p2p::{Commit, PeerMsg, Reveal},
+    bus::p2p::PeerMsg,
     bus::sync::SyncMsg,
     bus::{BusMsg, Outcome, ServiceBus},
     syncerd::{HeightChanged, TransactionRetrieved, XmrAddressAddendum},
@@ -35,7 +36,7 @@ use bitcoin::Txid;
 use colored::ColoredString;
 use farcaster_core::{
     blockchain::Blockchain,
-    crypto::{CommitmentEngine, SharedKeyId},
+    crypto::SharedKeyId,
     monero::SHARED_VIEW_KEY_ID,
     role::{SwapRole, TradeRole},
     swap::btcxmr::{Deal, DealParameters, Parameters},
@@ -87,10 +88,9 @@ pub fn run(config: ServiceConfig, opts: Opts) -> Result<(), Error> {
     let temporal_safety = TemporalSafety {
         cancel_timelock: cancel_timelock.as_u32(),
         punish_timelock: punish_timelock.as_u32(),
-        btc_finality_thr: arbitrating_finality.into(),
-        race_thr: arbitrating_safety.into(),
-        xmr_finality_thr: accordant_finality.into(),
-        sweep_monero_thr: crate::swapd::temporal_safety::SWEEP_MONERO_THRESHOLD,
+        arb_finality: arbitrating_finality.into(),
+        safety: arbitrating_safety.into(),
+        acc_finality: accordant_finality.into(),
     };
 
     temporal_safety.valid_params()?;
@@ -541,7 +541,7 @@ impl Runtime {
                             id,
                             confirmations,
                             self.swap_id(),
-                            self.temporal_safety.xmr_finality_thr,
+                            self.temporal_safety.acc_finality,
                             endpoints,
                         );
 
@@ -609,7 +609,7 @@ impl Runtime {
                             id,
                             &Some(*confirmations),
                             self.swap_id(),
-                            self.temporal_safety.btc_finality_thr,
+                            self.temporal_safety.arb_finality,
                             endpoints,
                         );
                         // saving requests of interest for later replaying latest event
@@ -629,7 +629,7 @@ impl Runtime {
                             id,
                             confirmations,
                             self.swap_id(),
-                            self.temporal_safety.btc_finality_thr,
+                            self.temporal_safety.arb_finality,
                             endpoints,
                         );
                         // saving requests of interest for later replaying latest event
@@ -789,70 +789,6 @@ impl Runtime {
         Ok(amount)
     }
 
-    pub fn taker_commit(
-        &mut self,
-        endpoints: &mut Endpoints,
-        params: Params,
-    ) -> Result<Commit, Error> {
-        self.log_info(format!(
-            "{} to Maker remote peer",
-            "Proposing to take swap".bright_white_bold(),
-        ));
-
-        let msg = format!(
-            "Proposing to take swap {} to Maker remote peer",
-            self.swap_id()
-        );
-        // Ignoring possible reporting errors here and after: do not want to
-        // halt the swap just because the client disconnected
-        let _ = self.report_progress_message(endpoints, msg);
-
-        let engine = CommitmentEngine;
-        let commitment = match params {
-            Params::Bob(params) => {
-                Commit::BobParameters(params.commit_bob(self.swap_id(), &engine))
-            }
-            Params::Alice(params) => {
-                Commit::AliceParameters(params.commit_alice(self.swap_id(), &engine))
-            }
-        };
-
-        Ok(commitment)
-    }
-
-    pub fn maker_commit(
-        &mut self,
-        endpoints: &mut Endpoints,
-        swap_id: SwapId,
-        params: Params,
-    ) -> Result<Commit, Error> {
-        self.log_info(format!(
-            "{} as Maker from Taker through peerd {}",
-            "Accepting swap".bright_white_bold(),
-            self.peer_service.bright_blue_italic()
-        ));
-
-        let msg = format!(
-            "Accepting swap {} as Maker from Taker through peerd {}",
-            swap_id, self.peer_service
-        );
-        // Ignoring possible reporting errors here and after: do not want to
-        // halt the swap just because the enquirer (farcasterd) disconnected
-        let _ = self.report_progress_message(endpoints, msg);
-
-        let engine = CommitmentEngine;
-        let commitment = match params {
-            Params::Bob(params) => {
-                Commit::BobParameters(params.commit_bob(self.swap_id(), &engine))
-            }
-            Params::Alice(params) => {
-                Commit::AliceParameters(params.commit_alice(self.swap_id(), &engine))
-            }
-        };
-
-        Ok(commitment)
-    }
-
     pub fn abort_swap(&mut self, endpoints: &mut Endpoints) -> Result<(), Error> {
         let swap_success_req = BusMsg::Ctl(CtlMsg::SwapOutcome(Outcome::FailureAbort));
         self.send_ctl(endpoints, ServiceId::Farcasterd, swap_success_req)?;
@@ -936,8 +872,8 @@ impl Runtime {
         let acc_confs_needs = self
             .syncer_state
             .get_confs(TxLabel::AccLock)
-            .map(|confs| self.temporal_safety.sweep_monero_thr.saturating_sub(confs))
-            .unwrap_or(self.temporal_safety.sweep_monero_thr);
+            .map(|confs| SWEEP_MONERO_THRESHOLD.saturating_sub(confs))
+            .unwrap_or(SWEEP_MONERO_THRESHOLD);
         let sweep_block = self.syncer_state.height(Blockchain::Monero) + acc_confs_needs as u64;
         self.log_info(format!(
             "Tx {} needs {} more confirmations to spending maturity, and has {} confirmations.\n\
@@ -1015,40 +951,4 @@ pub fn aggregate_xmr_spend_view(
         .expect("accordant shared keys should always have a view key")
         .elem();
     (alice_params.spend + bob_params.spend, alice_view + bob_view)
-}
-
-/// Parameter processing irrespective of maker & taker role. Return [`Params`] if the commit/reveal
-/// matches.
-pub fn validate_reveal(reveal: &Reveal, remote_commit: Commit) -> Result<Params, Error> {
-    let core_wallet = CommitmentEngine;
-    match reveal {
-        Reveal::Alice { parameters, .. } => match &remote_commit {
-            Commit::AliceParameters(commit) => {
-                commit.verify_with_reveal(&core_wallet, parameters.clone())?;
-                Ok(Params::Alice(parameters.clone().into_parameters()))
-            }
-            _ => {
-                let err_msg = format!(
-                    "expected Some(Commit::Alice(commit)), found {}",
-                    remote_commit
-                );
-                error!("{}", err_msg);
-                Err(Error::Farcaster(err_msg))
-            }
-        },
-        Reveal::Bob { parameters, .. } => match &remote_commit {
-            Commit::BobParameters(commit) => {
-                commit.verify_with_reveal(&core_wallet, parameters.clone())?;
-                Ok(Params::Bob(parameters.clone().into_parameters()))
-            }
-            _ => {
-                let err_msg = format!(
-                    "expected Some(Commit::Bob(commit)), found {}",
-                    remote_commit
-                );
-                error!("{}", err_msg);
-                Err(Error::Farcaster(err_msg))
-            }
-        },
-    }
 }

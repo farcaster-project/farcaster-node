@@ -6,9 +6,16 @@
 
 use std::cmp::Ordering;
 
-use bitcoin::psbt::serialize::Deserialize;
+use bitcoin::{psbt::serialize::Deserialize, secp256k1::ecdsa::Signature};
 use farcaster_core::{
-    blockchain::Blockchain, role::SwapRole, swap::btcxmr::message::BuyProcedureSignature,
+    blockchain::Blockchain,
+    role::SwapRole,
+    swap::btcxmr::{
+        message::{
+            BuyProcedureSignature, CommitAliceParameters, CommitBobParameters, CoreArbitratingSetup,
+        },
+        Parameters,
+    },
     transaction::TxLabel,
 };
 use microservices::esb::Handler;
@@ -16,9 +23,10 @@ use monero::ViewPair;
 use strict_encoding::{StrictDecode, StrictEncode};
 
 use crate::{
-    bus::ctl::{MoneroFundingInfo, Params},
+    bus::ctl::MoneroFundingInfo,
     syncerd::{Abort, AddressTransaction, Boolean, TaskTarget},
 };
+use crate::{bus::p2p::Reveal, swapd::temporal_safety::SWEEP_MONERO_THRESHOLD};
 use crate::{
     bus::{
         ctl::{CtlMsg, InitMakerSwap, InitTakerSwap},
@@ -37,8 +45,8 @@ use crate::{
     },
     swapd::{
         runtime::aggregate_xmr_spend_view,
+        swap_key_manager::{HandleBuyProcedureSignatureRes, HandleRefundProcedureSignaturesRes},
         syncer_client::{log_tx_created, log_tx_seen},
-        wallet::{HandleBuyProcedureSignatureRes, HandleRefundProcedureSignaturesRes},
     },
     syncerd::{SweepSuccess, Task, TransactionConfirmations},
     Endpoints, Error,
@@ -47,11 +55,13 @@ use crate::{
     bus::{sync::SyncMsg, Outcome},
     LogStyle,
 };
-use crate::{swapd::wallet::HandleCoreArbitratingSetupRes, syncerd::types::Event as SyncEvent};
+use crate::{
+    swapd::swap_key_manager::HandleCoreArbitratingSetupRes, syncerd::types::Event as SyncEvent,
+};
 
 use super::{
-    runtime::{validate_reveal, Runtime},
-    wallet::Wallet,
+    runtime::Runtime,
+    swap_key_manager::{AliceSwapKeyManager, BobSwapKeyManager, WrappedEncryptedSignature},
 };
 
 /// State machine for running a swap.
@@ -130,13 +140,13 @@ pub enum SwapStateMachine {
     */
     // StartTaker state - transitions to AliceInitTaker or BobInitTaker on
     // request TakeSwap, or Swap End on AbortSwap. Triggers watch fee and
-    // height.  Creates new taker wallet. Sends TakerCommit to the counterparty
+    // height.  Creates new taker swap_key_manager. Sends TakerCommit to the counterparty
     // peer.
     #[display("Start {0} Taker")]
     StartTaker(SwapRole),
     // StartMaker state - transition to AliceInitMaker or BobInitMaker on
     // request MakeSwap, or Swap End on AbortSwap. Triggers watch fee and
-    // height.  Creates new maker wallet. Sends MakerCommit to the counterparty
+    // height.  Creates new maker swap_key_manager. Sends MakerCommit to the counterparty
     // peer.
     #[display("Start {0} Maker")]
     StartMaker(SwapRole),
@@ -303,112 +313,119 @@ pub enum SwapStateMachine {
 
 #[derive(Clone, Debug, StrictEncode, StrictDecode)]
 pub struct BobInitMaker {
-    local_params: Params,
-    remote_commit: Commit,
-    wallet: Wallet,
+    remote_commit: CommitAliceParameters,
+    swap_key_manager: BobSwapKeyManager,
 }
 
 #[derive(Clone, Debug, StrictEncode, StrictDecode)]
 pub struct AliceInitMaker {
-    local_params: Params,
-    remote_commit: Commit,
-    wallet: Wallet,
+    remote_commit: CommitBobParameters,
+    swap_key_manager: AliceSwapKeyManager,
 }
 
 #[derive(Clone, Debug, StrictEncode, StrictDecode)]
 pub struct BobInitTaker {
-    local_params: Params,
-    wallet: Wallet,
+    swap_key_manager: BobSwapKeyManager,
 }
 
 #[derive(Clone, Debug, StrictEncode, StrictDecode)]
 pub struct AliceInitTaker {
-    local_params: Params,
-    wallet: Wallet,
+    swap_key_manager: AliceSwapKeyManager,
 }
 
 #[derive(Clone, Debug, StrictEncode, StrictDecode)]
 pub struct AliceTakerMakerCommit {
-    local_params: Params,
-    remote_commit: Commit,
-    wallet: Wallet,
+    remote_commit: CommitBobParameters,
+    swap_key_manager: AliceSwapKeyManager,
 }
 
 #[derive(Clone, Debug, StrictEncode, StrictDecode)]
 pub struct BobTakerMakerCommit {
-    local_params: Params,
-    remote_commit: Commit,
-    wallet: Wallet,
+    remote_commit: CommitAliceParameters,
+    swap_key_manager: BobSwapKeyManager,
 }
 
 #[derive(Clone, Debug, StrictEncode, StrictDecode)]
 pub struct BobReveal {
-    local_params: Params,
-    remote_params: Params,
-    wallet: Wallet,
+    remote_params: Parameters,
+    swap_key_manager: BobSwapKeyManager,
 }
 
 #[derive(Clone, Debug, StrictEncode, StrictDecode)]
 pub struct AliceReveal {
-    local_params: Params,
-    remote_params: Params,
-    wallet: Wallet,
+    remote_params: Parameters,
+    swap_key_manager: AliceSwapKeyManager,
 }
 
 #[derive(Clone, Debug, StrictEncode, StrictDecode)]
 pub struct BobFeeEstimated {
-    local_params: Params,
     required_funding_amount: bitcoin::Amount,
-    remote_params: Params,
-    wallet: Wallet,
+    remote_params: Parameters,
+    swap_key_manager: BobSwapKeyManager,
 }
 
 #[derive(Clone, Debug, StrictEncode, StrictDecode)]
 pub struct BobFunded {
-    local_params: Params,
-    remote_params: Params,
-    wallet: Wallet,
+    remote_params: Parameters,
+    core_arbitrating_setup: CoreArbitratingSetup,
+    swap_key_manager: BobSwapKeyManager,
 }
 
 #[derive(Clone, Debug, StrictEncode, StrictDecode)]
 pub struct AliceCoreArbitratingSetup {
-    local_params: Params,
-    remote_params: Params,
-    wallet: Wallet,
+    remote_params: Parameters,
+    core_arbitrating_setup: CoreArbitratingSetup,
+    alice_cancel_signature: Signature,
+    adaptor_refund: WrappedEncryptedSignature,
+    swap_key_manager: AliceSwapKeyManager,
 }
 
 #[derive(Clone, Debug, StrictEncode, StrictDecode)]
 pub struct BobRefundProcedureSignatures {
-    wallet: Wallet,
+    remote_params: Parameters,
+    swap_key_manager: BobSwapKeyManager,
     buy_procedure_signature: BuyProcedureSignature,
 }
 
 #[derive(Clone, Debug, StrictEncode, StrictDecode)]
 pub struct AliceArbitratingLockFinal {
-    wallet: Wallet,
+    swap_key_manager: AliceSwapKeyManager,
     funding_info: MoneroFundingInfo,
     required_funding_amount: monero::Amount,
+    remote_params: Parameters,
+    core_arbitrating_setup: CoreArbitratingSetup,
+    alice_cancel_signature: Signature,
+    adaptor_refund: WrappedEncryptedSignature,
 }
 
 #[derive(Clone, Debug, StrictEncode, StrictDecode)]
 pub struct BobAccordantLock {
-    wallet: Wallet,
+    remote_params: Parameters,
+    swap_key_manager: BobSwapKeyManager,
     buy_procedure_signature: BuyProcedureSignature,
 }
 
 #[derive(Clone, Debug, StrictEncode, StrictDecode)]
 pub struct AliceAccordantLock {
-    wallet: Wallet,
+    remote_params: Parameters,
+    core_arbitrating_setup: CoreArbitratingSetup,
+    alice_cancel_signature: Signature,
+    adaptor_refund: WrappedEncryptedSignature,
+    swap_key_manager: AliceSwapKeyManager,
 }
 
 #[derive(Clone, Debug, StrictEncode, StrictDecode)]
 pub struct BobAccordantLockFinal {
-    wallet: Wallet,
+    remote_params: Parameters,
+    buy_procedure_signature: BuyProcedureSignature,
+    swap_key_manager: BobSwapKeyManager,
 }
 
 #[derive(Clone, Debug, StrictEncode, StrictDecode)]
 pub struct AliceCanceled {
-    wallet: Wallet,
+    remote_params: Parameters,
+    adaptor_refund: WrappedEncryptedSignature,
+    swap_key_manager: AliceSwapKeyManager,
 }
 
 impl StateMachine<Runtime, Error> for SwapStateMachine {
@@ -579,11 +596,11 @@ impl SwapStateMachineExecutor {
 }
 
 fn attempt_transition_to_init_taker(
-    event: Event,
+    mut event: Event,
     runtime: &mut Runtime,
     swap_role: SwapRole,
 ) -> Result<Option<SwapStateMachine>, Error> {
-    match event.request {
+    match event.request.clone() {
         BusMsg::Ctl(CtlMsg::TakeSwap(InitTakerSwap {
             ref peerd,
             ref report_to,
@@ -613,42 +630,71 @@ fn attempt_transition_to_init_taker(
                 runtime.connected = true;
             }
             runtime.enquirer = Some(report_to.clone());
-            let wallet = Wallet::new_taker(
-                event.endpoints,
-                runtime.deal.clone(),
-                target_bitcoin_address.clone(),
-                target_monero_address,
-                key_manager.0.clone(),
-                swap_id,
-            )?;
-            let local_params = wallet.local_params();
-            let local_commit = runtime
-                .taker_commit(event.endpoints, local_params.clone())
-                .map_err(|err| {
-                    runtime.log_error(&err);
-                    runtime.report_failure(
-                        event.endpoints,
-                        Failure {
-                            code: FailureCode::Unknown,
-                            info: err.to_string(),
-                        },
-                    )
-                })?;
-            let take_swap = TakerCommit {
-                commit: local_commit,
-                deal: runtime.deal.clone(),
-            };
-            // send taker commit message to counter-party
-            runtime.send_peer(event.endpoints, PeerMsg::TakerCommit(take_swap))?;
+
             match swap_role {
-                SwapRole::Bob => Ok(Some(SwapStateMachine::BobInitTaker(BobInitTaker {
-                    local_params,
-                    wallet,
-                }))),
-                SwapRole::Alice => Ok(Some(SwapStateMachine::AliceInitTaker(AliceInitTaker {
-                    local_params,
-                    wallet,
-                }))),
+                SwapRole::Bob => {
+                    let mut swap_key_manager = BobSwapKeyManager::new_taker_bob(
+                        &mut event,
+                        runtime,
+                        target_bitcoin_address.clone(),
+                        target_monero_address,
+                        key_manager.0.clone(),
+                    )?;
+                    let local_commit =
+                        swap_key_manager
+                            .taker_commit(&mut event, runtime)
+                            .map_err(|err| {
+                                runtime.log_error(&err);
+                                runtime.report_failure(
+                                    event.endpoints,
+                                    Failure {
+                                        code: FailureCode::Unknown,
+                                        info: err.to_string(),
+                                    },
+                                )
+                            })?;
+                    let take_swap = TakerCommit {
+                        commit: Commit::BobParameters(local_commit),
+                        deal: runtime.deal.clone(),
+                    };
+                    // send taker commit message to counter-party
+                    runtime.send_peer(event.endpoints, PeerMsg::TakerCommit(take_swap))?;
+
+                    Ok(Some(SwapStateMachine::BobInitTaker(BobInitTaker {
+                        swap_key_manager,
+                    })))
+                }
+                SwapRole::Alice => {
+                    let mut swap_key_manager = AliceSwapKeyManager::new_taker_alice(
+                        runtime,
+                        target_bitcoin_address.clone(),
+                        target_monero_address,
+                        key_manager.0.clone(),
+                    )?;
+                    let local_commit =
+                        swap_key_manager
+                            .taker_commit(&mut event, runtime)
+                            .map_err(|err| {
+                                runtime.log_error(&err);
+                                runtime.report_failure(
+                                    event.endpoints,
+                                    Failure {
+                                        code: FailureCode::Unknown,
+                                        info: err.to_string(),
+                                    },
+                                )
+                            })?;
+                    let take_swap = TakerCommit {
+                        commit: Commit::AliceParameters(local_commit),
+                        deal: runtime.deal.clone(),
+                    };
+                    // send taker commit message to counter-party
+                    runtime.send_peer(event.endpoints, PeerMsg::TakerCommit(take_swap))?;
+
+                    Ok(Some(SwapStateMachine::AliceInitTaker(AliceInitTaker {
+                        swap_key_manager,
+                    })))
+                }
             }
         }
         BusMsg::Ctl(CtlMsg::AbortSwap) => handle_abort_swap(event, runtime),
@@ -657,7 +703,7 @@ fn attempt_transition_to_init_taker(
 }
 
 fn attempt_transition_to_init_maker(
-    event: Event,
+    mut event: Event,
     runtime: &mut Runtime,
     swap_role: SwapRole,
 ) -> Result<Option<SwapStateMachine>, Error> {
@@ -666,7 +712,7 @@ fn attempt_transition_to_init_maker(
             peerd,
             report_to,
             key_manager,
-            swap_id,
+            swap_id: _,
             target_bitcoin_address,
             target_monero_address,
             commit: remote_commit,
@@ -678,46 +724,93 @@ fn attempt_transition_to_init_maker(
             runtime
                 .syncer_state
                 .watch_height(event.endpoints, Blockchain::Monero)?;
-            let wallet = Wallet::new_maker(
-                event.endpoints,
-                runtime.deal.clone(),
-                target_bitcoin_address,
-                target_monero_address,
-                key_manager.0,
-                swap_id,
-                remote_commit.clone(),
-            )?;
-            let local_params = wallet.local_params();
             runtime.peer_service = peerd;
             if runtime.peer_service != ServiceId::Loopback {
                 runtime.connected = true;
             }
             runtime.enquirer = Some(report_to);
-            let local_commit = runtime
-                .maker_commit(event.endpoints, swap_id, local_params.clone())
-                .map_err(|err| {
-                    runtime.report_failure(
-                        event.endpoints,
-                        Failure {
-                            code: FailureCode::Unknown,
-                            info: err.to_string(),
-                        },
-                    )
-                })?;
-            // send maker commit message to counter-party
-            runtime.log_trace(format!("sending peer MakerCommit msg {}", &local_commit));
-            runtime.send_peer(event.endpoints, PeerMsg::MakerCommit(local_commit))?;
+
             match swap_role {
-                SwapRole::Bob => Ok(Some(SwapStateMachine::BobInitMaker(BobInitMaker {
-                    local_params,
-                    remote_commit,
-                    wallet,
-                }))),
-                SwapRole::Alice => Ok(Some(SwapStateMachine::AliceInitMaker(AliceInitMaker {
-                    local_params,
-                    remote_commit,
-                    wallet,
-                }))),
+                SwapRole::Bob => {
+                    let remote_commit = if let Commit::AliceParameters(remote_commit) =
+                        remote_commit
+                    {
+                        remote_commit
+                    } else {
+                        return Err(Error::Farcaster(
+                            "Local swap role is Bob, but received Bob remote commit".to_string(),
+                        ));
+                    };
+                    let mut swap_key_manager = BobSwapKeyManager::new_maker_bob(
+                        &mut event,
+                        runtime,
+                        target_bitcoin_address,
+                        target_monero_address,
+                        key_manager.0,
+                    )?;
+                    let local_commit =
+                        swap_key_manager
+                            .maker_commit(&mut event, runtime)
+                            .map_err(|err| {
+                                runtime.report_failure(
+                                    event.endpoints,
+                                    Failure {
+                                        code: FailureCode::Unknown,
+                                        info: err.to_string(),
+                                    },
+                                )
+                            })?;
+                    // send maker commit message to counter-party
+                    runtime.log_trace(format!("sending peer MakerCommit msg {}", &local_commit));
+                    runtime.send_peer(
+                        event.endpoints,
+                        PeerMsg::MakerCommit(Commit::BobParameters(local_commit)),
+                    )?;
+
+                    Ok(Some(SwapStateMachine::BobInitMaker(BobInitMaker {
+                        remote_commit,
+                        swap_key_manager,
+                    })))
+                }
+                SwapRole::Alice => {
+                    let remote_commit = if let Commit::BobParameters(remote_commit) = remote_commit
+                    {
+                        remote_commit
+                    } else {
+                        return Err(Error::Farcaster(
+                            "Local swap role is Bob, but received Bob remote commit".to_string(),
+                        ));
+                    };
+                    let mut swap_key_manager = AliceSwapKeyManager::new_maker_alice(
+                        runtime,
+                        target_bitcoin_address,
+                        target_monero_address,
+                        key_manager.0,
+                    )?;
+                    let local_commit =
+                        swap_key_manager
+                            .maker_commit(&mut event, runtime)
+                            .map_err(|err| {
+                                runtime.report_failure(
+                                    event.endpoints,
+                                    Failure {
+                                        code: FailureCode::Unknown,
+                                        info: err.to_string(),
+                                    },
+                                )
+                            })?;
+                    // send maker commit message to counter-party
+                    runtime.log_trace(format!("sending peer MakerCommit msg {}", &local_commit));
+                    runtime.send_peer(
+                        event.endpoints,
+                        PeerMsg::MakerCommit(Commit::AliceParameters(local_commit)),
+                    )?;
+
+                    Ok(Some(SwapStateMachine::AliceInitMaker(AliceInitMaker {
+                        remote_commit,
+                        swap_key_manager,
+                    })))
+                }
             }
         }
         BusMsg::Ctl(CtlMsg::AbortSwap) => handle_abort_swap(event, runtime),
@@ -731,8 +824,7 @@ fn try_bob_init_taker_to_bob_taker_maker_commit(
     bob_init_taker: BobInitTaker,
 ) -> Result<Option<SwapStateMachine>, Error> {
     let BobInitTaker {
-        local_params,
-        mut wallet,
+        mut swap_key_manager,
     } = bob_init_taker;
     match event.request.clone() {
         BusMsg::P2p(PeerMsg::DealNotFound(_)) => {
@@ -741,23 +833,22 @@ fn try_bob_init_taker_to_bob_taker_maker_commit(
                 runtime.deal.id().swap_id(),
             ));
             // just cancel the swap, no additional logic required
-            handle_bob_abort_swap(event, runtime, wallet)
+            handle_bob_abort_swap(event, runtime, swap_key_manager)
         }
-        BusMsg::P2p(PeerMsg::MakerCommit(remote_commit)) => {
+        BusMsg::P2p(PeerMsg::MakerCommit(Commit::AliceParameters(remote_commit))) => {
             runtime.log_debug("Received remote maker commitment");
-            let reveal = wallet.handle_maker_commit(remote_commit.clone(), runtime.swap_id)?;
-            runtime.log_debug("Wallet handled maker commit and produced reveal");
+            let reveal = swap_key_manager.create_reveal_from_local_params(runtime)?;
+            runtime.log_debug("swap_key_manager handled maker commit and produced reveal");
             runtime.send_peer(event.endpoints, PeerMsg::Reveal(reveal))?;
             runtime.log_trace("Sent reveal peer message to peerd");
             Ok(Some(SwapStateMachine::BobTakerMakerCommit(
                 BobTakerMakerCommit {
-                    local_params,
-                    wallet,
                     remote_commit,
+                    swap_key_manager,
                 },
             )))
         }
-        BusMsg::Ctl(CtlMsg::AbortSwap) => handle_bob_abort_swap(event, runtime, wallet),
+        BusMsg::Ctl(CtlMsg::AbortSwap) => handle_bob_abort_swap(event, runtime, swap_key_manager),
         _ => Ok(None),
     }
 }
@@ -768,8 +859,7 @@ fn try_alice_init_taker_to_alice_taker_maker_commit(
     bob_init_taker: AliceInitTaker,
 ) -> Result<Option<SwapStateMachine>, Error> {
     let AliceInitTaker {
-        local_params,
-        mut wallet,
+        mut swap_key_manager,
     } = bob_init_taker;
     match event.request {
         BusMsg::P2p(PeerMsg::DealNotFound(_)) => {
@@ -780,17 +870,16 @@ fn try_alice_init_taker_to_alice_taker_maker_commit(
             // just cancel the swap, no additional logic required
             handle_abort_swap(event, runtime)
         }
-        BusMsg::P2p(PeerMsg::MakerCommit(remote_commit)) => {
+        BusMsg::P2p(PeerMsg::MakerCommit(Commit::BobParameters(remote_commit))) => {
             runtime.log_debug("Received remote maker commitment");
-            let reveal = wallet.handle_maker_commit(remote_commit.clone(), runtime.swap_id)?;
-            runtime.log_debug("Wallet handled maker commit and produced reveal");
+            let reveal = swap_key_manager.create_reveal_from_local_params(runtime)?;
+            runtime.log_debug("swap_key_manager handled maker commit and produced reveal");
             runtime.send_peer(event.endpoints, PeerMsg::Reveal(reveal))?;
             runtime.log_info("Sent reveal peer message to peerd");
             Ok(Some(SwapStateMachine::AliceTakerMakerCommit(
                 AliceTakerMakerCommit {
-                    local_params,
-                    wallet,
                     remote_commit,
+                    swap_key_manager,
                 },
             )))
         }
@@ -805,11 +894,10 @@ fn try_bob_taker_maker_commit_to_bob_reveal(
     bob_taker_maker_commit: BobTakerMakerCommit,
 ) -> Result<Option<SwapStateMachine>, Error> {
     let BobTakerMakerCommit {
-        local_params,
+        swap_key_manager,
         remote_commit,
-        wallet,
     } = bob_taker_maker_commit;
-    attempt_transition_to_bob_reveal(event, runtime, local_params, remote_commit, wallet)
+    attempt_transition_to_bob_reveal(event, runtime, remote_commit, swap_key_manager)
 }
 
 fn try_alice_taker_maker_commit_to_alice_reveal(
@@ -818,11 +906,10 @@ fn try_alice_taker_maker_commit_to_alice_reveal(
     alice_taker_maker_commit: AliceTakerMakerCommit,
 ) -> Result<Option<SwapStateMachine>, Error> {
     let AliceTakerMakerCommit {
-        local_params,
         remote_commit,
-        wallet,
+        swap_key_manager,
     } = alice_taker_maker_commit;
-    attempt_transition_to_alice_reveal(event, runtime, local_params, remote_commit, wallet)
+    attempt_transition_to_alice_reveal(event, runtime, remote_commit, swap_key_manager)
 }
 
 fn try_bob_init_maker_to_bob_reveal(
@@ -831,11 +918,10 @@ fn try_bob_init_maker_to_bob_reveal(
     bob_init_maker: BobInitMaker,
 ) -> Result<Option<SwapStateMachine>, Error> {
     let BobInitMaker {
-        local_params,
+        swap_key_manager,
         remote_commit,
-        wallet,
     } = bob_init_maker;
-    attempt_transition_to_bob_reveal(event, runtime, local_params, remote_commit, wallet)
+    attempt_transition_to_bob_reveal(event, runtime, remote_commit, swap_key_manager)
 }
 
 fn try_alice_init_maker_to_alice_reveal(
@@ -844,11 +930,10 @@ fn try_alice_init_maker_to_alice_reveal(
     alice_init_maker: AliceInitMaker,
 ) -> Result<Option<SwapStateMachine>, Error> {
     let AliceInitMaker {
-        local_params,
         remote_commit,
-        wallet,
+        swap_key_manager,
     } = alice_init_maker;
-    attempt_transition_to_alice_reveal(event, runtime, local_params, remote_commit, wallet)
+    attempt_transition_to_alice_reveal(event, runtime, remote_commit, swap_key_manager)
 }
 
 fn try_bob_reveal_to_bob_fee_estimated(
@@ -857,9 +942,8 @@ fn try_bob_reveal_to_bob_fee_estimated(
     bob_reveal: BobReveal,
 ) -> Result<Option<SwapStateMachine>, Error> {
     let BobReveal {
-        local_params,
         remote_params,
-        wallet,
+        swap_key_manager,
     } = bob_reveal;
     match &event.request {
         BusMsg::Sync(SyncMsg::Event(SyncEvent::FeeEstimation(FeeEstimation {
@@ -873,7 +957,7 @@ fn try_bob_reveal_to_bob_fee_estimated(
             // FIXME handle low priority as well
             runtime.log_info(format!("Fee: {} sat/kvB", high_priority_sats_per_kvbyte));
             runtime.log_debug("Sending funding info to farcasterd");
-            let funding_address = wallet
+            let funding_address = swap_key_manager
                 .funding_address()
                 .expect("Am Bob, so have funding address");
             let required_funding_amount = runtime.ask_bob_to_fund(
@@ -891,13 +975,12 @@ fn try_bob_reveal_to_bob_fee_estimated(
                 SyncMsg::Task(watch_addr_task),
             )?;
             Ok(Some(SwapStateMachine::BobFeeEstimated(BobFeeEstimated {
-                local_params,
                 remote_params,
-                wallet,
+                swap_key_manager,
                 required_funding_amount,
             })))
         }
-        BusMsg::Ctl(CtlMsg::AbortSwap) => handle_bob_abort_swap(event, runtime, wallet),
+        BusMsg::Ctl(CtlMsg::AbortSwap) => handle_bob_abort_swap(event, runtime, swap_key_manager),
         _ => Ok(None),
     }
 }
@@ -908,9 +991,8 @@ fn try_bob_fee_estimated_to_bob_funded(
     bob_reveal: BobFeeEstimated,
 ) -> Result<Option<SwapStateMachine>, Error> {
     let BobFeeEstimated {
-        local_params,
         remote_params,
-        mut wallet,
+        mut swap_key_manager,
         required_funding_amount,
     } = bob_reveal;
     match &event.request {
@@ -939,7 +1021,7 @@ fn try_bob_fee_estimated_to_bob_funded(
                 let msg = format!("Incorrect amount funded. Required: {}, Funded: {}. Do not fund this swap anymore, will abort and atttempt to sweep the Bitcoin to the provided address.", amount, required_funding_amount);
                 runtime.log_error(&msg);
                 runtime.report_progress_message(event.endpoints, msg)?;
-                return handle_bob_abort_swap(event, runtime, wallet);
+                return handle_bob_abort_swap(event, runtime, swap_key_manager);
             } else {
                 // funding completed, amount is correct
                 event.send_ctl_service(
@@ -948,15 +1030,16 @@ fn try_bob_fee_estimated_to_bob_funded(
                 )?;
             }
 
-            // process tx with wallet
-            wallet.process_funding_tx(Tx::Funding(tx), runtime.swap_id)?;
-            let core_arb_setup = wallet.create_core_arb(runtime.swap_id)?;
+            // process tx with swap_key_manager
+            swap_key_manager.process_funding_tx(runtime, Tx::Funding(tx))?;
+            let core_arbitrating_setup =
+                swap_key_manager.create_core_arb(runtime, &remote_params)?;
 
             // register a watch task for arb lock, cancel, and refund
             for (&tx, tx_label) in [
-                &core_arb_setup.lock,
-                &core_arb_setup.cancel,
-                &core_arb_setup.refund,
+                &core_arbitrating_setup.lock,
+                &core_arbitrating_setup.cancel,
+                &core_arbitrating_setup.refund,
             ]
             .iter()
             .zip([TxLabel::Lock, TxLabel::Cancel, TxLabel::Refund])
@@ -983,13 +1066,15 @@ fn try_bob_fee_estimated_to_bob_funded(
             runtime.log_debug("checkpointing bob pre lock state");
             // transition to new state
             let new_ssm = SwapStateMachine::BobFunded(BobFunded {
-                local_params,
                 remote_params,
-                wallet,
+                core_arbitrating_setup: core_arbitrating_setup.clone(),
+                swap_key_manager,
             });
             runtime.checkpoint_state(
                 event.endpoints,
-                Some(PeerMsg::CoreArbitratingSetup(core_arb_setup.clone())),
+                Some(PeerMsg::CoreArbitratingSetup(
+                    core_arbitrating_setup.clone(),
+                )),
                 new_ssm.clone(),
             )?;
 
@@ -997,11 +1082,11 @@ fn try_bob_fee_estimated_to_bob_funded(
             runtime.log_debug("sending core arb setup to peer");
             runtime.send_peer(
                 event.endpoints,
-                PeerMsg::CoreArbitratingSetup(core_arb_setup),
+                PeerMsg::CoreArbitratingSetup(core_arbitrating_setup),
             )?;
             Ok(Some(new_ssm))
         }
-        BusMsg::Ctl(CtlMsg::AbortSwap) => handle_bob_abort_swap(event, runtime, wallet),
+        BusMsg::Ctl(CtlMsg::AbortSwap) => handle_bob_abort_swap(event, runtime, swap_key_manager),
         _ => Ok(None),
     }
 }
@@ -1012,48 +1097,47 @@ fn try_bob_funded_to_bob_refund_procedure_signature(
     bob_funded: BobFunded,
 ) -> Result<Option<SwapStateMachine>, Error> {
     let BobFunded {
-        local_params,
         remote_params,
-        mut wallet,
+        core_arbitrating_setup,
+        mut swap_key_manager,
     } = bob_funded;
     match &event.request {
         BusMsg::P2p(PeerMsg::RefundProcedureSignatures(refund_proc)) => {
-            runtime.log_debug("Processing refund proc sig with wallet.");
+            runtime.log_debug("Processing refund proc sig with swap_key_manager.");
             let HandleRefundProcedureSignaturesRes {
                 buy_procedure_signature,
                 lock_tx,
                 cancel_tx,
                 refund_tx,
-            } = wallet.handle_refund_procedure_signatures(refund_proc.clone(), runtime.swap_id)?;
+            } = swap_key_manager.handle_refund_procedure_signatures(
+                runtime,
+                refund_proc.clone(),
+                &remote_params,
+                core_arbitrating_setup,
+            )?;
             // Process and broadcast lock tx
             log_tx_created(runtime.swap_id, TxLabel::Lock);
             // Process params, aggregate and watch xmr address
-            if let (Params::Bob(bob_params), Params::Alice(alice_params)) =
-                (&local_params, &remote_params)
-            {
-                let (spend, view) = aggregate_xmr_spend_view(alice_params, bob_params);
-                let address = monero::Address::from_viewpair(
-                    runtime.syncer_state.network.into(),
-                    &ViewPair { spend, view },
-                );
-                let txlabel = TxLabel::AccLock;
-                let task = runtime.syncer_state.watch_addr_xmr(
-                    address,
-                    view,
-                    txlabel,
-                    runtime.acc_lock_height_lower_bound.unwrap_or_else(|| {
-                        runtime.temporal_safety.block_height_reorg_lower_bound(
-                            Blockchain::Monero,
-                            runtime.syncer_state.height(Blockchain::Monero),
-                        )
-                    }),
-                );
-                event
-                    .send_sync_service(runtime.syncer_state.monero_syncer(), SyncMsg::Task(task))?
-            } else {
-                runtime
-                    .log_error("On Bob state, but local params not Bob or remote params not Alice");
-            }
+            let (spend, view) =
+                aggregate_xmr_spend_view(&remote_params, &swap_key_manager.local_params());
+            let address = monero::Address::from_viewpair(
+                runtime.syncer_state.network.into(),
+                &ViewPair { spend, view },
+            );
+            let txlabel = TxLabel::AccLock;
+            let task = runtime.syncer_state.watch_addr_xmr(
+                address,
+                view,
+                txlabel,
+                runtime.acc_lock_height_lower_bound.unwrap_or_else(|| {
+                    runtime.temporal_safety.block_height_reorg_lower_bound(
+                        Blockchain::Monero,
+                        runtime.syncer_state.height(Blockchain::Monero),
+                    )
+                }),
+            );
+
+            event.send_sync_service(runtime.syncer_state.monero_syncer(), SyncMsg::Task(task))?;
             // Handle Cancel and Refund transaction
             log_tx_created(runtime.swap_id, TxLabel::Cancel);
             log_tx_created(runtime.swap_id, TxLabel::Refund);
@@ -1070,7 +1154,8 @@ fn try_bob_funded_to_bob_refund_procedure_signature(
             // Checkpoint BobRefundProcedureSignatures
             let new_ssm =
                 SwapStateMachine::BobRefundProcedureSignatures(BobRefundProcedureSignatures {
-                    wallet,
+                    remote_params,
+                    swap_key_manager,
                     buy_procedure_signature,
                 });
             runtime.log_debug("Checkpointing bob refund signature swapd state.");
@@ -1082,7 +1167,7 @@ fn try_bob_funded_to_bob_refund_procedure_signature(
             runtime.broadcast(lock_tx, TxLabel::Lock, event.endpoints)?;
             Ok(Some(new_ssm))
         }
-        BusMsg::Ctl(CtlMsg::AbortSwap) => handle_bob_abort_swap(event, runtime, wallet),
+        BusMsg::Ctl(CtlMsg::AbortSwap) => handle_bob_abort_swap(event, runtime, swap_key_manager),
         _ => Ok(None),
     }
 }
@@ -1093,7 +1178,8 @@ fn try_bob_refund_procedure_signatures_to_bob_accordant_lock(
     bob_refund_procedure_signatures: BobRefundProcedureSignatures,
 ) -> Result<Option<SwapStateMachine>, Error> {
     let BobRefundProcedureSignatures {
-        wallet,
+        remote_params,
+        swap_key_manager,
         buy_procedure_signature,
     } = bob_refund_procedure_signatures;
     match &event.request {
@@ -1130,7 +1216,8 @@ fn try_bob_refund_procedure_signatures_to_bob_accordant_lock(
                 )?;
             }
             Ok(Some(SwapStateMachine::BobAccordantLock(BobAccordantLock {
-                wallet,
+                remote_params,
+                swap_key_manager,
                 buy_procedure_signature,
             })))
         }
@@ -1144,7 +1231,8 @@ fn try_bob_accordant_lock_to_bob_accordant_lock_final(
     bob_accordant_lock: BobAccordantLock,
 ) -> Result<Option<SwapStateMachine>, Error> {
     let BobAccordantLock {
-        wallet,
+        remote_params,
+        swap_key_manager,
         buy_procedure_signature,
     } = bob_accordant_lock;
     match event.request {
@@ -1161,10 +1249,14 @@ fn try_bob_accordant_lock_to_bob_accordant_lock_final(
         {
             runtime.send_peer(
                 event.endpoints,
-                PeerMsg::BuyProcedureSignature(buy_procedure_signature),
+                PeerMsg::BuyProcedureSignature(buy_procedure_signature.clone()),
             )?;
             Ok(Some(SwapStateMachine::BobAccordantLockFinal(
-                BobAccordantLockFinal { wallet },
+                BobAccordantLockFinal {
+                    remote_params,
+                    buy_procedure_signature,
+                    swap_key_manager,
+                },
             )))
         }
         _ => handle_bob_swap_interrupt_after_lock(event, runtime),
@@ -1172,12 +1264,16 @@ fn try_bob_accordant_lock_to_bob_accordant_lock_final(
 }
 
 fn try_bob_accordant_lock_final_to_bob_buy_seen(
-    event: Event,
+    mut event: Event,
     runtime: &mut Runtime,
     bob_accordant_lock_final: BobAccordantLockFinal,
 ) -> Result<Option<SwapStateMachine>, Error> {
-    let BobAccordantLockFinal { mut wallet } = bob_accordant_lock_final;
-    match event.request {
+    let BobAccordantLockFinal {
+        remote_params,
+        buy_procedure_signature,
+        mut swap_key_manager,
+    } = bob_accordant_lock_final;
+    match event.request.clone() {
         BusMsg::Sync(SyncMsg::Event(SyncEvent::TransactionConfirmations(
             TransactionConfirmations {
                 id,
@@ -1197,11 +1293,12 @@ fn try_bob_accordant_lock_final_to_bob_buy_seen(
             )?;
 
             log_tx_seen(runtime.swap_id, &TxLabel::Buy, &tx.txid().into());
-            let sweep_xmr = wallet.process_buy_tx(
+            let sweep_xmr = swap_key_manager.process_buy_tx(
+                runtime,
                 tx,
-                event.endpoints,
-                runtime.swap_id,
-                runtime.acc_lock_height_lower_bound,
+                &mut event,
+                remote_params,
+                buy_procedure_signature,
             )?;
             let task = runtime.syncer_state.sweep_xmr(sweep_xmr.clone(), true);
             runtime.syncer_state.tasks.txids.remove_entry(&TxLabel::Buy);
@@ -1229,11 +1326,11 @@ fn try_bob_buy_seen_to_bob_buy_sweeping(
                 confirmations: Some(confirmations),
                 ..
             },
-        ))) if confirmations >= runtime.temporal_safety.sweep_monero_thr => {
+        ))) if confirmations >= SWEEP_MONERO_THRESHOLD => {
             // safe cast
             let request = SyncMsg::Task(Task::SweepAddress(task));
             runtime.log_info(format!(
-                "Monero are spendable now (height {}), sweeping ephemeral wallet",
+                "Monero are spendable now (height {}), sweeping ephemeral swap_key_manager",
                 runtime.syncer_state.monero_height.label()
             ));
             event.send_sync_service(runtime.syncer_state.monero_syncer(), request)?;
@@ -1361,9 +1458,8 @@ fn try_alice_reveal_to_alice_core_arbitrating_setup(
     alice_reveal: AliceReveal,
 ) -> Result<Option<SwapStateMachine>, Error> {
     let AliceReveal {
-        local_params,
         remote_params,
-        mut wallet,
+        mut swap_key_manager,
     } = alice_reveal;
     match event.request.clone() {
         BusMsg::P2p(PeerMsg::CoreArbitratingSetup(setup)) => {
@@ -1381,13 +1477,19 @@ fn try_alice_reveal_to_alice_core_arbitrating_setup(
                     SyncMsg::Task(task),
                 )?;
             }
-            // handle the core arbitrating setup message with the wallet
-            runtime.log_debug("Handling core arb setup with wallet");
+            // handle the core arbitrating setup message with the swap_key_manager
+            runtime.log_debug("Handling core arb setup with swap_key_manager");
             let HandleCoreArbitratingSetupRes {
                 refund_procedure_signatures,
                 cancel_tx,
                 punish_tx,
-            } = wallet.handle_core_arbitrating_setup(setup, runtime.swap_id)?;
+                alice_cancel_signature,
+                adaptor_refund,
+            } = swap_key_manager.handle_core_arbitrating_setup(
+                runtime,
+                setup.clone(),
+                &remote_params,
+            )?;
             // handle Cancel and Punish transactions
             log_tx_created(runtime.swap_id, TxLabel::Cancel);
             runtime.txs.insert(TxLabel::Cancel, cancel_tx);
@@ -1395,9 +1497,11 @@ fn try_alice_reveal_to_alice_core_arbitrating_setup(
             runtime.txs.insert(TxLabel::Punish, punish_tx);
             // checkpoint alice pre lock bob
             let new_ssm = SwapStateMachine::AliceCoreArbitratingSetup(AliceCoreArbitratingSetup {
-                local_params,
                 remote_params,
-                wallet,
+                core_arbitrating_setup: setup,
+                alice_cancel_signature,
+                adaptor_refund,
+                swap_key_manager,
             });
             runtime.log_debug("checkpointing alice pre lock state");
             runtime.checkpoint_state(
@@ -1426,9 +1530,11 @@ fn try_alice_core_arbitrating_setup_to_alice_arbitrating_lock_final(
     alice_core_arbitrating_setup: AliceCoreArbitratingSetup,
 ) -> Result<Option<SwapStateMachine>, Error> {
     let AliceCoreArbitratingSetup {
-        local_params,
         remote_params,
-        wallet,
+        core_arbitrating_setup,
+        alice_cancel_signature,
+        adaptor_refund,
+        swap_key_manager,
     } = alice_core_arbitrating_setup;
     match event.request {
         BusMsg::Sync(SyncMsg::Event(SyncEvent::TransactionConfirmations(
@@ -1442,58 +1548,61 @@ fn try_alice_core_arbitrating_setup_to_alice_arbitrating_lock_final(
             .final_tx(confirmations, Blockchain::Bitcoin)
             && runtime.syncer_state.tasks.watched_txs.get(&id) == Some(&TxLabel::Lock) =>
         {
-            // TODO: implement state management here?
-            if let (Params::Alice(alice_params), Params::Bob(bob_params)) =
-                (&local_params, &remote_params)
-            {
-                let (spend, view) = aggregate_xmr_spend_view(alice_params, bob_params);
-                // Set the monero address creation height for Alice right after the first aggregation
-                if runtime.acc_lock_height_lower_bound.is_none() {
-                    runtime.acc_lock_height_lower_bound =
-                        Some(runtime.temporal_safety.block_height_reorg_lower_bound(
-                            Blockchain::Monero,
-                            runtime.syncer_state.height(Blockchain::Monero),
-                        ));
-                }
-                let viewpair = ViewPair { spend, view };
-                let address =
-                    monero::Address::from_viewpair(runtime.syncer_state.network.into(), &viewpair);
-                let swap_id = runtime.swap_id();
-                let amount = runtime.deal.parameters.accordant_amount;
-                let funding_info = MoneroFundingInfo {
-                    swap_id,
-                    address,
-                    amount,
-                };
-                let txlabel = TxLabel::AccLock;
-                let watch_addr_task = runtime.syncer_state.watch_addr_xmr(
-                    address,
-                    view,
-                    txlabel,
-                    runtime.acc_lock_height_lower_bound.unwrap_or_else(|| {
-                        runtime.temporal_safety.block_height_reorg_lower_bound(
-                            Blockchain::Monero,
-                            runtime.syncer_state.height(Blockchain::Monero),
-                        )
-                    }),
-                );
-                event.send_sync_service(
-                    runtime.syncer_state.monero_syncer(),
-                    SyncMsg::Task(watch_addr_task),
-                )?;
-                Ok(Some(SwapStateMachine::AliceArbitratingLockFinal(
-                    AliceArbitratingLockFinal {
-                        wallet,
-                        required_funding_amount: amount,
-                        funding_info,
-                    },
-                )))
-            } else {
-                runtime.log_error("local_params not Alice or remote_params not Bob on state Alice");
-                Ok(None)
+            let (spend, view) =
+                aggregate_xmr_spend_view(&swap_key_manager.local_params(), &remote_params);
+            // Set the monero address creation height for Alice right after the first aggregation
+            if runtime.acc_lock_height_lower_bound.is_none() {
+                runtime.acc_lock_height_lower_bound =
+                    Some(runtime.temporal_safety.block_height_reorg_lower_bound(
+                        Blockchain::Monero,
+                        runtime.syncer_state.height(Blockchain::Monero),
+                    ));
             }
+            let viewpair = ViewPair { spend, view };
+            let address =
+                monero::Address::from_viewpair(runtime.syncer_state.network.into(), &viewpair);
+            let swap_id = runtime.swap_id();
+            let amount = runtime.deal.parameters.accordant_amount;
+            let funding_info = MoneroFundingInfo {
+                swap_id,
+                address,
+                amount,
+            };
+            let txlabel = TxLabel::AccLock;
+            let watch_addr_task = runtime.syncer_state.watch_addr_xmr(
+                address,
+                view,
+                txlabel,
+                runtime.acc_lock_height_lower_bound.unwrap_or_else(|| {
+                    runtime.temporal_safety.block_height_reorg_lower_bound(
+                        Blockchain::Monero,
+                        runtime.syncer_state.height(Blockchain::Monero),
+                    )
+                }),
+            );
+            event.send_sync_service(
+                runtime.syncer_state.monero_syncer(),
+                SyncMsg::Task(watch_addr_task),
+            )?;
+            Ok(Some(SwapStateMachine::AliceArbitratingLockFinal(
+                AliceArbitratingLockFinal {
+                    swap_key_manager,
+                    required_funding_amount: amount,
+                    funding_info,
+                    remote_params,
+                    core_arbitrating_setup,
+                    alice_cancel_signature,
+                    adaptor_refund,
+                },
+            )))
         }
-        _ => handle_alice_swap_interrupt_after_lock(event, runtime, wallet),
+        _ => handle_alice_swap_interrupt_after_lock(
+            event,
+            runtime,
+            remote_params,
+            adaptor_refund,
+            swap_key_manager,
+        ),
     }
 }
 
@@ -1503,9 +1612,13 @@ fn try_alice_arbitrating_lock_final_to_alice_accordant_lock(
     alice_arbitrating_lock_final: AliceArbitratingLockFinal,
 ) -> Result<Option<SwapStateMachine>, Error> {
     let AliceArbitratingLockFinal {
-        wallet,
+        swap_key_manager,
         funding_info,
         required_funding_amount,
+        remote_params,
+        core_arbitrating_setup,
+        alice_cancel_signature,
+        adaptor_refund,
     } = alice_arbitrating_lock_final;
     match event.request {
         BusMsg::Sync(SyncMsg::Event(SyncEvent::Empty(id)))
@@ -1525,9 +1638,13 @@ fn try_alice_arbitrating_lock_final_to_alice_accordant_lock(
             }
             Ok(Some(SwapStateMachine::AliceArbitratingLockFinal(
                 AliceArbitratingLockFinal {
-                    wallet,
+                    swap_key_manager,
                     funding_info,
                     required_funding_amount,
+                    remote_params,
+                    core_arbitrating_setup,
+                    alice_cancel_signature,
+                    adaptor_refund,
                 },
             )))
         }
@@ -1557,9 +1674,13 @@ fn try_alice_arbitrating_lock_final_to_alice_accordant_lock(
             runtime.syncer_state.awaiting_funding = false;
             Ok(Some(SwapStateMachine::AliceArbitratingLockFinal(
                 AliceArbitratingLockFinal {
-                    wallet,
+                    swap_key_manager,
                     funding_info,
                     required_funding_amount,
+                    remote_params,
+                    core_arbitrating_setup,
+                    alice_cancel_signature,
+                    adaptor_refund,
                 },
             )))
         }
@@ -1627,7 +1748,9 @@ fn try_alice_arbitrating_lock_final_to_alice_accordant_lock(
                     runtime.report_progress_message(event.endpoints, msg)?;
                     // Alice moves on to AliceCanceled despite not broadcasting the cancel transaction.
                     return Ok(Some(SwapStateMachine::AliceCanceled(AliceCanceled {
-                        wallet,
+                        remote_params,
+                        adaptor_refund,
+                        swap_key_manager,
                     })));
                 }
                 // Funding Exact
@@ -1635,10 +1758,22 @@ fn try_alice_arbitrating_lock_final_to_alice_accordant_lock(
             }
 
             Ok(Some(SwapStateMachine::AliceAccordantLock(
-                AliceAccordantLock { wallet },
+                AliceAccordantLock {
+                    remote_params,
+                    core_arbitrating_setup,
+                    alice_cancel_signature,
+                    adaptor_refund,
+                    swap_key_manager,
+                },
             )))
         }
-        _ => handle_alice_swap_interrupt_after_lock(event, runtime, wallet),
+        _ => handle_alice_swap_interrupt_after_lock(
+            event,
+            runtime,
+            remote_params,
+            adaptor_refund,
+            swap_key_manager,
+        ),
     }
 }
 
@@ -1647,7 +1782,13 @@ fn try_alice_accordant_lock_to_alice_buy_procedure_signature(
     runtime: &mut Runtime,
     alice_accordant_lock: AliceAccordantLock,
 ) -> Result<Option<SwapStateMachine>, Error> {
-    let AliceAccordantLock { mut wallet } = alice_accordant_lock;
+    let AliceAccordantLock {
+        remote_params,
+        core_arbitrating_setup,
+        alice_cancel_signature,
+        adaptor_refund,
+        mut swap_key_manager,
+    } = alice_accordant_lock;
 
     match event.request.clone() {
         BusMsg::P2p(PeerMsg::BuyProcedureSignature(buy_procedure_signature)) => {
@@ -1656,10 +1797,16 @@ fn try_alice_accordant_lock_to_alice_buy_procedure_signature(
             let txid = buy_procedure_signature.buy.clone().extract_tx().txid();
             let task = runtime.syncer_state.watch_tx_btc(txid, TxLabel::Buy);
             event.send_sync_service(runtime.syncer_state.bitcoin_syncer(), SyncMsg::Task(task))?;
-            // Handle the received buy procedure signature message with the wallet
-            runtime.log_debug("Handling buy procedure signature with wallet");
-            let HandleBuyProcedureSignatureRes { cancel_tx, buy_tx } =
-                wallet.handle_buy_procedure_signature(buy_procedure_signature, runtime.swap_id)?;
+            // Handle the received buy procedure signature message with the swap_key_manager
+            runtime.log_debug("Handling buy procedure signature with swap_key_manager");
+            let HandleBuyProcedureSignatureRes { cancel_tx, buy_tx } = swap_key_manager
+                .handle_buy_procedure_signature(
+                    runtime,
+                    buy_procedure_signature,
+                    &remote_params,
+                    core_arbitrating_setup,
+                    alice_cancel_signature,
+                )?;
 
             // Handle Cancel and Buy transactions
             log_tx_created(runtime.swap_id, TxLabel::Cancel);
@@ -1680,7 +1827,9 @@ fn try_alice_accordant_lock_to_alice_buy_procedure_signature(
                 if runtime.temporal_safety.valid_cancel(*confirmations) {
                     runtime.broadcast(cancel_tx, TxLabel::Cancel, event.endpoints)?;
                     return Ok(Some(SwapStateMachine::AliceCanceled(AliceCanceled {
-                        wallet,
+                        remote_params,
+                        adaptor_refund,
+                        swap_key_manager,
                     })));
                 }
             }
@@ -1694,7 +1843,13 @@ fn try_alice_accordant_lock_to_alice_buy_procedure_signature(
             runtime.checkpoint_state(event.endpoints, None, new_ssm.clone())?;
             Ok(Some(new_ssm))
         }
-        _ => handle_alice_swap_interrupt_after_lock(event, runtime, wallet),
+        _ => handle_alice_swap_interrupt_after_lock(
+            event,
+            runtime,
+            remote_params,
+            adaptor_refund,
+            swap_key_manager,
+        ),
     }
 }
 
@@ -1725,8 +1880,12 @@ fn try_alice_canceled_to_alice_refund_or_alice_punish(
     runtime: &mut Runtime,
     alice_canceled: AliceCanceled,
 ) -> Result<Option<SwapStateMachine>, Error> {
-    let AliceCanceled { mut wallet } = alice_canceled;
-    match event.request {
+    let AliceCanceled {
+        remote_params,
+        adaptor_refund,
+        mut swap_key_manager,
+    } = alice_canceled;
+    match event.request.clone() {
         BusMsg::Sync(SyncMsg::Event(SyncEvent::TransactionConfirmations(
             TransactionConfirmations {
                 id,
@@ -1755,7 +1914,9 @@ fn try_alice_canceled_to_alice_refund_or_alice_punish(
                     )?;
                     runtime.broadcast(punish_tx, tx_label, event.endpoints)?;
                     Ok(Some(SwapStateMachine::AliceCanceled(AliceCanceled {
-                        wallet,
+                        remote_params,
+                        adaptor_refund,
+                        swap_key_manager,
                     })))
                 }
 
@@ -1790,7 +1951,9 @@ fn try_alice_canceled_to_alice_refund_or_alice_punish(
                     )?;
                     runtime.broadcast(cancel_tx, tx_label, event.endpoints)?;
                     Ok(Some(SwapStateMachine::AliceCanceled(AliceCanceled {
-                        wallet,
+                        remote_params,
+                        adaptor_refund,
+                        swap_key_manager,
                     })))
                 }
 
@@ -1808,11 +1971,12 @@ fn try_alice_canceled_to_alice_refund_or_alice_punish(
                     )?;
 
                     log_tx_seen(runtime.swap_id, &TxLabel::Refund, &tx.txid().into());
-                    let sweep_xmr = wallet.process_refund_tx(
-                        event.endpoints,
+                    let sweep_xmr = swap_key_manager.process_refund_tx(
+                        &mut event,
+                        runtime,
                         tx,
-                        runtime.swap_id,
-                        runtime.acc_lock_height_lower_bound,
+                        remote_params,
+                        adaptor_refund,
                     )?;
 
                     runtime
@@ -1890,9 +2054,9 @@ fn try_alice_refund_to_alice_refund_sweeping(
                 confirmations: Some(confirmations),
                 ..
             },
-        ))) if confirmations >= runtime.temporal_safety.sweep_monero_thr => {
+        ))) if confirmations >= SWEEP_MONERO_THRESHOLD => {
             runtime.log_info(format!(
-                "Monero are spendable now (height {}), sweeping ephemeral wallet",
+                "Monero are spendable now (height {}), sweeping ephemeral swap_key_manager",
                 runtime.syncer_state.monero_height.label(),
             ));
             event.send_sync_service(
@@ -1958,25 +2122,16 @@ fn try_bob_buy_sweeping_to_swap_end(
 fn attempt_transition_to_bob_reveal(
     event: Event,
     runtime: &mut Runtime,
-    local_params: Params,
-    remote_commit: Commit,
-    mut wallet: Wallet,
+    remote_commit: CommitAliceParameters,
+    mut swap_key_manager: BobSwapKeyManager,
 ) -> Result<Option<SwapStateMachine>, Error> {
     match event.request.clone() {
-        BusMsg::P2p(PeerMsg::Reveal(alice_reveal)) => {
-            let remote_params =
-                if let Ok(validated_params) = validate_reveal(&alice_reveal, remote_commit) {
-                    runtime.log_debug("remote params successfully validated");
-                    validated_params
-                } else {
-                    let msg = "remote params validation failed".to_string();
-                    runtime.log_error(&msg);
-                    return Err(Error::Farcaster(msg));
-                };
-            runtime.log_info("Handling reveal with wallet");
-            let bob_reveal = wallet.handle_alice_reveals(alice_reveal, runtime.swap_id)?;
+        BusMsg::P2p(PeerMsg::Reveal(Reveal::Alice { parameters, proof })) => {
+            runtime.log_info("Handling reveal with swap_key_manager");
+            let (bob_reveal, remote_params) =
+                swap_key_manager.handle_alice_reveals(runtime, parameters, proof, remote_commit)?;
 
-            // The wallet only returns reveal if we are Bob Maker
+            // The swap_key_manager only returns reveal if we are Bob Maker
             if let Some(bob_reveal) = bob_reveal {
                 runtime.send_peer(event.endpoints, PeerMsg::Reveal(bob_reveal))?;
             }
@@ -1985,12 +2140,11 @@ fn attempt_transition_to_bob_reveal(
             runtime.syncer_state.watch_bitcoin_fee(event.endpoints)?;
 
             Ok(Some(SwapStateMachine::BobReveal(BobReveal {
-                local_params,
                 remote_params,
-                wallet,
+                swap_key_manager,
             })))
         }
-        BusMsg::Ctl(CtlMsg::AbortSwap) => handle_bob_abort_swap(event, runtime, wallet),
+        BusMsg::Ctl(CtlMsg::AbortSwap) => handle_bob_abort_swap(event, runtime, swap_key_manager),
         _ => Ok(None),
     }
 }
@@ -1998,32 +2152,22 @@ fn attempt_transition_to_bob_reveal(
 fn attempt_transition_to_alice_reveal(
     event: Event,
     runtime: &mut Runtime,
-    local_params: Params,
-    remote_commit: Commit,
-    mut wallet: Wallet,
+    remote_commit: CommitBobParameters,
+    mut swap_key_manager: AliceSwapKeyManager,
 ) -> Result<Option<SwapStateMachine>, Error> {
     match event.request {
-        BusMsg::P2p(PeerMsg::Reveal(bob_reveal)) => {
-            let remote_params =
-                if let Ok(validated_params) = validate_reveal(&bob_reveal, remote_commit) {
-                    runtime.log_debug("Remote params successfully validated");
-                    validated_params
-                } else {
-                    let msg = "Remote params validation failed".to_string();
-                    runtime.log_error(&msg);
-                    return Err(Error::Farcaster(msg));
-                };
-            runtime.log_info("Handling reveal with wallet");
-            let alice_reveal = wallet.handle_bob_reveals(bob_reveal, runtime.swap_id)?;
+        BusMsg::P2p(PeerMsg::Reveal(Reveal::Bob { parameters, proof })) => {
+            runtime.log_info("Handling reveal with swap_key_manager");
+            let (alice_reveal, remote_params) =
+                swap_key_manager.handle_bob_reveals(runtime, parameters, proof, remote_commit)?;
 
-            // The wallet only returns reveal if we are Alice Maker
+            // The swap_key_manager only returns reveal if we are Alice Maker
             if let Some(alice_reveal) = alice_reveal {
                 runtime.send_peer(event.endpoints, PeerMsg::Reveal(alice_reveal))?;
             }
             Ok(Some(SwapStateMachine::AliceReveal(AliceReveal {
-                local_params,
                 remote_params,
-                wallet,
+                swap_key_manager,
             })))
         }
         BusMsg::Ctl(CtlMsg::AbortSwap) => handle_abort_swap(event, runtime),
@@ -2091,7 +2235,9 @@ fn handle_bob_swap_interrupt_after_lock(
 fn handle_alice_swap_interrupt_after_lock(
     mut event: Event,
     runtime: &mut Runtime,
-    wallet: Wallet,
+    remote_params: Parameters,
+    adaptor_refund: WrappedEncryptedSignature,
+    swap_key_manager: AliceSwapKeyManager,
 ) -> Result<Option<SwapStateMachine>, Error> {
     match event.request {
         BusMsg::Sync(SyncMsg::Event(SyncEvent::TransactionConfirmations(
@@ -2110,7 +2256,9 @@ fn handle_alice_swap_interrupt_after_lock(
                 runtime.syncer_state.awaiting_funding = false;
             }
             Ok(Some(SwapStateMachine::AliceCanceled(AliceCanceled {
-                wallet,
+                remote_params,
+                adaptor_refund,
+                swap_key_manager,
             })))
         }
         BusMsg::Sync(SyncMsg::Event(SyncEvent::TransactionConfirmations(
@@ -2135,7 +2283,9 @@ fn handle_alice_swap_interrupt_after_lock(
             },
         ))) if runtime.syncer_state.tasks.watched_txs.get(&id) == Some(&TxLabel::Cancel) => {
             Ok(Some(SwapStateMachine::AliceCanceled(AliceCanceled {
-                wallet,
+                remote_params,
+                adaptor_refund,
+                swap_key_manager,
             })))
         }
         BusMsg::Ctl(CtlMsg::AbortSwap) => handle_abort_impossible(event, runtime),
@@ -2169,12 +2319,12 @@ fn handle_abort_impossible(
 fn handle_bob_abort_swap(
     mut event: Event,
     runtime: &mut Runtime,
-    mut wallet: Wallet,
+    mut swap_key_manager: BobSwapKeyManager,
 ) -> Result<Option<SwapStateMachine>, Error> {
-    let funding_address = wallet
+    let funding_address = swap_key_manager
         .funding_address()
         .expect("Am Bob, so have funding address");
-    let sweep_btc = wallet.process_get_sweep_bitcoin_address(funding_address, runtime.swap_id)?;
+    let sweep_btc = swap_key_manager.process_get_sweep_bitcoin_address(funding_address)?;
     runtime.log_info(format!(
         "Sweeping source (funding) address: {} to destination address: {}",
         sweep_btc.source_address.addr(),

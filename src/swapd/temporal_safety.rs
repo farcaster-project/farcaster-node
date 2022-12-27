@@ -27,29 +27,23 @@ pub struct TemporalSafety {
     /// Second timelock in the protocol, if this timelock is reached Bob miss-behaved and will lose
     /// money
     pub punish_timelock: BlockHeight,
-    /// The minimum number of blocks that should remain unmined before the next transaction to be
-    /// considered safe
-    pub race_thr: BlockSpan,
+    /// Avoid broadcasting a transaction if a race can happen with the next available execution
+    /// fork in # blocks
+    pub safety: BlockSpan,
     /// Number of confirmation required for the arbitrating blockchain to consider a tx final
-    pub btc_finality_thr: BlockSpan,
+    pub arb_finality: BlockSpan,
     /// Number of confirmation required for the accordant blockchain to consider a tx final
-    pub xmr_finality_thr: BlockSpan,
-    // FIXME: this should be removed, used only const instead
-    pub sweep_monero_thr: BlockSpan,
+    pub acc_finality: BlockSpan,
 }
 
 impl TemporalSafety {
     /// Validate if temporal parameters are coherent
     pub fn valid_params(&self) -> Result<(), Error> {
-        let btc_finality = self.btc_finality_thr;
+        let finality = self.arb_finality;
         let cancel = self.cancel_timelock;
         let punish = self.punish_timelock;
-        let race = self.race_thr;
-        if btc_finality < cancel
-            && cancel < punish
-            && btc_finality < race
-            && punish > race
-            && cancel > race
+        let race = self.safety;
+        if finality < cancel && cancel < punish && finality < race && punish > race && cancel > race
         {
             Ok(())
         } else {
@@ -61,23 +55,23 @@ impl TemporalSafety {
 
     /// Returns whether tx is final given the finality threshold set for the chain
     pub fn final_tx(&self, confs: u32, blockchain: Blockchain) -> bool {
-        let finality_thr = match blockchain {
-            Blockchain::Bitcoin => self.btc_finality_thr,
-            Blockchain::Monero => self.xmr_finality_thr,
+        let finality = match blockchain {
+            Blockchain::Bitcoin => self.arb_finality,
+            Blockchain::Monero => self.acc_finality,
         };
-        confs >= finality_thr
+        confs >= finality
     }
 
     /// Lock must be final, cancel cannot be raced, add + 1 to offset initial lock confirmation
     pub fn stop_funding_before_cancel(&self, lock_confirmations: u32) -> bool {
         self.final_tx(lock_confirmations, Blockchain::Bitcoin)
-            && lock_confirmations > (self.cancel_timelock - self.race_thr + 1)
+            && lock_confirmations > (self.cancel_timelock - self.safety + 1)
     }
 
     // Blocks remaining until funding will be stopped for safety, because it is too close to
     // cancel. Adds the same +1 offset as in stop_funding_before_cancel
     pub fn blocks_until_stop_funding(&self, lock_confirmations: u32) -> i64 {
-        self.cancel_timelock as i64 - (self.race_thr as i64 + 1 + lock_confirmations as i64)
+        self.cancel_timelock as i64 - (self.safety as i64 + 1 + lock_confirmations as i64)
     }
 
     /// Lock must be final, valid after lock_minedblock + cancel_timelock
@@ -94,13 +88,13 @@ impl TemporalSafety {
     /// Lock must be final, but buy shall not be raced with cancel
     pub fn safe_buy(&self, lock_confirmations: u32) -> bool {
         self.final_tx(lock_confirmations, Blockchain::Bitcoin)
-            && lock_confirmations <= (self.cancel_timelock - self.race_thr)
+            && lock_confirmations <= (self.cancel_timelock - self.safety)
     }
 
     /// Cancel must be final, but refund shall not be raced with punish
     pub fn safe_refund(&self, cancel_confirmations: u32) -> bool {
         self.final_tx(cancel_confirmations, Blockchain::Bitcoin)
-            && cancel_confirmations <= (self.punish_timelock - self.race_thr)
+            && cancel_confirmations <= (self.punish_timelock - self.safety)
     }
 
     /// Cancel must be final, valid after cancel_confirmations > punish_timelock
@@ -120,8 +114,8 @@ impl TemporalSafety {
         current_height: u64,
     ) -> u64 {
         let finality_thr = match blockchain {
-            Blockchain::Bitcoin => self.btc_finality_thr,
-            Blockchain::Monero => self.xmr_finality_thr,
+            Blockchain::Bitcoin => self.arb_finality,
+            Blockchain::Monero => self.acc_finality,
         };
         current_height.saturating_sub(finality_thr as u64)
     }

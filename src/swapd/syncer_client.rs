@@ -486,7 +486,7 @@ impl SyncerState {
 
 pub fn log_tx_seen(swap_id: SwapId, txlabel: &TxLabel, txid: &Txid) {
     info!(
-        "{} | {} transaction ({}) in mempool or blockchain, handling with swap wallet",
+        "{} | {} transaction ({}) in mempool or blockchain",
         swap_id.swap_id(),
         txlabel.label(),
         txid.tx_hash(),
