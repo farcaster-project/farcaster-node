@@ -136,7 +136,7 @@ pub struct SweepBitcoinAddress {
 #[display(Debug)]
 pub struct Abort {
     pub task_target: TaskTarget,
-    pub respond: Boolean,
+    pub respond: bool,
 }
 
 #[derive(Clone, Debug, StrictEncode, StrictDecode, Eq, PartialEq, Hash)]
@@ -173,7 +173,7 @@ pub struct WatchAddress {
     pub id: TaskId,
     pub lifetime: u64,
     pub addendum: AddressAddendum,
-    pub include_tx: Boolean,
+    pub include_tx: bool,
     pub filter: TxFilter,
 }
 
@@ -188,27 +188,6 @@ pub enum TxFilter {
     Incoming,
     Outgoing,
     All,
-}
-
-#[derive(Clone, Debug, Display, StrictEncode, StrictDecode, Eq, PartialEq, Hash)]
-#[cfg_attr(
-    feature = "serde",
-    derive(Serialize, Deserialize),
-    serde(crate = "serde_crate")
-)]
-#[display(Debug)]
-pub enum Boolean {
-    True,
-    False,
-}
-
-impl From<Boolean> for bool {
-    fn from(w: Boolean) -> bool {
-        match w {
-            Boolean::True => true,
-            Boolean::False => false,
-        }
-    }
 }
 
 #[derive(Clone, Display, Debug, StrictEncode, StrictDecode, Eq, PartialEq, Hash)]

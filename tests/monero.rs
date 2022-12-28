@@ -5,7 +5,7 @@ use farcaster_node::syncerd::monero_syncer::MoneroSyncer;
 use farcaster_node::syncerd::opts::Opts;
 use farcaster_node::syncerd::runtime::SyncerdTask;
 use farcaster_node::syncerd::types::{
-    Abort, AddressAddendum, Boolean, BroadcastTransaction, Task, Txid, WatchAddress, WatchHeight,
+    Abort, AddressAddendum, BroadcastTransaction, Task, Txid, WatchAddress, WatchHeight,
     WatchTransaction,
 };
 use farcaster_node::syncerd::{
@@ -333,7 +333,7 @@ async fn monero_syncer_address_test() {
                 id: TaskId(1),
                 lifetime: blocks + 1,
                 addendum: addendum_1.clone(),
-                include_tx: Boolean::True,
+                include_tx: true,
                 filter: TxFilter::Incoming,
             }),
             source: SOURCE1.clone(),
@@ -376,7 +376,7 @@ async fn monero_syncer_address_test() {
                 id: TaskId(1),
                 lifetime: blocks + 1,
                 addendum: addendum_2,
-                include_tx: Boolean::True,
+                include_tx: true,
                 filter: TxFilter::Incoming,
             }),
             source: SOURCE1.clone(),
@@ -405,7 +405,7 @@ async fn monero_syncer_address_test() {
                 id: TaskId(1),
                 lifetime: blocks + 1,
                 addendum: addendum_3,
-                include_tx: Boolean::True,
+                include_tx: true,
                 filter: TxFilter::Incoming,
             }),
             source: SOURCE1.clone(),
@@ -447,7 +447,7 @@ async fn monero_syncer_address_test() {
                     id: TaskId(i),
                     lifetime: blocks + 5,
                     addendum: addendum_4.clone(),
-                    include_tx: Boolean::True,
+                    include_tx: true,
                     filter: TxFilter::Incoming,
                 }),
                 source: SOURCE2.clone(),
@@ -487,7 +487,7 @@ async fn monero_syncer_address_test() {
                 id: TaskId(5),
                 lifetime: blocks + 5,
                 addendum: addendum_5.clone(),
-                include_tx: Boolean::True,
+                include_tx: true,
                 filter: TxFilter::Incoming,
             }),
             source: SOURCE2.clone(),
@@ -529,7 +529,7 @@ async fn monero_syncer_address_test() {
                 id: TaskId(1),
                 lifetime: blocks + 2,
                 addendum: addendum_6.clone(),
-                include_tx: Boolean::True,
+                include_tx: true,
                 filter: TxFilter::Incoming,
             }),
             source: SOURCE1.clone(),
@@ -554,7 +554,7 @@ async fn monero_syncer_address_test() {
                 id: TaskId(1),
                 lifetime: blocks + 2,
                 addendum: addendum_6,
-                include_tx: Boolean::True,
+                include_tx: true,
                 filter: TxFilter::Incoming,
             }),
             source: SOURCE1.clone(),
@@ -798,7 +798,7 @@ async fn monero_syncer_abort_test() {
     let task = SyncerdTask {
         task: Task::Abort(Abort {
             task_target: TaskTarget::TaskId(TaskId(0)),
-            respond: Boolean::True,
+            respond: true,
         }),
         source: SOURCE2.clone(),
     };
@@ -812,7 +812,7 @@ async fn monero_syncer_abort_test() {
     let task = SyncerdTask {
         task: Task::Abort(Abort {
             task_target: TaskTarget::TaskId(TaskId(0)),
-            respond: Boolean::True,
+            respond: true,
         }),
         source: SOURCE2.clone(),
     };
@@ -856,7 +856,7 @@ async fn monero_syncer_abort_test() {
     let task = SyncerdTask {
         task: Task::Abort(Abort {
             task_target: TaskTarget::AllTasks,
-            respond: Boolean::True,
+            respond: true,
         }),
         source: SOURCE2.clone(),
     };
@@ -870,7 +870,7 @@ async fn monero_syncer_abort_test() {
     let task = SyncerdTask {
         task: Task::Abort(Abort {
             task_target: TaskTarget::TaskId(TaskId(0)),
-            respond: Boolean::True,
+            respond: true,
         }),
         source: SOURCE2.clone(),
     };
