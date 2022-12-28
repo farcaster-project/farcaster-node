@@ -8,7 +8,7 @@ use farcaster_node::syncerd::bitcoin_syncer::BitcoinSyncer;
 use farcaster_node::syncerd::opts::Opts;
 use farcaster_node::syncerd::runtime::SyncerdTask;
 use farcaster_node::syncerd::types::{
-    Abort, AddressAddendum, Boolean, BroadcastTransaction, BtcAddressAddendum, GetTx, SweepAddress,
+    Abort, AddressAddendum, BroadcastTransaction, BtcAddressAddendum, GetTx, SweepAddress,
     SweepAddressAddendum, Task, WatchAddress, WatchEstimateFee, WatchHeight, WatchTransaction,
 };
 use farcaster_node::syncerd::{runtime::Synclet, TaskId, TaskTarget};
@@ -240,7 +240,7 @@ fn bitcoin_syncer_address_test() {
             id: TaskId(1),
             lifetime: blocks + 1,
             addendum: addendum_1,
-            include_tx: Boolean::True,
+            include_tx: true,
             filter: TxFilter::All,
         }),
         source: SOURCE1.clone(),
@@ -256,7 +256,7 @@ fn bitcoin_syncer_address_test() {
             id: TaskId(1),
             lifetime: blocks + 2,
             addendum: addendum_2.clone(),
-            include_tx: Boolean::True,
+            include_tx: true,
             filter: TxFilter::All,
         }),
         source: SOURCE1.clone(),
@@ -318,7 +318,7 @@ fn bitcoin_syncer_address_test() {
             id: TaskId(1),
             lifetime: blocks + 2,
             addendum: addendum_2,
-            include_tx: Boolean::True,
+            include_tx: true,
             filter: TxFilter::All,
         }),
         source: SOURCE1.clone(),
@@ -345,7 +345,7 @@ fn bitcoin_syncer_address_test() {
                 id: TaskId(i),
                 lifetime: blocks + 5,
                 addendum: addendum_4.clone(),
-                include_tx: Boolean::True,
+                include_tx: true,
                 filter: TxFilter::All,
             }),
             source: SOURCE1.clone(),
@@ -659,7 +659,7 @@ fn bitcoin_syncer_abort_test() {
     let task = SyncerdTask {
         task: Task::Abort(Abort {
             task_target: TaskTarget::TaskId(TaskId(0)),
-            respond: Boolean::True,
+            respond: true,
         }),
         source: SOURCE1.clone(),
     };
@@ -673,7 +673,7 @@ fn bitcoin_syncer_abort_test() {
     let task = SyncerdTask {
         task: Task::Abort(Abort {
             task_target: TaskTarget::TaskId(TaskId(0)),
-            respond: Boolean::True,
+            respond: true,
         }),
         source: SOURCE1.clone(),
     };
@@ -721,7 +721,7 @@ fn bitcoin_syncer_abort_test() {
     let task = SyncerdTask {
         task: Task::Abort(Abort {
             task_target: TaskTarget::AllTasks,
-            respond: Boolean::True,
+            respond: true,
         }),
         source: SOURCE1.clone(),
     };
@@ -735,7 +735,7 @@ fn bitcoin_syncer_abort_test() {
     let task = SyncerdTask {
         task: Task::Abort(Abort {
             task_target: TaskTarget::TaskId(TaskId(0)),
-            respond: Boolean::True,
+            respond: true,
         }),
         source: SOURCE1.clone(),
     };

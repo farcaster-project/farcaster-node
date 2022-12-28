@@ -8,8 +8,8 @@ use crate::{
     bus::ServiceBus,
     service::{Endpoints, LogStyle},
     syncerd::{
-        Abort, AddressAddendum, Boolean, BroadcastTransaction, BtcAddressAddendum, GetTx,
-        SweepAddress, SweepAddressAddendum, SweepBitcoinAddress, SweepMoneroAddress, TaskTarget,
+        Abort, AddressAddendum, BroadcastTransaction, BtcAddressAddendum, GetTx, SweepAddress,
+        SweepAddressAddendum, SweepBitcoinAddress, SweepMoneroAddress, TaskTarget,
         TransactionBroadcasted, TxFilter, Txid, WatchAddress, WatchEstimateFee, WatchHeight,
         WatchTransaction, XmrAddressAddendum,
     },
@@ -97,7 +97,7 @@ impl SyncerState {
     pub fn abort_task(&mut self, id: TaskId) -> Task {
         Task::Abort(Abort {
             task_target: TaskTarget::TaskId(id),
-            respond: Boolean::False,
+            respond: false,
         })
     }
 
@@ -205,7 +205,7 @@ impl SyncerState {
             id,
             lifetime: self.task_lifetime(Blockchain::Bitcoin),
             addendum: AddressAddendum::Bitcoin(addendum),
-            include_tx: Boolean::True,
+            include_tx: true,
             filter,
         });
         self.tasks.tasks.insert(id, task.clone());
@@ -263,7 +263,7 @@ impl SyncerState {
             id,
             lifetime: self.task_lifetime(Blockchain::Monero),
             addendum: AddressAddendum::Monero(addendum),
-            include_tx: Boolean::False,
+            include_tx: false,
             filter: TxFilter::Incoming,
         };
         let task = Task::WatchAddress(watch_addr);

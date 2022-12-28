@@ -955,14 +955,14 @@ async fn syncer_state_addresses() {
         id: TaskId(0),
         lifetime: 1,
         addendum: addendum.clone(),
-        include_tx: Boolean::False,
+        include_tx: false,
         filter: TxFilter::All,
     };
     let address_task_two = WatchAddress {
         id: TaskId(0),
         lifetime: 1,
         addendum: addendum.clone(),
-        include_tx: Boolean::False,
+        include_tx: false,
         filter: TxFilter::All,
     };
     let source1 = ServiceId::Syncer(Blockchain::Bitcoin, Network::Mainnet);
