@@ -28,6 +28,8 @@ use crate::Error;
 use super::ctl::FundingInfo;
 use super::StateTransition;
 
+use super::HiddenServiceInfo;
+
 #[derive(Clone, Debug, Display, From, NetworkEncode, NetworkDecode)]
 #[non_exhaustive]
 pub enum InfoMsg {
@@ -66,6 +68,9 @@ pub enum InfoMsg {
 
     #[display("get_checkpoint_entry({0})")]
     GetCheckpointEntry(SwapId),
+
+    #[display("get_all_hidden_service_info")]
+    GetAllHiddenServiceInfo,
 
     // Progress functionalities
     // ----------------
@@ -179,6 +184,9 @@ pub enum InfoMsg {
 
     #[display("{0}")]
     AddressBalance(AddressBalance),
+
+    #[display("hidden_service_info_list")]
+    HiddenServiceInfoList(List<HiddenServiceInfo>),
 }
 
 #[derive(Clone, PartialEq, Eq, Debug, Display, NetworkEncode, NetworkDecode)]

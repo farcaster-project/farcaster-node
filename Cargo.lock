@@ -1072,6 +1072,7 @@ dependencies = [
  "serde_yaml",
  "shellexpand",
  "slip132",
+ "socks",
  "strict_encoding",
  "strip-ansi-escapes",
  "sysinfo",
@@ -1080,6 +1081,7 @@ dependencies = [
  "tonic",
  "tonic-build",
  "tonic-web",
+ "torut",
  "uuid",
  "zmq2",
 ]
@@ -3081,6 +3083,17 @@ version = "0.4.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "02e2d2db9033d13a1567121ddd7a095ee144db4e1ca1b1bda3419bc0da294ebd"
 dependencies = [
+ "libc",
+ "winapi",
+]
+
+[[package]]
+name = "socks"
+version = "0.3.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f0c3dbbd9ae980613c6dd8e28a9407b50509d3803b57624d5dfe8315218cd58b"
+dependencies = [
+ "byteorder",
  "libc",
  "winapi",
 ]

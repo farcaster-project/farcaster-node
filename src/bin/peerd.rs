@@ -211,8 +211,14 @@ fn main() {
         PeerSocket::Connect(remote_node) => {
             debug!("Peerd running in CONNECT mode");
             debug!("Connecting to {}", &remote_node.addr());
-            peerd::run_from_connect(service_config, remote_node, local_socket, local_node)
-                .expect("Error running peerd runtime");
+            peerd::run_from_connect(
+                service_config,
+                remote_node,
+                local_socket,
+                local_node,
+                opts.shared.tor_proxy,
+            )
+            .expect("Error running peerd runtime");
             unreachable!()
         }
     };

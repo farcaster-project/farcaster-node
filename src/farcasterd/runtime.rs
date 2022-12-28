@@ -8,10 +8,13 @@ use crate::bus::ctl::{CtlMsg, FundingInfo, GetKeys, SwapKeys};
 use crate::bus::info::FundingInfos;
 use crate::bus::p2p::{PeerMsg, TakerCommit};
 use crate::bus::sync::SyncMsg;
-use crate::bus::{BusMsg, DealInfo, DealStatus, List, ServiceBus};
+use crate::bus::{
+    BusMsg, DealInfo, DealStatus, HiddenServiceInfo, List, ServiceBus, WrapOnionAddressV3,
+};
 use crate::event::StateMachineExecutor;
 use crate::farcasterd::stats::Stats;
 use crate::farcasterd::syncer_state_machine::{SyncerStateMachine, SyncerStateMachineExecutor};
+use crate::farcasterd::tor_control::create_v3_onion_service;
 use crate::farcasterd::trade_state_machine::{TradeStateMachine, TradeStateMachineExecutor};
 use crate::farcasterd::Opts;
 use crate::syncerd::{AddressBalance, TaskAborted};
@@ -50,7 +53,7 @@ use microservices::esb::{self, Handler};
 pub fn run(
     service_config: ServiceConfig,
     config: Config,
-    _opts: Opts,
+    opts: Opts,
     wallet_token: Token,
 ) -> Result<(), Error> {
     let _walletd = launch("walletd", ["--token", &wallet_token.to_string()])?;
@@ -91,9 +94,13 @@ pub fn run(
         progress_subscriptions: none!(),
         stats: none!(),
         config,
+        opts,
+        hidden_service: None,
         syncer_task_counter: 0,
         trade_state_machines: vec![],
         syncer_state_machines: none!(),
+        old_hidden_services: vec![],
+        checked_database_consistency: false,
     };
 
     let broker = true;
@@ -108,16 +115,20 @@ pub struct Runtime {
     node_secret_key: Option<SecretKey>, // Set by Keys request shortly after Hello from walletd
     node_public_key: Option<PublicKey>, // Set by Keys request shortly after Hello from walletd
     pub listens: HashSet<InetSocketAddr>, // Set by MakeDeal, contains unique socket addresses of the binding peerd listeners.
+    pub hidden_service: Option<InetSocketAddr>, // Set By MakeDeal, contains a unique hidden service address.
     pub spawning_services: HashSet<ServiceId>, // Services that have been launched, but have not replied with Hello yet
     pub registered_services: HashSet<ServiceId>, // Services that have announced themselves with Hello
     pub deals: HashSet<Deal>, // The set of all known deals. Includes open, consumed and ended deals includes open, consumed and ended deals
     progress: HashMap<ServiceId, VecDeque<ProgressStack>>, // A mapping from Swap ServiceId to its sent and received progress messages (Progress, Success, Failure)
     progress_subscriptions: HashMap<ServiceId, HashSet<ServiceId>>, // A mapping from a Client ServiceId to its subsribed swap progresses
-    pub stats: Stats,             // Some stats about deals and swaps
-    pub config: Config,           // The complete node configuration
+    pub stats: Stats,   // Some stats about deals and swaps
+    pub config: Config, // Configuration for syncers, auto-funding, and grpc
+    pub opts: Opts,
     pub syncer_task_counter: u32, // A strictly incrementing counter of issued syncer tasks
     pub trade_state_machines: Vec<TradeStateMachine>, // New trade state machines are inserted on creation and destroyed upon state machine end transitions
     syncer_state_machines: HashMap<TaskId, SyncerStateMachine>, // New syncer state machines are inserted by their syncer task id when sending a syncer request and destroyed upon matching syncer request receival
+    pub old_hidden_services: Vec<HiddenServiceInfo>, // Populated at the start once the HiddenServiceInfoList is received
+    checked_database_consistency: bool,
 }
 
 impl CtlServer for Runtime {}
@@ -242,6 +253,12 @@ impl Runtime {
                             BusMsg::Ctl(CtlMsg::CleanDanglingDeals),
                         )?;
                         self.handle_auto_restore(endpoints)?;
+                        endpoints.send_to(
+                            ServiceBus::Info,
+                            self.identity(),
+                            source.clone(),
+                            BusMsg::Info(InfoMsg::GetAllHiddenServiceInfo),
+                        )?;
                     }
                     ServiceId::Wallet => {
                         self.registered_services.insert(source.clone());
@@ -663,6 +680,11 @@ impl Runtime {
                 )?;
             }
 
+            InfoMsg::HiddenServiceInfoList(list) => {
+                self.old_hidden_services = list.to_vec();
+                self.checked_database_consistency = true;
+            }
+
             req => {
                 warn!("Ignoring request: {}", req.err());
             }
@@ -723,6 +745,10 @@ impl Runtime {
         } else if !self.registered_services.contains(&ServiceId::Database) {
             Err(Error::Farcaster(
                 "Farcaster not ready yet, databased still starting".to_string(),
+            ))
+        } else if !self.checked_database_consistency {
+            Err(Error::Farcaster(
+                "Farcaster not ready yet, waiting for database consistency check".to_string(),
             ))
         } else {
             Ok(())
@@ -1101,6 +1127,109 @@ impl Runtime {
                 }
             }
         }
+    }
+
+    pub fn listen_tor(
+        &mut self,
+        endpoints: &mut Endpoints,
+        bind_addr: InetSocketAddr,
+        public_port: u16,
+    ) -> Result<(InetSocketAddr, NodeId), Error> {
+        self.services_ready()?;
+        let (peer_secret_key, peer_public_key) = self.peer_keys_ready()?;
+        let node_id = NodeId::from(peer_public_key);
+
+        if self.hidden_service.is_some() && self.listens.iter().any(|a| a == &bind_addr) {
+            let hidden_service = self.hidden_service.expect("checked");
+            debug!("Already created hidden service: {}", hidden_service);
+            return Ok((hidden_service, node_id));
+        }
+
+        if self.listens.iter().any(|a| a == &bind_addr) {
+            let msg = format!("Already listening on {}", &bind_addr);
+            debug!("{}", &msg);
+            return Err(Error::Farcaster("lmao".to_string()));
+        }
+        info!(
+            "{} for incoming peer connections on {}",
+            "Starting listener".bright_blue_bold(),
+            bind_addr.bright_blue_bold()
+        );
+
+        let address = bind_addr.address();
+        let port = bind_addr
+            .port()
+            .ok_or_else(|| Error::Farcaster("listen requires the port to listen on".to_string()))?;
+
+        let public_onion_address = create_v3_onion_service(
+            bind_addr,
+            public_port,
+            self.config.get_tor_control_socket()?,
+            &self.old_hidden_services,
+        )
+        .unwrap();
+        let public_socket_addr = InetSocketAddr::Tor(public_onion_address.get_public_key());
+
+        // Get rid of the old hidden services in the database, write to current
+        // hidden service to it, and sync our list of used hidden services with
+        // the database
+        for s in self.old_hidden_services.iter() {
+            endpoints.send_to(
+                ServiceBus::Ctl,
+                self.identity(),
+                ServiceId::Database,
+                BusMsg::Ctl(CtlMsg::DeleteHiddenServiceInfo(s.onion_address.clone())),
+            )?;
+        }
+        endpoints.send_to(
+            ServiceBus::Ctl,
+            self.identity(),
+            ServiceId::Database,
+            BusMsg::Ctl(CtlMsg::SetHiddenServiceInfo(HiddenServiceInfo {
+                onion_address: WrapOnionAddressV3(public_onion_address),
+                bind_address: bind_addr,
+            })),
+        )?;
+        endpoints.send_to(
+            ServiceBus::Info,
+            self.identity(),
+            ServiceId::Database,
+            BusMsg::Info(InfoMsg::GetAllHiddenServiceInfo),
+        )?;
+
+        debug!("Instantiating peerd...");
+        let child = launch(
+            "peerd",
+            [
+                "--listen",
+                &format!("{}", address),
+                "--port",
+                &port.to_string(),
+                "--peer-secret-key",
+                &format!("{}", peer_secret_key.display_secret()),
+                "--token",
+                &self.wallet_token.clone().to_string(),
+            ],
+        );
+
+        // in case it can't connect wait for it to crash
+        std::thread::sleep(Duration::from_secs_f32(0.1));
+
+        // status is Some if peerd returns because it crashed
+        let (child, status) = child.and_then(|mut c| c.try_wait().map(|s| (c, s)))?;
+        if status.is_some() {
+            return Err(Error::Peer(internet2::presentation::Error::InvalidEndpoint));
+        }
+
+        self.listens.insert(bind_addr);
+        self.hidden_service = Some(public_socket_addr);
+        debug!("New instance of peerd launched with PID {}", child.id());
+        info!(
+            "Connection daemon {} for incoming peer connections on {}",
+            "listens".bright_green_bold(),
+            bind_addr
+        );
+        Ok((public_socket_addr, node_id))
     }
 
     pub fn listen(&mut self, bind_addr: InetSocketAddr) -> Result<NodeId, Error> {

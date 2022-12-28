@@ -7,10 +7,10 @@
 use crate::{AccordantBlockchain, ArbitratingBlockchain, Error};
 use farcaster_core::blockchain::Network;
 use internet2::addr::InetSocketAddr;
-use std::fs::File;
 use std::io::prelude::*;
 use std::path::Path;
 use std::str::FromStr;
+use std::{fs::File, net::SocketAddr};
 
 use serde::{Deserialize, Serialize};
 
@@ -139,6 +139,32 @@ impl Config {
         }
     }
 
+    /// Returns the addr of the tor control socket if it is set, or the default
+    /// socket at localhost:9051 if not.
+    pub fn get_tor_control_socket(&self) -> Result<SocketAddr, Error> {
+        if let Some(FarcasterdConfig {
+            tor_control_socket: Some(addr),
+            ..
+        }) = &self.farcasterd
+        {
+            Ok(SocketAddr::from_str(addr)?)
+        } else {
+            Ok(SocketAddr::from_str("127.0.0.1:9051")?)
+        }
+    }
+
+    pub fn create_hidden_service(&self) -> bool {
+        if let Some(FarcasterdConfig {
+            create_hidden_service: Some(create_hidden_service),
+            ..
+        }) = &self.farcasterd
+        {
+            *create_hidden_service
+        } else {
+            false
+        }
+    }
+
     /// Returns the swap config for the specified network and arbitrating/accordant blockchains
     pub fn get_swap_config(
         &self,
@@ -230,6 +256,11 @@ pub struct FarcasterdConfig {
     pub bind_ip: Option<String>,
     /// Whether checkpoints should be auto restored at start-up, or not
     pub auto_restore: Option<bool>,
+    /// Tor control socket for creating the hidden service
+    pub tor_control_socket: Option<String>,
+    /// Whether to create a hidden service or not. If set, the node will only
+    /// run in hidden service mode
+    pub create_hidden_service: Option<bool>,
 }
 
 #[derive(Deserialize, Serialize, Debug, Clone)]
@@ -432,6 +463,8 @@ impl Default for FarcasterdConfig {
             // write the default port and ip in the generated config
             bind_port: Some(FARCASTER_BIND_PORT),
             bind_ip: Some(FARCASTER_BIND_IP.to_string()),
+            tor_control_socket: None,
+            create_hidden_service: None,
         }
     }
 }

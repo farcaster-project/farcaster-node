@@ -5,6 +5,7 @@
 // https://opensource.org/licenses/MIT.
 
 use std::{
+    convert::TryInto,
     fmt::{self, Debug, Display, Formatter},
     str::FromStr,
 };
@@ -16,10 +17,11 @@ use farcaster_core::{
 };
 
 use amplify::{ToYamlString, Wrapper};
-use internet2::addr::NodeId;
+use internet2::addr::{InetSocketAddr, NodeId};
 use microservices::rpc;
 use serde_with::DisplayFromStr;
-use strict_encoding::{NetworkDecode, NetworkEncode};
+use strict_encoding::{NetworkDecode, NetworkEncode, StrictDecode, StrictEncode};
+use torut::onion::{OnionAddressV3, TorPublicKeyV3};
 
 use crate::swapd::StateReport;
 use crate::syncerd::Health;
@@ -37,6 +39,43 @@ pub struct CheckpointEntry {
     pub deal: Deal,
     pub trade_role: TradeRole,
     pub expected_counterparty_node_id: Option<NodeId>,
+}
+
+#[derive(Clone, Debug, Display, Eq, PartialEq, NetworkDecode, NetworkEncode)]
+#[cfg_attr(
+    feature = "serde",
+    derive(Serialize, Deserialize),
+    serde(crate = "serde_crate")
+)]
+#[display(Debug)]
+pub struct HiddenServiceInfo {
+    pub onion_address: WrapOnionAddressV3,
+    pub bind_address: InetSocketAddr,
+}
+
+#[derive(Clone, PartialEq, Eq, Debug, Display)]
+#[cfg_attr(
+    feature = "serde",
+    derive(Serialize, Deserialize),
+    serde(crate = "serde_crate")
+)]
+#[display(Debug)]
+pub struct WrapOnionAddressV3(pub OnionAddressV3);
+
+impl StrictEncode for WrapOnionAddressV3 {
+    fn strict_encode<E: std::io::Write>(&self, mut e: E) -> Result<usize, strict_encoding::Error> {
+        let address_encoding = self.0.get_public_key().as_bytes().to_vec();
+        address_encoding.strict_encode(&mut e)
+    }
+}
+
+impl StrictDecode for WrapOnionAddressV3 {
+    fn strict_decode<D: std::io::Read>(mut d: D) -> Result<Self, strict_encoding::Error> {
+        let onion_address = Vec::<u8>::strict_decode(&mut d)?;
+        Ok(WrapOnionAddressV3(OnionAddressV3::from(
+            &TorPublicKeyV3::from_bytes(&onion_address.try_into().unwrap()).unwrap(),
+        )))
+    }
 }
 
 #[derive(Clone, Debug, Display, Eq, PartialEq, Hash, NetworkDecode, NetworkEncode)]

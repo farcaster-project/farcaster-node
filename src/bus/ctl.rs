@@ -32,6 +32,7 @@ use crate::syncerd::{Health, SweepAddressAddendum};
 use crate::{Error, ServiceId};
 
 use super::p2p::Commit;
+use super::{HiddenServiceInfo, WrapOnionAddressV3};
 
 #[derive(Clone, Debug, Display, From, NetworkEncode, NetworkDecode)]
 #[non_exhaustive]
@@ -133,6 +134,12 @@ pub enum CtlMsg {
 
     #[display("get_balance")]
     GetBalance(AddressSecretKey),
+
+    #[display("set_hidden_service_info")]
+    SetHiddenServiceInfo(HiddenServiceInfo),
+
+    #[display("delete_hidden_service_info")]
+    DeleteHiddenServiceInfo(WrapOnionAddressV3),
 
     #[display("funding_updated()")]
     FundingUpdated,

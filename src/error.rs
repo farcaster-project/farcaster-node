@@ -139,6 +139,11 @@ pub enum Error {
     #[from]
     Inet2AddrParseError(internet2::addr::AddrParseError),
 
+    /// Net socket address parsing errors
+    #[display(inner)]
+    #[from]
+    SocketAddrError(std::net::AddrParseError),
+
     /// Tonic gRPC deamon transport errors
     #[display(inner)]
     #[from]
