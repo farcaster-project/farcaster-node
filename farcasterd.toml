@@ -49,11 +49,19 @@ safety = 3
 # Number of confirmations required to consider a transaction final. Must be
 # smaller than safety.
 finality = 1
+# The minimum acceptable amount of bitcoin to trade
+min_amount = "0.00001 btc"
+# The maximum acceptable amount of bitcoin to trade
+max_amount = "1 btc"
 
 # Swap parameter for the Monero blockchain
 [swap.monero.testnet]
 # Number of confirmations required to consider a transaction final
 finality = 1
+# The minimum acceptable amount of monero to trade
+min_amount = "0.001 xmr"
+# The maximum acceptable amount of monero to trade
+max_amount = "20 xmr"
 
 # Defines grpc options
 [grpc]

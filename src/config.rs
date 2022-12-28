@@ -6,6 +6,7 @@
 
 use crate::{AccordantBlockchain, ArbitratingBlockchain, Error};
 use farcaster_core::blockchain::Network;
+use farcaster_core::swap::btcxmr::DealParameters;
 use internet2::addr::InetSocketAddr;
 use std::fs::File;
 use std::io::prelude::*;
@@ -29,7 +30,10 @@ pub const GRPC_BIND_IP_ADDRESS: &str = "127.0.0.1";
 
 pub const SWAP_MAINNET_BITCOIN_SAFETY: u8 = 7;
 pub const SWAP_MAINNET_BITCOIN_FINALITY: u8 = 6;
+pub const SWAP_MAINNET_BITCOIN_MAX_BTC_AMOUNT: f64 = 0.01;
 pub const SWAP_MAINNET_MONERO_FINALITY: u8 = 20;
+pub const SWAP_MAINNET_MONERO_MIN_XMR_AMOUNT: f64 = 0.001;
+pub const SWAP_MAINNET_MONERO_MAX_XMR_AMOUNT: f64 = 2.0;
 
 pub const SWAP_TESTNET_BITCOIN_SAFETY: u8 = 3;
 pub const SWAP_TESTNET_BITCOIN_FINALITY: u8 = 1;
@@ -152,6 +156,7 @@ impl Config {
                     ArbitratingBlockchain::Bitcoin => swap
                         .bitcoin
                         .get_for_network(network)
+                        .map(|c| c.temporality)
                         .or_else(|| ArbConfig::get(arb, network))
                         .ok_or_else(|| {
                             config::ConfigError::Message(
@@ -163,6 +168,7 @@ impl Config {
                     AccordantBlockchain::Monero => swap
                         .monero
                         .get_for_network(network)
+                        .map(|c| c.temporality)
                         .or_else(|| AccConfig::get(acc, network))
                         .ok_or_else(|| {
                             config::ConfigError::Message(
@@ -186,6 +192,22 @@ impl Config {
                     arbitrating,
                     accordant,
                 })
+            }
+        }
+    }
+
+    /// Validate a deal against user configuration
+    pub fn validate_deal_parameters(&self, deal: &DealParameters) -> Result<(), Error> {
+        let network = deal.network;
+        match &self.swap {
+            Some(_swap) => {
+                Ok(())
+            }
+            None => {
+                if network == Network::Mainnet {
+                    // TODO
+                }
+                Ok(())
             }
         }
     }
@@ -236,9 +258,19 @@ pub struct FarcasterdConfig {
 #[serde(crate = "serde_crate")]
 pub struct SwapConfig {
     /// Swap parameters for the Bitcoin blockchain per network
-    pub bitcoin: Networked<Option<ArbConfig>>,
+    pub bitcoin: Networked<Option<ChainSwapConfig<ArbConfig, btc::Amount>>>,
     /// Swap parameters for the Monero blockchain per network
-    pub monero: Networked<Option<AccConfig>>,
+    pub monero: Networked<Option<ChainSwapConfig<AccConfig, xmr::Amount>>>,
+}
+
+/// This struct holds the complete swap config for a chain; this is just an helper
+#[derive(Deserialize, Serialize, Debug, Clone)]
+#[serde(crate = "serde_crate")]
+pub struct ChainSwapConfig<T, A> {
+    #[serde(flatten)]
+    pub temporality: T,
+    #[serde(flatten)]
+    pub amounts: Option<TradeableAmounts<A>>,
 }
 
 #[derive(Deserialize, Serialize, Debug, Clone)]
@@ -258,6 +290,39 @@ pub struct ArbConfig {
     pub safety: u8,
     /// Number of confirmations required to consider a transaction final
     pub finality: u8,
+}
+
+#[derive(Deserialize, Serialize, Debug, Clone)]
+#[serde(crate = "serde_crate")]
+pub struct TradeableAmounts<T> {
+    /// If specified, the minimum acceptable amount to trade (>=)
+    pub min_amount: Option<T>,
+    /// If specified, the maximum acceptable amount to trade (<=)
+    pub max_amount: Option<T>,
+}
+
+mod btc {
+    #[derive(Deserialize, Serialize, Debug, Clone)]
+    #[serde(crate = "serde_crate")]
+    pub struct Amount(#[serde(with = "bitcoin::util::amount::serde::as_btc")] pub bitcoin::Amount);
+
+    impl From<bitcoin::Amount> for Amount {
+        fn from(b: bitcoin::Amount) -> Self {
+            Amount(b)
+        }
+    }
+}
+
+mod xmr {
+    #[derive(Deserialize, Serialize, Debug, Clone)]
+    #[serde(crate = "serde_crate")]
+    pub struct Amount(#[serde(with = "monero::util::amount::serde::as_xmr")] pub monero::Amount);
+
+    impl From<monero::Amount> for Amount {
+        fn from(b: monero::Amount) -> Self {
+            Amount(b)
+        }
+    }
 }
 
 impl ArbConfig {
@@ -409,13 +474,39 @@ impl Default for SwapConfig {
     fn default() -> Self {
         SwapConfig {
             bitcoin: Networked {
-                mainnet: Some(ArbConfig::btc_mainnet_default()),
-                testnet: Some(ArbConfig::btc_testnet_default()),
+                mainnet: Some(ChainSwapConfig {
+                    temporality: ArbConfig::btc_mainnet_default(),
+                    amounts: Some(TradeableAmounts {
+                        // ok will always give Some as we use static valid value
+                        max_amount: bitcoin::Amount::from_btc(SWAP_MAINNET_BITCOIN_MAX_BTC_AMOUNT)
+                            .ok()
+                            .map(Into::into),
+                        min_amount: None,
+                    }),
+                }),
+                testnet: Some(ChainSwapConfig {
+                    temporality: ArbConfig::btc_testnet_default(),
+                    amounts: None,
+                }),
                 local: None,
             },
             monero: Networked {
-                mainnet: Some(AccConfig::xmr_mainnet_default()),
-                testnet: Some(AccConfig::xmr_testnet_default()),
+                mainnet: Some(ChainSwapConfig {
+                    temporality: AccConfig::xmr_mainnet_default(),
+                    amounts: Some(TradeableAmounts {
+                        // ok will always give Some as we use static valid value
+                        max_amount: monero::Amount::from_xmr(SWAP_MAINNET_MONERO_MAX_XMR_AMOUNT)
+                            .ok()
+                            .map(Into::into),
+                        min_amount: monero::Amount::from_xmr(SWAP_MAINNET_MONERO_MIN_XMR_AMOUNT)
+                            .ok()
+                            .map(Into::into),
+                    }),
+                }),
+                testnet: Some(ChainSwapConfig {
+                    temporality: AccConfig::xmr_testnet_default(),
+                    amounts: None,
+                }),
                 local: None,
             },
         }
