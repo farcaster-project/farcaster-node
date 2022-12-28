@@ -29,8 +29,8 @@ use crate::{
 };
 use crate::{CtlServer, Error, LogStyle, Service, ServiceConfig, ServiceId};
 
+use std::any::Any;
 use std::time::{Duration, SystemTime};
-use std::{any::Any, collections::HashMap};
 
 use bitcoin::Txid;
 use colored::ColoredString;
@@ -136,7 +136,6 @@ pub fn run(config: ServiceConfig, opts: Opts) -> Result<(), Error> {
         temporal_safety,
         enquirer: None,
         pending_peer_request: none!(),
-        txs: none!(),
         deal,
         local_trade_role,
         local_swap_role,
@@ -149,8 +148,6 @@ pub fn run(config: ServiceConfig, opts: Opts) -> Result<(), Error> {
     Service::run(config, runtime, broker)
 }
 
-// FIXME: State enum should carry over the data that is accumulated over time,
-// and corresponding lines should be removed from Runtime
 pub struct Runtime {
     pub swap_id: SwapId,
     pub identity: ServiceId,
@@ -161,7 +158,6 @@ pub struct Runtime {
     pub syncer_state: SyncerState,
     pub temporal_safety: TemporalSafety,
     pub pending_peer_request: Vec<PeerMsg>, // Peer requests that failed and are waiting for reconnection
-    pub txs: HashMap<TxLabel, bitcoin::Transaction>,
     pub deal: Deal,
     pub local_trade_role: TradeRole,
     pub local_swap_role: SwapRole,
@@ -179,7 +175,6 @@ pub struct CheckpointSwapd {
     pub enquirer: Option<ServiceId>,
     pub xmr_addr_addendum: Option<XmrAddressAddendum>,
     pub temporal_safety: TemporalSafety,
-    pub txs: Vec<(TxLabel, bitcoin::Transaction)>,
     pub txids: Vec<(TxLabel, Txid)>,
     pub pending_broadcasts: Vec<(bitcoin::Transaction, TxLabel)>,
     pub local_trade_role: TradeRole,
@@ -400,7 +395,6 @@ impl Runtime {
                     pending_msg,
                     enquirer,
                     temporal_safety,
-                    mut txs,
                     mut txids,
                     mut pending_broadcasts,
                     xmr_addr_addendum,
@@ -416,7 +410,6 @@ impl Runtime {
                 self.acc_lock_height_lower_bound = acc_lock_height_lower_bound;
                 // We need to update the peerd for the pending requests in case of reconnect
                 self.local_trade_role = local_trade_role;
-                self.txs = txs.drain(..).collect();
                 self.syncer_state
                     .watch_height(endpoints, Blockchain::Bitcoin)?;
                 self.syncer_state
@@ -705,7 +698,6 @@ impl Runtime {
             if let SwapStateMachine::SwapEnd(outcome) = &self.swap_state_machine {
                 let outcome = outcome.clone(); // so we don't borrow self anymore
                 self.abort_all_syncer_tasks(endpoints)?;
-                self.txs = none!();
                 self.report_potential_state_change(endpoints)?;
                 self.send_ctl(
                     endpoints,
@@ -813,7 +805,6 @@ impl Runtime {
                     pending_msg,
                     enquirer: self.enquirer.clone(),
                     temporal_safety: self.temporal_safety.clone(),
-                    txs: self.txs.clone().drain().collect(),
                     txids: self.syncer_state.tasks.txids.clone().drain().collect(),
                     pending_broadcasts: self.syncer_state.pending_broadcast_txs(),
                     xmr_addr_addendum: self.syncer_state.xmr_addr_addendum.clone(),
@@ -846,26 +837,6 @@ impl Runtime {
             BusMsg::Sync(SyncMsg::Task(abort_all)),
         )?;
         Ok(())
-    }
-
-    pub fn bob_watch_cancel_output_task(&mut self) -> Option<Task> {
-        // add a watch for the cancel tx output address. This is necessary so Bob can detect punish:
-        // Since Alice can craft the punish tx at her leisure and Bob won't know its txid in advance,
-        // Bob needs to watch the address of the cancel script to detect the punish tx.
-        if let Some(cancel_tx) = self.txs.get(&TxLabel::Cancel) {
-            let cancel_script = &cancel_tx.output[0].script_pubkey;
-            let cancel_address =
-                bitcoin::Address::from_script(cancel_script, self.syncer_state.network.into())
-                    .expect("cancel script is valid");
-            self.log_debug(format!("Watching cancel address {}", cancel_address));
-            let watch_addr_task = self
-                .syncer_state
-                .watch_addr_btc(cancel_address, TxLabel::Cancel);
-            Some(watch_addr_task)
-        } else {
-            self.log_debug("Cancel tx not found - Bob already broadcasted".to_string());
-            None
-        }
     }
 
     pub fn log_monero_maturity(&self, address: monero::Address) {
