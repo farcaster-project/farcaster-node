@@ -56,7 +56,7 @@ use crate::{
 };
 
 use super::{
-    runtime::Runtime,
+    runtime::{Runtime, SwapLogging},
     swap_key_manager::{
         AliceSwapKeyManager, AliceTxs, BobSwapKeyManager, BobTxs, WrappedEncryptedSignature,
     },
@@ -113,7 +113,7 @@ use super::{
 ///       |_______________________|                                   |                AliceCancel
 ///       |                       |                                   |                     |
 ///       |                       V                                   |         ____________|
-///       V                   BobBuySeen                             |        |            |
+///       V                   BobBuySeen                              |        |            |
 ///   BobCancel                   |                                   |        |            |
 ///       |                       |                                   |        |            |
 ///       |                       V                                   |        V            |

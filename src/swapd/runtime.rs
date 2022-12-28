@@ -107,6 +107,8 @@ pub fn run(config: ServiceConfig, opts: Opts) -> Result<(), Error> {
     };
     let syncer_state = SyncerState {
         swap_id,
+        local_swap_role,
+        local_trade_role,
         tasks,
         monero_height: 0,
         bitcoin_height: 0,
@@ -184,6 +186,12 @@ impl CtlServer for Runtime {}
 impl Reporter for Runtime {
     fn report_to(&self) -> Option<ServiceId> {
         self.enquirer.clone()
+    }
+}
+
+impl SwapLogging for Runtime {
+    fn swap_info(&self) -> (SwapId, SwapRole, TradeRole) {
+        (self.swap_id, self.local_swap_role, self.local_trade_role)
     }
 }
 
@@ -851,41 +859,34 @@ impl Runtime {
             sweep_block.bright_blue_bold(),
         ));
     }
+}
 
-    pub fn log_info(&self, msg: impl std::fmt::Display) {
+pub trait SwapLogging {
+    fn swap_info(&self) -> (SwapId, SwapRole, TradeRole);
+
+    fn log_info(&self, msg: impl std::fmt::Display) {
         info!("{} | {}", self.log_prefix(), msg);
     }
 
-    pub fn log_error(&self, msg: impl std::fmt::Display) {
+    fn log_error(&self, msg: impl std::fmt::Display) {
         error!("{} | {}", self.log_prefix(), msg);
     }
 
-    pub fn log_debug(&self, msg: impl std::fmt::Display) {
+    fn log_debug(&self, msg: impl std::fmt::Display) {
         debug!("{} | {}", self.log_prefix(), msg);
     }
 
-    pub fn log_trace(&self, msg: impl std::fmt::Display) {
+    fn log_trace(&self, msg: impl std::fmt::Display) {
         trace!("{} | {}", self.log_prefix(), msg);
     }
 
-    pub fn log_warn(&self, msg: impl std::fmt::Display) {
+    fn log_warn(&self, msg: impl std::fmt::Display) {
         warn!("{} | {}", self.log_prefix(), msg);
     }
 
     fn log_prefix(&self) -> ColoredString {
-        format!(
-            "{} as {} {}",
-            self.swap_id, self.local_swap_role, self.local_trade_role
-        )
-        .bright_blue_italic()
-    }
-}
-
-pub fn get_swap_id(source: &ServiceId) -> Result<SwapId, Error> {
-    if let ServiceId::Swap(swap_id) = source {
-        Ok(*swap_id)
-    } else {
-        Err(Error::Farcaster("Not swapd".to_string()))
+        let (swap_id, swap_role, trade_role) = self.swap_info();
+        format!("{} as {} {}", swap_id, swap_role, trade_role,).bright_blue_italic()
     }
 }
 

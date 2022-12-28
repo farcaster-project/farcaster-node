@@ -15,7 +15,6 @@ mod temporal_safety;
 
 #[cfg(feature = "shell")]
 pub use opts::Opts;
-pub use runtime::get_swap_id;
 pub use runtime::run;
 pub use runtime::CheckpointSwapd;
 pub use state_report::StateReport;
