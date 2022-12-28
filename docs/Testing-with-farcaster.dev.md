@@ -77,3 +77,4 @@ to see what subcommands are available. You might find the following ones useful 
 - `list-swaps`
 - `needs-funding <btc|xmr>`
 - `progress <swap>`
+

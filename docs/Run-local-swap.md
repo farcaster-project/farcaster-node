@@ -131,3 +131,4 @@ electrum_server = "tcp://localhost:60001"
 monero_daemon = "http://localhost:38081"
 monero_rpc_wallet = "http://localhost:38083"
 ```
+

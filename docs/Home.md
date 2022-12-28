@@ -100,3 +100,4 @@ Only blockchain daemons and electrum servers are listed, you should always run y
 | ----------------- | ------------------------------------------------------- |
 | `electrum server` | `ssl://blockstream.info:993` **(default)**              |
 | `monero daemon`   | `http://stagenet.community.rino.io:38081` **(default)** |
+
