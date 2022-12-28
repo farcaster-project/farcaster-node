@@ -134,7 +134,6 @@ impl Exec for Command {
                 runtime.report_response_or_fail()?;
             }
 
-            // TODO: only list deals matching list of DealIds
             Command::ListDeals { select } => {
                 runtime.request_info(ServiceId::Farcasterd, InfoMsg::ListDeals(select.into()))?;
                 runtime.report_response_or_fail()?;
