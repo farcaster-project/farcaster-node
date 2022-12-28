@@ -104,24 +104,6 @@ pub struct AliceSwapKeyManager {
     pub target_monero_address: monero::Address,
 }
 
-impl AliceSwapKeyManager {
-    pub fn new(
-        alice: Alice,
-        local_params: Parameters,
-        key_manager: KeyManager,
-        target_bitcoin_address: bitcoin::Address,
-        target_monero_address: monero::Address,
-    ) -> Self {
-        Self {
-            alice,
-            local_params,
-            key_manager,
-            target_bitcoin_address,
-            target_monero_address,
-        }
-    }
-}
-
 #[derive(Display, Clone, Debug)]
 #[display("Bob's Swap Key Manager")]
 pub struct BobSwapKeyManager {
@@ -168,26 +150,6 @@ impl Decodable for BobSwapKeyManager {
     }
 }
 
-impl BobSwapKeyManager {
-    pub fn new(
-        bob: Bob,
-        local_params: Parameters,
-        key_manager: KeyManager,
-        funding_tx: FundingTx,
-        target_bitcoin_address: bitcoin::Address,
-        target_monero_address: monero::Address,
-    ) -> Self {
-        Self {
-            bob,
-            local_params,
-            key_manager,
-            funding_tx,
-            target_bitcoin_address,
-            target_monero_address,
-        }
-    }
-}
-
 impl_strict_encoding!(BobSwapKeyManager);
 
 impl AliceSwapKeyManager {
@@ -209,14 +171,13 @@ impl AliceSwapKeyManager {
             FeePriority::Low,
         );
         let local_params = alice.generate_parameters(&mut key_manager, &runtime.deal)?;
-        Ok(AliceSwapKeyManager::new(
+        Ok(AliceSwapKeyManager {
             alice,
             local_params,
             key_manager,
-            // None,
             target_bitcoin_address,
             target_monero_address,
-        ))
+        })
     }
 
     pub fn taker_commit(
@@ -256,13 +217,13 @@ impl AliceSwapKeyManager {
         );
         let local_params = alice.generate_parameters(&mut key_manager, &runtime.deal)?;
         runtime.log_info(format!("Loading {}", "Alice Swap Key Manager".label()));
-        Ok(AliceSwapKeyManager::new(
+        Ok(AliceSwapKeyManager {
             alice,
             local_params,
             key_manager,
             target_bitcoin_address,
             target_monero_address,
-        ))
+        })
     }
 
     pub fn maker_commit(
@@ -621,8 +582,8 @@ impl BobSwapKeyManager {
             FeePriority::Low,
         );
         let local_params = bob.generate_parameters(&mut key_manager, &runtime.deal)?;
-        let funding = create_funding(&mut key_manager, deal_parameters.network)?;
-        let funding_addr = funding.get_address()?;
+        let funding_tx = create_funding(&mut key_manager, deal_parameters.network)?;
+        let funding_addr = funding_tx.get_address()?;
         event.send_ctl_service(
             ServiceId::Database,
             CtlMsg::SetAddressSecretKey(AddressSecretKey::Bitcoin {
@@ -634,14 +595,14 @@ impl BobSwapKeyManager {
             }),
         )?;
         runtime.log_info(format!("Loading {}", "Bob's Swap Key Manager".label()));
-        Ok(BobSwapKeyManager::new(
+        Ok(BobSwapKeyManager {
             bob,
             local_params,
             key_manager,
-            funding,
+            funding_tx,
             target_bitcoin_address,
             target_monero_address,
-        ))
+        })
     }
 
     pub fn taker_commit(
@@ -685,8 +646,8 @@ impl BobSwapKeyManager {
             FeePriority::Low,
         );
         let local_params = bob.generate_parameters(&mut key_manager, &runtime.deal)?;
-        let funding = create_funding(&mut key_manager, deal_parameters.network)?;
-        let funding_addr = funding.get_address()?;
+        let funding_tx = create_funding(&mut key_manager, deal_parameters.network)?;
+        let funding_addr = funding_tx.get_address()?;
         event.send_ctl_service(
             ServiceId::Database,
             CtlMsg::SetAddressSecretKey(AddressSecretKey::Bitcoin {
@@ -698,14 +659,14 @@ impl BobSwapKeyManager {
             }),
         )?;
         runtime.log_info(format!("Loading {}", "Bob's Swap Key Manager".label()));
-        Ok(BobSwapKeyManager::new(
+        Ok(BobSwapKeyManager {
             bob,
             local_params,
             key_manager,
-            funding,
+            funding_tx,
             target_bitcoin_address,
             target_monero_address,
-        ))
+        })
     }
 
     pub fn maker_commit(
