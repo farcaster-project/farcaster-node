@@ -14,13 +14,14 @@ use crate::swapd::temporal_safety::SWEEP_MONERO_THRESHOLD;
 use crate::swapd::Opts;
 use crate::syncerd::bitcoin_syncer::p2wpkh_signed_tx_fee;
 use crate::syncerd::types::{Event, TransactionConfirmations};
+use crate::syncerd::{Abort, Task, TaskTarget};
 use crate::{
     bus::ctl::{BitcoinFundingInfo, Checkpoint, CtlMsg, FundingInfo},
     bus::info::{InfoMsg, SwapInfo},
     bus::p2p::PeerMsg,
     bus::sync::SyncMsg,
     bus::{BusMsg, Outcome, ServiceBus},
-    syncerd::{HeightChanged, Task, TransactionRetrieved, XmrAddressAddendum},
+    syncerd::{HeightChanged, TransactionRetrieved, XmrAddressAddendum},
 };
 use crate::{
     service::{Endpoints, Reporter},
@@ -703,6 +704,8 @@ impl Runtime {
             // On SwapEnd, report immediately to ensure the progress message goes out before the swap is terminated, then let farcasterd know of the outcome.
             if let SwapStateMachine::SwapEnd(outcome) = &self.swap_state_machine {
                 let outcome = outcome.clone(); // so we don't borrow self anymore
+                self.abort_all_syncer_tasks(endpoints)?;
+                self.txs = none!();
                 self.report_potential_state_change(endpoints)?;
                 self.send_ctl(
                     endpoints,
@@ -820,6 +823,27 @@ impl Runtime {
                     acc_lock_height_lower_bound: self.acc_lock_height_lower_bound,
                 },
             })),
+        )?;
+        Ok(())
+    }
+
+    pub fn abort_all_syncer_tasks(&mut self, endpoints: &mut Endpoints) -> Result<(), Error> {
+        let abort_all = Task::Abort(Abort {
+            task_target: TaskTarget::AllTasks,
+            respond: false,
+        });
+
+        endpoints.send_to(
+            ServiceBus::Sync,
+            self.identity(),
+            self.syncer_state.monero_syncer(),
+            BusMsg::Sync(SyncMsg::Task(abort_all.clone())),
+        )?;
+        endpoints.send_to(
+            ServiceBus::Sync,
+            self.identity(),
+            self.syncer_state.bitcoin_syncer(),
+            BusMsg::Sync(SyncMsg::Task(abort_all)),
         )?;
         Ok(())
     }
