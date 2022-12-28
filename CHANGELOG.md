@@ -7,6 +7,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- Syncer(monero): Disregard unlock time transactions by @TheCharlatan in <https://github.com/farcaster-project/farcaster-node/pull/874>
+- Syncer: Lower the time spent sleeping on the syncer receiver by @TheCharlatan in <https://github.com/farcaster-project/farcaster-node/pull/873>
+- Swapd: Refactor retrieving txs in syncer client by @TheCharlatan in <https://github.com/farcaster-project/farcaster-node/pull/870>
+- Errors: Wrap error types in Error enum instead of converting to Farcaster::Error by @TheCharlatan in <https://github.com/farcaster-project/farcaster-node/pull/864>
+- Syncer: Some Refactors for better logging and ergonomics by @TheCharlatan in <https://github.com/farcaster-project/farcaster-node/pull/866>
+- Cli: health check ignore local by default by @h4sh3d in <https://github.com/farcaster-project/farcaster-node/pull/878>
+- Grpcd: Add helper function for executing health check by @TheCharlatan in <https://github.com/farcaster-project/farcaster-node/pull/883>
+- Logs: move syncer state transitions logs to debug level by @h4sh3d in <https://github.com/farcaster-project/farcaster-node/pull/884>
+- Swapd: Use transaction directly from transaction confirmations by @TheCharlatan in <https://github.com/farcaster-project/farcaster-node/pull/879>
+- Swapd: Cache all transaction related syncer events by @TheCharlatan in <https://github.com/farcaster-project/farcaster-node/pull/881>
+- Swap: If punish only end when punish final, and Bob check punish too by @Lederstrumpf in <https://github.com/farcaster-project/farcaster-node/pull/842>
+- Swapd: Complete swap key manager refactor by @TheCharlatan in <https://github.com/farcaster-project/farcaster-node/pull/882>
+- Refactor: temporal safety renaming and cleaning by @h4sh3d in <https://github.com/farcaster-project/farcaster-node/pull/885>
+- Swapd: Fix broken build by @TheCharlatan in <https://github.com/farcaster-project/farcaster-node/pull/888>
+- Swapd: Only make accesses to swap key manager mut that need to be by @TheCharlatan in <https://github.com/farcaster-project/farcaster-node/pull/889>
+- Swapd: Remove local trade role from SwapKeyManager by @TheCharlatan in <https://github.com/farcaster-project/farcaster-node/pull/890>
+- Syncer: Remove Boolean type and replace with raw type by @TheCharlatan in <https://github.com/farcaster-project/farcaster-node/pull/891>
+- Swapd: Always abort all tasks on swap end by @TheCharlatan in <https://github.com/farcaster-project/farcaster-node/pull/887>
+- Swap: Move transactions from Runtime to State machine by @TheCharlatan in <https://github.com/farcaster-project/farcaster-node/pull/892>
+- Swap: Move AccLockHeight from Runtime to State by @TheCharlatan in <https://github.com/farcaster-project/farcaster-node/pull/893>
+- Core: update to version 0.6.2 by @h4sh3d in <https://github.com/farcaster-project/farcaster-node/pull/894>
+- Swap: Add swap logging to syncer client by @TheCharlatan in <https://github.com/farcaster-project/farcaster-node/pull/896>
+
 ## [0.8.1] - 2022-12-21
 
 ### Changed
