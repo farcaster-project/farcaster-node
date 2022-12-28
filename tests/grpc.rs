@@ -84,7 +84,7 @@ async fn grpc_server_functional_test() {
         accordant_addr: xmr_address.to_string(),
         cancel_timelock: 20,
         punish_timelock: 40,
-        fee_strategy: "100 satoshi/vByte".to_string(),
+        fee_strategy: "2000 satoshi/kvB".to_string(),
         maker_role: farcaster::SwapRole::Bob.into(),
         public_ip_addr: "127.0.0.1".to_string(),
         public_port: 7067,
