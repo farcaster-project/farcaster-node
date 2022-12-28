@@ -4,7 +4,7 @@
 // license that can be found in the LICENSE file or at
 // https://opensource.org/licenses/MIT.
 
-use std::{convert::TryInto, io};
+use std::convert::TryInto;
 
 use bitcoin::secp256k1::ecdsa::Signature;
 use farcaster_core::{
@@ -13,7 +13,7 @@ use farcaster_core::{
         BitcoinSegwitV0,
     },
     blockchain::FeePriority,
-    consensus::{self, CanonicalBytes, Decodable, Encodable},
+    consensus::{self, Decodable, Encodable},
     crypto::{ArbitratingKeyId, CommitmentEngine, GenerateKey, ProveCrossGroupDleq, SharedKeyId},
     impl_strict_encoding,
     monero::{Monero, SHARED_VIEW_KEY_ID},
@@ -104,7 +104,7 @@ pub struct AliceSwapKeyManager {
     pub target_monero_address: monero::Address,
 }
 
-#[derive(Display, Clone, Debug)]
+#[derive(Display, Clone, Debug, StrictEncode, StrictDecode)]
 #[display("Bob's Swap Key Manager")]
 pub struct BobSwapKeyManager {
     pub bob: Bob,
@@ -114,43 +114,6 @@ pub struct BobSwapKeyManager {
     pub target_bitcoin_address: bitcoin::Address,
     pub target_monero_address: monero::Address,
 }
-
-impl Encodable for BobSwapKeyManager {
-    fn consensus_encode<W: io::Write>(&self, writer: &mut W) -> Result<usize, io::Error> {
-        let mut len = self.bob.consensus_encode(writer)?;
-        len += self.local_params.consensus_encode(writer)?;
-        len += self.key_manager.consensus_encode(writer)?;
-        len += self.funding_tx.consensus_encode(writer)?;
-        len += self
-            .target_bitcoin_address
-            .as_canonical_bytes()
-            .consensus_encode(writer)?;
-        len += self
-            .target_monero_address
-            .as_canonical_bytes()
-            .consensus_encode(writer)?;
-        Ok(len)
-    }
-}
-
-impl Decodable for BobSwapKeyManager {
-    fn consensus_decode<D: io::Read>(d: &mut D) -> Result<Self, consensus::Error> {
-        Ok(BobSwapKeyManager {
-            bob: Decodable::consensus_decode(d)?,
-            local_params: Decodable::consensus_decode(d)?,
-            key_manager: Decodable::consensus_decode(d)?,
-            funding_tx: Decodable::consensus_decode(d)?,
-            target_bitcoin_address: bitcoin::Address::from_canonical_bytes(
-                farcaster_core::unwrap_vec_ref!(d).as_ref(),
-            )?,
-            target_monero_address: monero::Address::from_canonical_bytes(
-                farcaster_core::unwrap_vec_ref!(d).as_ref(),
-            )?,
-        })
-    }
-}
-
-impl_strict_encoding!(BobSwapKeyManager);
 
 impl AliceSwapKeyManager {
     pub fn local_params(&self) -> Parameters {
