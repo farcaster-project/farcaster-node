@@ -140,7 +140,6 @@ pub fn run(config: ServiceConfig, opts: Opts) -> Result<(), Error> {
         local_trade_role,
         local_swap_role,
         latest_state_report: state_report,
-        acc_lock_height_lower_bound: None,
         swap_state_machine,
         unhandled_peer_message: None, // The last message we received and was not handled by the state machine
     };
@@ -162,7 +161,6 @@ pub struct Runtime {
     pub local_trade_role: TradeRole,
     pub local_swap_role: SwapRole,
     pub latest_state_report: StateReport,
-    pub acc_lock_height_lower_bound: Option<u64>,
     pub swap_state_machine: SwapStateMachine,
     pub unhandled_peer_message: Option<PeerMsg>,
 }
@@ -180,7 +178,6 @@ pub struct CheckpointSwapd {
     pub local_trade_role: TradeRole,
     pub connected_counterparty_node_id: Option<NodeId>,
     pub deal: Deal,
-    pub acc_lock_height_lower_bound: Option<u64>,
 }
 
 impl CtlServer for Runtime {}
@@ -399,7 +396,6 @@ impl Runtime {
                     mut pending_broadcasts,
                     xmr_addr_addendum,
                     local_trade_role,
-                    acc_lock_height_lower_bound,
                     state,
                     ..
                 } = state;
@@ -407,7 +403,6 @@ impl Runtime {
                 self.swap_state_machine = state;
                 self.enquirer = enquirer;
                 self.temporal_safety = temporal_safety;
-                self.acc_lock_height_lower_bound = acc_lock_height_lower_bound;
                 // We need to update the peerd for the pending requests in case of reconnect
                 self.local_trade_role = local_trade_role;
                 self.syncer_state
@@ -811,7 +806,6 @@ impl Runtime {
                     local_trade_role: self.local_trade_role,
                     connected_counterparty_node_id: get_node_id(&self.peer_service),
                     deal: self.deal.clone(),
-                    acc_lock_height_lower_bound: self.acc_lock_height_lower_bound,
                 },
             })),
         )?;

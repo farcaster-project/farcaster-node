@@ -535,7 +535,7 @@ impl Exec for Command {
                             source_view_key: secret_key_info.view,
                             destination_address,
                             minimum_balance: monero::Amount::from_pico(0),
-                            from_height: secret_key_info.creation_height,
+                            from_height: Some(secret_key_info.creation_height),
                         })),
                     )?;
                     runtime.report_response_or_fail()?;

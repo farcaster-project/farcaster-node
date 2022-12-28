@@ -389,6 +389,7 @@ impl AliceSwapKeyManager {
         refund_tx: bitcoin::Transaction,
         bob_params: Parameters,
         adaptor_refund: WrappedEncryptedSignature,
+        acc_lock_height_lower_bound: u64,
     ) -> Result<SweepMoneroAddress, Error> {
         let AliceSwapKeyManager {
             alice,
@@ -453,7 +454,7 @@ impl AliceSwapKeyManager {
                     swap_id: Some(runtime.swap_id),
                     view: keypair.view.as_bytes().try_into().unwrap(),
                     spend: keypair.spend.as_bytes().try_into().unwrap(),
-                    creation_height: runtime.acc_lock_height_lower_bound,
+                    creation_height: acc_lock_height_lower_bound,
                 },
             }),
         )?;
@@ -463,7 +464,7 @@ impl AliceSwapKeyManager {
             source_spend_key: spend,
             destination_address: *target_monero_address,
             minimum_balance: runtime.deal.parameters.accordant_amount,
-            from_height: runtime.acc_lock_height_lower_bound,
+            from_height: Some(acc_lock_height_lower_bound),
         })
     }
 
@@ -785,6 +786,7 @@ impl BobSwapKeyManager {
         event: &mut Event,
         alice_params: Parameters,
         adaptor_buy: BuyProcedureSignature,
+        acc_lock_height_lower_bound: u64,
     ) -> Result<SweepMoneroAddress, Error> {
         let BobSwapKeyManager {
             bob,
@@ -849,7 +851,7 @@ impl BobSwapKeyManager {
                     swap_id: Some(runtime.swap_id),
                     view: keypair.view.as_bytes().try_into().unwrap(),
                     spend: keypair.spend.as_bytes().try_into().unwrap(),
-                    creation_height: runtime.acc_lock_height_lower_bound,
+                    creation_height: acc_lock_height_lower_bound,
                 },
             }),
         )?;
@@ -859,7 +861,7 @@ impl BobSwapKeyManager {
             source_spend_key: spend,
             destination_address: *target_monero_address,
             minimum_balance: runtime.deal.parameters.accordant_amount,
-            from_height: runtime.acc_lock_height_lower_bound,
+            from_height: Some(acc_lock_height_lower_bound),
         })
     }
 

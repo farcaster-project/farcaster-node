@@ -367,6 +367,7 @@ pub struct BobFunded {
     remote_params: Parameters,
     core_arbitrating_setup: CoreArbitratingSetup,
     swap_key_manager: BobSwapKeyManager,
+    acc_lock_height_lower_bound: u64,
 }
 
 #[derive(Clone, Debug, StrictEncode, StrictDecode)]
@@ -377,6 +378,7 @@ pub struct AliceCoreArbitratingSetup {
     adaptor_refund: WrappedEncryptedSignature,
     swap_key_manager: AliceSwapKeyManager,
     alice_txs: AliceTxs,
+    acc_lock_height_lower_bound: u64,
 }
 
 #[derive(Clone, Debug, StrictEncode, StrictDecode)]
@@ -385,6 +387,7 @@ pub struct BobRefundProcedureSignatures {
     swap_key_manager: BobSwapKeyManager,
     buy_procedure_signature: BuyProcedureSignature,
     bob_txs: BobTxs,
+    acc_lock_height_lower_bound: u64,
 }
 
 #[derive(Clone, Debug, StrictEncode, StrictDecode)]
@@ -397,6 +400,7 @@ pub struct AliceArbitratingLockFinal {
     alice_cancel_signature: Signature,
     adaptor_refund: WrappedEncryptedSignature,
     alice_txs: AliceTxs,
+    acc_lock_height_lower_bound: u64,
 }
 
 #[derive(Clone, Debug, StrictEncode, StrictDecode)]
@@ -405,6 +409,7 @@ pub struct BobAccordantLock {
     swap_key_manager: BobSwapKeyManager,
     buy_procedure_signature: BuyProcedureSignature,
     bob_txs: BobTxs,
+    acc_lock_height_lower_bound: u64,
 }
 
 #[derive(Clone, Debug, StrictEncode, StrictDecode)]
@@ -415,6 +420,7 @@ pub struct AliceAccordantLock {
     adaptor_refund: WrappedEncryptedSignature,
     swap_key_manager: AliceSwapKeyManager,
     alice_txs: AliceTxs,
+    acc_lock_height_lower_bound: u64,
 }
 
 #[derive(Clone, Debug, StrictEncode, StrictDecode)]
@@ -423,6 +429,7 @@ pub struct BobAccordantLockFinal {
     buy_procedure_signature: BuyProcedureSignature,
     swap_key_manager: BobSwapKeyManager,
     bob_txs: BobTxs,
+    acc_lock_height_lower_bound: u64,
 }
 
 #[derive(Clone, Debug, StrictEncode, StrictDecode)]
@@ -431,6 +438,7 @@ pub struct AliceCanceled {
     adaptor_refund: WrappedEncryptedSignature,
     swap_key_manager: AliceSwapKeyManager,
     alice_txs: AliceTxs,
+    acc_lock_height_lower_bound: u64,
 }
 
 impl StateMachine<Runtime, Error> for SwapStateMachine {
@@ -1056,13 +1064,11 @@ fn try_bob_fee_estimated_to_bob_funded(
             }
 
             // Set the monero address creation height for Bob before setting the first checkpoint
-            if runtime.acc_lock_height_lower_bound.is_none() {
-                runtime.acc_lock_height_lower_bound =
-                    Some(runtime.temporal_safety.block_height_reorg_lower_bound(
-                        Blockchain::Monero,
-                        runtime.syncer_state.height(Blockchain::Monero),
-                    ));
-            }
+            let acc_lock_height_lower_bound =
+                runtime.temporal_safety.block_height_reorg_lower_bound(
+                    Blockchain::Monero,
+                    runtime.syncer_state.height(Blockchain::Monero),
+                );
 
             // checkpoint swap pre lock bob
             runtime.log_debug("checkpointing bob pre lock state");
@@ -1071,6 +1077,7 @@ fn try_bob_fee_estimated_to_bob_funded(
                 remote_params,
                 core_arbitrating_setup: core_arbitrating_setup.clone(),
                 swap_key_manager,
+                acc_lock_height_lower_bound,
             });
             runtime.checkpoint_state(
                 event.endpoints,
@@ -1102,6 +1109,7 @@ fn try_bob_funded_to_bob_refund_procedure_signature(
         remote_params,
         core_arbitrating_setup,
         mut swap_key_manager,
+        acc_lock_height_lower_bound,
     } = bob_funded;
     match &event.request {
         BusMsg::P2p(PeerMsg::RefundProcedureSignatures(refund_proc)) => {
@@ -1128,12 +1136,7 @@ fn try_bob_funded_to_bob_refund_procedure_signature(
                 address,
                 view,
                 txlabel,
-                runtime.acc_lock_height_lower_bound.unwrap_or_else(|| {
-                    runtime.temporal_safety.block_height_reorg_lower_bound(
-                        Blockchain::Monero,
-                        runtime.syncer_state.height(Blockchain::Monero),
-                    )
-                }),
+                acc_lock_height_lower_bound,
             );
 
             event.send_sync_service(runtime.syncer_state.monero_syncer(), SyncMsg::Task(task))?;
@@ -1152,6 +1155,7 @@ fn try_bob_funded_to_bob_refund_procedure_signature(
                     swap_key_manager,
                     buy_procedure_signature,
                     bob_txs,
+                    acc_lock_height_lower_bound,
                 });
             runtime.log_debug("Checkpointing bob refund signature swapd state.");
             // manually add lock_tx to pending broadcasts to ensure it's checkpointed
@@ -1177,6 +1181,7 @@ fn try_bob_refund_procedure_signatures_to_bob_accordant_lock(
         swap_key_manager,
         buy_procedure_signature,
         bob_txs,
+        acc_lock_height_lower_bound,
     } = bob_refund_procedure_signatures;
     match &event.request {
         BusMsg::Sync(SyncMsg::Event(SyncEvent::AddressTransaction(AddressTransaction {
@@ -1216,6 +1221,7 @@ fn try_bob_refund_procedure_signatures_to_bob_accordant_lock(
                 swap_key_manager,
                 buy_procedure_signature,
                 bob_txs,
+                acc_lock_height_lower_bound,
             })))
         }
         _ => handle_bob_swap_interrupt_after_lock(event, runtime, bob_txs),
@@ -1232,6 +1238,7 @@ fn try_bob_accordant_lock_to_bob_accordant_lock_final(
         swap_key_manager,
         buy_procedure_signature,
         bob_txs,
+        acc_lock_height_lower_bound,
     } = bob_accordant_lock;
     match event.request {
         BusMsg::Sync(SyncMsg::Event(SyncEvent::TransactionConfirmations(
@@ -1255,6 +1262,7 @@ fn try_bob_accordant_lock_to_bob_accordant_lock_final(
                     buy_procedure_signature,
                     swap_key_manager,
                     bob_txs,
+                    acc_lock_height_lower_bound,
                 },
             )))
         }
@@ -1272,6 +1280,7 @@ fn try_bob_accordant_lock_final_to_bob_buy_seen(
         buy_procedure_signature,
         mut swap_key_manager,
         bob_txs,
+        acc_lock_height_lower_bound,
     } = bob_accordant_lock_final;
     match event.request.clone() {
         BusMsg::Sync(SyncMsg::Event(SyncEvent::TransactionConfirmations(
@@ -1302,6 +1311,7 @@ fn try_bob_accordant_lock_final_to_bob_buy_seen(
                 &mut event,
                 remote_params,
                 buy_procedure_signature,
+                acc_lock_height_lower_bound,
             )?;
             let task = runtime.syncer_state.sweep_xmr(sweep_xmr.clone(), true);
             runtime.syncer_state.tasks.txids.remove_entry(&TxLabel::Buy);
@@ -1492,6 +1502,13 @@ fn try_alice_reveal_to_alice_core_arbitrating_setup(
                 setup.clone(),
                 &remote_params,
             )?;
+            // Set the monero address creation height for Alice right after the first aggregation
+            let acc_lock_height_lower_bound =
+                runtime.temporal_safety.block_height_reorg_lower_bound(
+                    Blockchain::Monero,
+                    runtime.syncer_state.height(Blockchain::Monero),
+                );
+
             // checkpoint alice pre lock bob
             let new_ssm = SwapStateMachine::AliceCoreArbitratingSetup(AliceCoreArbitratingSetup {
                 remote_params,
@@ -1500,6 +1517,7 @@ fn try_alice_reveal_to_alice_core_arbitrating_setup(
                 adaptor_refund,
                 swap_key_manager,
                 alice_txs,
+                acc_lock_height_lower_bound,
             });
             runtime.log_debug("checkpointing alice pre lock state");
             runtime.checkpoint_state(
@@ -1534,6 +1552,7 @@ fn try_alice_core_arbitrating_setup_to_alice_arbitrating_lock_final(
         adaptor_refund,
         swap_key_manager,
         alice_txs,
+        acc_lock_height_lower_bound,
     } = alice_core_arbitrating_setup;
     match event.request {
         BusMsg::Sync(SyncMsg::Event(SyncEvent::TransactionConfirmations(
@@ -1549,14 +1568,6 @@ fn try_alice_core_arbitrating_setup_to_alice_arbitrating_lock_final(
         {
             let (spend, view) =
                 aggregate_xmr_spend_view(&swap_key_manager.local_params(), &remote_params);
-            // Set the monero address creation height for Alice right after the first aggregation
-            if runtime.acc_lock_height_lower_bound.is_none() {
-                runtime.acc_lock_height_lower_bound =
-                    Some(runtime.temporal_safety.block_height_reorg_lower_bound(
-                        Blockchain::Monero,
-                        runtime.syncer_state.height(Blockchain::Monero),
-                    ));
-            }
             let viewpair = ViewPair { spend, view };
             let address =
                 monero::Address::from_viewpair(runtime.syncer_state.network.into(), &viewpair);
@@ -1572,12 +1583,7 @@ fn try_alice_core_arbitrating_setup_to_alice_arbitrating_lock_final(
                 address,
                 view,
                 txlabel,
-                runtime.acc_lock_height_lower_bound.unwrap_or_else(|| {
-                    runtime.temporal_safety.block_height_reorg_lower_bound(
-                        Blockchain::Monero,
-                        runtime.syncer_state.height(Blockchain::Monero),
-                    )
-                }),
+                acc_lock_height_lower_bound,
             );
             event.send_sync_service(
                 runtime.syncer_state.monero_syncer(),
@@ -1593,6 +1599,7 @@ fn try_alice_core_arbitrating_setup_to_alice_arbitrating_lock_final(
                     alice_cancel_signature,
                     adaptor_refund,
                     alice_txs,
+                    acc_lock_height_lower_bound,
                 },
             )))
         }
@@ -1603,6 +1610,7 @@ fn try_alice_core_arbitrating_setup_to_alice_arbitrating_lock_final(
             adaptor_refund,
             swap_key_manager,
             alice_txs,
+            acc_lock_height_lower_bound,
         ),
     }
 }
@@ -1621,6 +1629,7 @@ fn try_alice_arbitrating_lock_final_to_alice_accordant_lock(
         alice_cancel_signature,
         adaptor_refund,
         alice_txs,
+        acc_lock_height_lower_bound,
     } = alice_arbitrating_lock_final;
     match event.request {
         BusMsg::Sync(SyncMsg::Event(SyncEvent::Empty(id)))
@@ -1648,6 +1657,7 @@ fn try_alice_arbitrating_lock_final_to_alice_accordant_lock(
                     alice_cancel_signature,
                     adaptor_refund,
                     alice_txs,
+                    acc_lock_height_lower_bound,
                 },
             )))
         }
@@ -1685,6 +1695,7 @@ fn try_alice_arbitrating_lock_final_to_alice_accordant_lock(
                     alice_cancel_signature,
                     adaptor_refund,
                     alice_txs,
+                    acc_lock_height_lower_bound,
                 },
             )))
         }
@@ -1756,6 +1767,7 @@ fn try_alice_arbitrating_lock_final_to_alice_accordant_lock(
                         adaptor_refund,
                         swap_key_manager,
                         alice_txs,
+                        acc_lock_height_lower_bound,
                     })));
                 }
                 // Funding Exact
@@ -1770,6 +1782,7 @@ fn try_alice_arbitrating_lock_final_to_alice_accordant_lock(
                     adaptor_refund,
                     swap_key_manager,
                     alice_txs,
+                    acc_lock_height_lower_bound,
                 },
             )))
         }
@@ -1780,6 +1793,7 @@ fn try_alice_arbitrating_lock_final_to_alice_accordant_lock(
             adaptor_refund,
             swap_key_manager,
             alice_txs,
+            acc_lock_height_lower_bound,
         ),
     }
 }
@@ -1796,6 +1810,7 @@ fn try_alice_accordant_lock_to_alice_buy_procedure_signature(
         adaptor_refund,
         mut swap_key_manager,
         alice_txs,
+        acc_lock_height_lower_bound,
     } = alice_accordant_lock;
 
     match event.request.clone() {
@@ -1831,6 +1846,7 @@ fn try_alice_accordant_lock_to_alice_buy_procedure_signature(
                         adaptor_refund,
                         swap_key_manager,
                         alice_txs,
+                        acc_lock_height_lower_bound,
                     })));
                 }
             }
@@ -1851,6 +1867,7 @@ fn try_alice_accordant_lock_to_alice_buy_procedure_signature(
             adaptor_refund,
             swap_key_manager,
             alice_txs,
+            acc_lock_height_lower_bound,
         ),
     }
 }
@@ -1887,6 +1904,7 @@ fn try_alice_canceled_to_alice_refund_or_alice_punish(
         adaptor_refund,
         mut swap_key_manager,
         alice_txs,
+        acc_lock_height_lower_bound,
     } = alice_canceled;
     match event.request.clone() {
         BusMsg::Sync(SyncMsg::Event(SyncEvent::TransactionConfirmations(
@@ -1924,6 +1942,7 @@ fn try_alice_canceled_to_alice_refund_or_alice_punish(
                         adaptor_refund,
                         swap_key_manager,
                         alice_txs,
+                        acc_lock_height_lower_bound,
                     })))
                 }
 
@@ -1965,6 +1984,7 @@ fn try_alice_canceled_to_alice_refund_or_alice_punish(
                         adaptor_refund,
                         swap_key_manager,
                         alice_txs,
+                        acc_lock_height_lower_bound,
                     })))
                 }
 
@@ -1991,6 +2011,7 @@ fn try_alice_canceled_to_alice_refund_or_alice_punish(
                         tx,
                         remote_params,
                         adaptor_refund,
+                        acc_lock_height_lower_bound,
                     )?;
 
                     runtime
@@ -2225,6 +2246,7 @@ fn handle_alice_swap_interrupt_after_lock(
     adaptor_refund: WrappedEncryptedSignature,
     swap_key_manager: AliceSwapKeyManager,
     alice_txs: AliceTxs,
+    acc_lock_height_lower_bound: u64,
 ) -> Result<Option<SwapStateMachine>, Error> {
     match event.request {
         BusMsg::Sync(SyncMsg::Event(SyncEvent::TransactionConfirmations(
@@ -2247,6 +2269,7 @@ fn handle_alice_swap_interrupt_after_lock(
                 adaptor_refund,
                 swap_key_manager,
                 alice_txs,
+                acc_lock_height_lower_bound,
             })))
         }
         BusMsg::Sync(SyncMsg::Event(SyncEvent::TransactionConfirmations(
@@ -2274,6 +2297,7 @@ fn handle_alice_swap_interrupt_after_lock(
                 adaptor_refund,
                 swap_key_manager,
                 alice_txs,
+                acc_lock_height_lower_bound,
             })))
         }
         BusMsg::Ctl(CtlMsg::AbortSwap) => handle_abort_impossible(event, runtime),
