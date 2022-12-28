@@ -39,7 +39,7 @@ async fn cli_make_deal() {
         "--punish-timelock",
         "30",
         "--fee-strategy",
-        "1 satoshi/vByte",
+        "1000 satoshi/kvB",
     ];
     args.append(&mut data_dir_maker.iter().map(std::ops::Deref::deref).collect());
 

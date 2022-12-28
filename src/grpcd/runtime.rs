@@ -24,7 +24,7 @@ use crate::syncerd::Health;
 use crate::syncerd::SweepAddressAddendum;
 use crate::syncerd::SweepBitcoinAddress;
 use crate::syncerd::SweepMoneroAddress;
-use farcaster_core::bitcoin::fee::SatPerVByte;
+use farcaster_core::bitcoin::fee::SatPerKvB;
 use farcaster_core::bitcoin::timelock::CSVTimelock;
 use farcaster_core::blockchain::Blockchain;
 use farcaster_core::blockchain::FeeStrategy;
@@ -757,8 +757,12 @@ impl Farcaster for FarcasterService {
             .into();
         let public_ip_addr = IpAddr::from_str(&str_public_ip_addr)
             .map_err(|_| Status::invalid_argument("public ip address"))?;
-        let fee_strategy: FeeStrategy<SatPerVByte> = FeeStrategy::from_str(&str_fee_strategy).map_err(|_| Status::invalid_argument("
-        fee strategy is required to be formated as a fixed value, e.g. \"100 satoshi/vByte\" or a range, e.g. \"50 satoshi/vByte-150 satoshi/vByte\" "))?;
+        let fee_strategy: FeeStrategy<SatPerKvB> = FeeStrategy::from_str(&str_fee_strategy)
+            .map_err(|_| {
+                Status::invalid_argument(
+                    "fee is required to be formated as a fixed value, e.g. \"1000 satoshi/kvB\"",
+                )
+            })?;
 
         // Monero local address types are mainnet address types
         if network != accordant_addr.network.into() && network != Network::Local {
