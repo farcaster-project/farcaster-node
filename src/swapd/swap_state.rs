@@ -113,7 +113,7 @@ use super::{
 ///       |_______________________|                                   |                AliceCancel
 ///       |                       |                                   |                     |
 ///       |                       V                                   |         ____________|
-///       V                   BobBuySeen                             |        |            |
+///       V                   BobBuySeen                              |        |            |
 ///   BobCancel                   |                                   |        |            |
 ///       |                       |                                   |        |            |
 ///       |                       V                                   |        V            |
