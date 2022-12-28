@@ -106,11 +106,9 @@ pub fn run(config: ServiceConfig, opts: Opts) -> Result<(), Error> {
         tasks: none!(),
     };
     let syncer_state = SyncerState {
-        log_details: LogDetails {
-            swap_id,
-            local_swap_role,
-            local_trade_role,
-        },
+        swap_id,
+        local_swap_role,
+        local_trade_role,
         tasks,
         monero_height: 0,
         bitcoin_height: 0,
@@ -188,6 +186,12 @@ impl CtlServer for Runtime {}
 impl Reporter for Runtime {
     fn report_to(&self) -> Option<ServiceId> {
         self.enquirer.clone()
+    }
+}
+
+impl SwapLogging for Runtime {
+    fn swap_info(&self) -> (SwapId, SwapRole, TradeRole) {
+        (self.swap_id, self.local_swap_role, self.local_trade_role)
     }
 }
 
@@ -410,9 +414,9 @@ impl Runtime {
                 // We need to update the peerd for the pending requests in case of reconnect
                 self.local_trade_role = local_trade_role;
                 self.syncer_state
-                    .watch_height(endpoints, Blockchain::Bitcoin, self.swap_id)?;
+                    .watch_height(endpoints, Blockchain::Bitcoin)?;
                 self.syncer_state
-                    .watch_height(endpoints, Blockchain::Monero, self.swap_id)?;
+                    .watch_height(endpoints, Blockchain::Monero)?;
 
                 self.log_trace("Watching transactions");
                 for (tx_label, txid) in txids.drain(..) {
@@ -855,69 +859,34 @@ impl Runtime {
             sweep_block.bright_blue_bold(),
         ));
     }
+}
 
-    pub fn log_info(&self, msg: impl std::fmt::Display) {
+pub trait SwapLogging {
+    fn swap_info(&self) -> (SwapId, SwapRole, TradeRole);
+
+    fn log_info(&self, msg: impl std::fmt::Display) {
         info!("{} | {}", self.log_prefix(), msg);
     }
 
-    pub fn log_error(&self, msg: impl std::fmt::Display) {
+    fn log_error(&self, msg: impl std::fmt::Display) {
         error!("{} | {}", self.log_prefix(), msg);
     }
 
-    pub fn log_debug(&self, msg: impl std::fmt::Display) {
+    fn log_debug(&self, msg: impl std::fmt::Display) {
         debug!("{} | {}", self.log_prefix(), msg);
     }
 
-    pub fn log_trace(&self, msg: impl std::fmt::Display) {
+    fn log_trace(&self, msg: impl std::fmt::Display) {
         trace!("{} | {}", self.log_prefix(), msg);
     }
 
-    pub fn log_warn(&self, msg: impl std::fmt::Display) {
+    fn log_warn(&self, msg: impl std::fmt::Display) {
         warn!("{} | {}", self.log_prefix(), msg);
     }
 
     fn log_prefix(&self) -> ColoredString {
-        format!(
-            "{} as {} {}",
-            self.swap_id, self.local_swap_role, self.local_trade_role
-        )
-        .bright_blue_italic()
-    }
-}
-
-pub struct LogDetails {
-    swap_id: SwapId,
-    local_swap_role: SwapRole,
-    local_trade_role: TradeRole,
-}
-
-impl LogDetails {
-    pub fn log_info(&self, msg: impl std::fmt::Display) {
-        info!("{} | {}", self.log_prefix(), msg);
-    }
-
-    pub fn log_error(&self, msg: impl std::fmt::Display) {
-        error!("{} | {}", self.log_prefix(), msg);
-    }
-
-    pub fn log_debug(&self, msg: impl std::fmt::Display) {
-        debug!("{} | {}", self.log_prefix(), msg);
-    }
-
-    pub fn log_trace(&self, msg: impl std::fmt::Display) {
-        trace!("{} | {}", self.log_prefix(), msg);
-    }
-
-    pub fn log_warn(&self, msg: impl std::fmt::Display) {
-        warn!("{} | {}", self.log_prefix(), msg);
-    }
-
-    fn log_prefix(&self) -> ColoredString {
-        format!(
-            "{} as {} {}",
-            self.swap_id, self.local_swap_role, self.local_trade_role
-        )
-        .bright_blue_italic()
+        let (swap_id, swap_role, trade_role) = self.swap_info();
+        format!("{} as {} {}", swap_id, swap_role, trade_role,).bright_blue_italic()
     }
 }
 

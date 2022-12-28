@@ -46,7 +46,7 @@ use crate::{
     Error, LogStyle, ServiceId,
 };
 
-use super::runtime::Runtime;
+use super::runtime::{Runtime, SwapLogging};
 
 pub struct HandleRefundProcedureSignaturesRes {
     pub buy_procedure_signature: BuyProcedureSignature,
