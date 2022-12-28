@@ -36,7 +36,6 @@ pub struct SyncerTasks {
     pub retrieving_txs: HashMap<TaskId, TxLabel>,
     pub broadcasting_txs: HashMap<TaskId, TxLabel>,
     pub sweeping_addr: Option<TaskId>,
-    // external address: needed to subscribe for buy (bob) or refund (alice) address_txs
     pub txids: HashMap<TxLabel, bitcoin::Txid>,
     pub tasks: HashMap<TaskId, Task>,
 }
