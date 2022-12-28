@@ -1325,10 +1325,9 @@ fn response_loop(
                 Ok((id, request)) => {
                     let mut pending_requests = pending_requests_lock.lock().await;
                     if let Some(sender) = pending_requests.remove(&id) {
-                        if let Err(err) = sender.send(request) {
+                        if sender.send(request).is_err() {
                             error!(
-                                "Error {} encountered while sending response to Grpc server handle: The client probably disconnected.",
-                                err
+                                "Error encountered while sending response to Grpc server handle: The client probably disconnected."
                             );
                         }
                     } else {
