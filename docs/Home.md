@@ -62,7 +62,7 @@ Commands you should know: `swap-cli info` gives a general overview of the node, 
 
 With those commands and `farcasterd` logs (attach to the log with `docker compose logs -f --no-log-prefix farcasterd`), you should be able to follow your swaps.
 
-Check out the documentation on configuration and usage for more advanced setups and to learn how to make and take offers.
+Check out the documentation on configuration and usage for more advanced setups and to learn how to make and take deals.
 
 ## Configuration
 
