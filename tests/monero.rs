@@ -236,7 +236,7 @@ async fn monero_syncer_address_balance_test() {
                     swap_id: None,
                     spend: target_spend_key,
                     view: target_view_key,
-                    creation_height: Some(height.height),
+                    creation_height: height.height,
                 },
             },
         }),

@@ -749,7 +749,7 @@ fn test_lmdb_state() {
     };
     let addr_info = MoneroSecretKeyInfo {
         swap_id: None,
-        creation_height: None,
+        creation_height: 0,
         view: key_pair.view,
         spend: key_pair.spend,
     };

@@ -84,7 +84,7 @@ pub struct MoneroSecretKeyInfo {
     pub view: monero::PrivateKey,
     #[serde_as(as = "DisplayFromStr")]
     pub spend: monero::PrivateKey,
-    pub creation_height: Option<u64>,
+    pub creation_height: u64,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Display, NetworkEncode, NetworkDecode)]
