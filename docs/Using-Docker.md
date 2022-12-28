@@ -90,3 +90,4 @@ Then use the following values in `farcasterd` configuration file:
 | stagenet            | `http://localhost:38083` |
 
 Remove `--stagenet` add change `--rpc-bind-port` and `-p` values to `18083` and connect to a **mainnet** daemon host, see [:bulb: Use public infrastructure](./Home#use-public-infrastructure) for public mainnet daemon hosts.
+

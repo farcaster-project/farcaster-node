@@ -93,3 +93,4 @@ If you restart you node and wants to restore the last checkpoint of a swap run:
 ```
 swap-cli restore-checkpoint <SWAP_ID>
 ```
+
