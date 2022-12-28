@@ -11,7 +11,7 @@ use std::net::IpAddr;
 use std::str::FromStr;
 
 use farcaster_core::{
-    bitcoin::{fee::SatPerVByte, timelock::CSVTimelock},
+    bitcoin::{fee::SatPerKvB, timelock::CSVTimelock},
     blockchain::{Blockchain, FeeStrategy, Network},
     role::SwapRole,
     swap::{btcxmr::Deal, SwapId},
@@ -195,9 +195,9 @@ pub enum Command {
         #[clap(long, default_value = "5")]
         punish_timelock: CSVTimelock,
 
-        /// The chosen fee strategy for the arbitrating transactions.
-        #[clap(long, default_value = "1 satoshi/vByte")]
-        fee_strategy: FeeStrategy<SatPerVByte>,
+        /// The chosen fee for the arbitrating transactions.
+        #[clap(long, default_value = "1000 satoshi/kvB")]
+        fee_strategy: FeeStrategy<SatPerKvB>,
 
         /// Public IPv4 or IPv6 address to advertise in the deal. This allows taker to
         /// connect; defaults to 127.0.0.1.

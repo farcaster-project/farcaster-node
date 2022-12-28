@@ -2954,7 +2954,7 @@ fn make_deal_args(
             "--punish-timelock".to_string(),
             "30".to_string(),
             "--fee-strategy".to_string(),
-            "1 satoshi/vByte".to_string(),
+            "1000 satoshi/kvB".to_string(),
             "--public-ip-addr".to_string(),
             "127.0.0.1".to_string(),
             "--public-port".to_string(),
