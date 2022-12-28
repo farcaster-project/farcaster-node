@@ -859,6 +859,16 @@ impl Runtime {
             sweep_block.bright_blue_bold(),
         ));
     }
+
+    pub fn report_progress_message_no_fail(
+        &mut self,
+        endpoints: &mut Endpoints,
+        msg: impl ToString,
+    ) {
+        if let Err(err) = self.report_progress_message(endpoints, msg) {
+            self.log_error(format!("Error sending progress message: {}", err))
+        }
+    }
 }
 
 pub trait SwapLogging {
