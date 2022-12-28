@@ -106,7 +106,11 @@ pub fn run(config: ServiceConfig, opts: Opts) -> Result<(), Error> {
         tasks: none!(),
     };
     let syncer_state = SyncerState {
-        swap_id,
+        log_details: LogDetails {
+            swap_id,
+            local_swap_role,
+            local_trade_role,
+        },
         tasks,
         monero_height: 0,
         bitcoin_height: 0,
@@ -406,9 +410,9 @@ impl Runtime {
                 // We need to update the peerd for the pending requests in case of reconnect
                 self.local_trade_role = local_trade_role;
                 self.syncer_state
-                    .watch_height(endpoints, Blockchain::Bitcoin)?;
+                    .watch_height(endpoints, Blockchain::Bitcoin, self.swap_id)?;
                 self.syncer_state
-                    .watch_height(endpoints, Blockchain::Monero)?;
+                    .watch_height(endpoints, Blockchain::Monero, self.swap_id)?;
 
                 self.log_trace("Watching transactions");
                 for (tx_label, txid) in txids.drain(..) {
@@ -881,11 +885,39 @@ impl Runtime {
     }
 }
 
-pub fn get_swap_id(source: &ServiceId) -> Result<SwapId, Error> {
-    if let ServiceId::Swap(swap_id) = source {
-        Ok(*swap_id)
-    } else {
-        Err(Error::Farcaster("Not swapd".to_string()))
+pub struct LogDetails {
+    swap_id: SwapId,
+    local_swap_role: SwapRole,
+    local_trade_role: TradeRole,
+}
+
+impl LogDetails {
+    pub fn log_info(&self, msg: impl std::fmt::Display) {
+        info!("{} | {}", self.log_prefix(), msg);
+    }
+
+    pub fn log_error(&self, msg: impl std::fmt::Display) {
+        error!("{} | {}", self.log_prefix(), msg);
+    }
+
+    pub fn log_debug(&self, msg: impl std::fmt::Display) {
+        debug!("{} | {}", self.log_prefix(), msg);
+    }
+
+    pub fn log_trace(&self, msg: impl std::fmt::Display) {
+        trace!("{} | {}", self.log_prefix(), msg);
+    }
+
+    pub fn log_warn(&self, msg: impl std::fmt::Display) {
+        warn!("{} | {}", self.log_prefix(), msg);
+    }
+
+    fn log_prefix(&self) -> ColoredString {
+        format!(
+            "{} as {} {}",
+            self.swap_id, self.local_swap_role, self.local_trade_role
+        )
+        .bright_blue_italic()
     }
 }
 

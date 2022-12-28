@@ -634,10 +634,10 @@ fn attempt_transition_to_init_taker(
             // start watching block height changes
             runtime
                 .syncer_state
-                .watch_height(event.endpoints, Blockchain::Bitcoin)?;
+                .watch_height(event.endpoints, Blockchain::Bitcoin, runtime.swap_id)?;
             runtime
                 .syncer_state
-                .watch_height(event.endpoints, Blockchain::Monero)?;
+                .watch_height(event.endpoints, Blockchain::Monero, runtime.swap_id)?;
             runtime.peer_service = peerd.clone();
             if let ServiceId::Peer(0, _) = runtime.peer_service {
                 runtime.connected = false;
@@ -735,10 +735,10 @@ fn attempt_transition_to_init_maker(
             // start watching block height changes
             runtime
                 .syncer_state
-                .watch_height(event.endpoints, Blockchain::Bitcoin)?;
+                .watch_height(event.endpoints, Blockchain::Bitcoin, runtime.swap_id)?;
             runtime
                 .syncer_state
-                .watch_height(event.endpoints, Blockchain::Monero)?;
+                .watch_height(event.endpoints, Blockchain::Monero, runtime.swap_id)?;
             runtime.peer_service = peerd;
             if runtime.peer_service != ServiceId::Loopback {
                 runtime.connected = true;
@@ -2155,7 +2155,7 @@ fn attempt_transition_to_bob_reveal(
             }
 
             // start watching bitcoin fee estimate
-            runtime.syncer_state.watch_bitcoin_fee(event.endpoints)?;
+            runtime.syncer_state.watch_bitcoin_fee(event.endpoints, runtime.swap_id)?;
 
             Ok(Some(SwapStateMachine::BobReveal(BobReveal {
                 remote_params,
