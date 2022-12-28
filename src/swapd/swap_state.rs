@@ -22,10 +22,7 @@ use microservices::esb::Handler;
 use monero::ViewPair;
 use strict_encoding::{StrictDecode, StrictEncode};
 
-use crate::{
-    bus::ctl::MoneroFundingInfo,
-    syncerd::{Abort, AddressTransaction, Boolean, TaskTarget},
-};
+use crate::{bus::ctl::MoneroFundingInfo, syncerd::AddressTransaction};
 use crate::{bus::p2p::Reveal, swapd::temporal_safety::SWEEP_MONERO_THRESHOLD};
 use crate::{
     bus::{
@@ -130,7 +127,7 @@ use super::{
 ///                                                  |
 ///                                                  V
 ///                                               SwapEnd
-///         
+///
 /// ```
 
 #[derive(Debug, Display, Clone, StrictDecode, StrictEncode)]
@@ -633,7 +630,7 @@ fn attempt_transition_to_init_taker(
 
             match swap_role {
                 SwapRole::Bob => {
-                    let mut swap_key_manager = BobSwapKeyManager::new_taker_bob(
+                    let swap_key_manager = BobSwapKeyManager::new_taker_bob(
                         &mut event,
                         runtime,
                         target_bitcoin_address.clone(),
@@ -665,7 +662,7 @@ fn attempt_transition_to_init_taker(
                     })))
                 }
                 SwapRole::Alice => {
-                    let mut swap_key_manager = AliceSwapKeyManager::new_taker_alice(
+                    let swap_key_manager = AliceSwapKeyManager::new_taker_alice(
                         runtime,
                         target_bitcoin_address.clone(),
                         target_monero_address,
@@ -741,7 +738,7 @@ fn attempt_transition_to_init_maker(
                             "Local swap role is Bob, but received Bob remote commit".to_string(),
                         ));
                     };
-                    let mut swap_key_manager = BobSwapKeyManager::new_maker_bob(
+                    let swap_key_manager = BobSwapKeyManager::new_maker_bob(
                         &mut event,
                         runtime,
                         target_bitcoin_address,
@@ -781,7 +778,7 @@ fn attempt_transition_to_init_maker(
                             "Local swap role is Bob, but received Bob remote commit".to_string(),
                         ));
                     };
-                    let mut swap_key_manager = AliceSwapKeyManager::new_maker_alice(
+                    let swap_key_manager = AliceSwapKeyManager::new_maker_alice(
                         runtime,
                         target_bitcoin_address,
                         target_monero_address,
@@ -823,9 +820,7 @@ fn try_bob_init_taker_to_bob_taker_maker_commit(
     runtime: &mut Runtime,
     bob_init_taker: BobInitTaker,
 ) -> Result<Option<SwapStateMachine>, Error> {
-    let BobInitTaker {
-        mut swap_key_manager,
-    } = bob_init_taker;
+    let BobInitTaker { swap_key_manager } = bob_init_taker;
     match event.request.clone() {
         BusMsg::P2p(PeerMsg::DealNotFound(_)) => {
             runtime.log_error(format!(
@@ -856,11 +851,9 @@ fn try_bob_init_taker_to_bob_taker_maker_commit(
 fn try_alice_init_taker_to_alice_taker_maker_commit(
     event: Event,
     runtime: &mut Runtime,
-    bob_init_taker: AliceInitTaker,
+    alice_init_taker: AliceInitTaker,
 ) -> Result<Option<SwapStateMachine>, Error> {
-    let AliceInitTaker {
-        mut swap_key_manager,
-    } = bob_init_taker;
+    let AliceInitTaker { swap_key_manager } = alice_init_taker;
     match event.request {
         BusMsg::P2p(PeerMsg::DealNotFound(_)) => {
             runtime.log_error(format!(
@@ -2016,23 +2009,6 @@ fn try_alice_canceled_to_alice_refund_or_alice_punish(
                                 CtlMsg::FundingCompleted(Blockchain::Monero),
                             )?;
                         }
-                        let abort_all = Task::Abort(Abort {
-                            task_target: TaskTarget::AllTasks,
-                            respond: Boolean::False,
-                        });
-                        event.send_sync_service(
-                            runtime.syncer_state.monero_syncer(),
-                            SyncMsg::Task(abort_all.clone()),
-                        )?;
-                        event.send_sync_service(
-                            runtime.syncer_state.bitcoin_syncer(),
-                            SyncMsg::Task(abort_all),
-                        )?;
-                        // remove txs to invalidate outdated states
-                        runtime.txs.remove(&TxLabel::Cancel);
-                        runtime.txs.remove(&TxLabel::Refund);
-                        runtime.txs.remove(&TxLabel::Buy);
-                        runtime.txs.remove(&TxLabel::Punish);
                         Ok(Some(SwapStateMachine::SwapEnd(Outcome::FailureRefund)))
                     }
                 }

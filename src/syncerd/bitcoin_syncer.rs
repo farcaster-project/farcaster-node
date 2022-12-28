@@ -13,7 +13,7 @@ use crate::syncerd::runtime::SyncerdTask;
 use crate::syncerd::runtime::Synclet;
 use crate::syncerd::syncer_state::{AddressTx, BalanceServiceIdPair, TransactionServiceIdPair};
 use crate::syncerd::syncer_state::{GetTxServiceIdPair, SyncerState};
-use crate::syncerd::types::{AddressAddendum, Boolean, SweepAddressAddendum, Task};
+use crate::syncerd::types::{AddressAddendum, SweepAddressAddendum, Task};
 use crate::syncerd::BtcAddressAddendum;
 use crate::syncerd::Event;
 use crate::syncerd::FeeEstimations;
@@ -650,12 +650,8 @@ async fn run_syncerd_task_receiver(
                         },
                         Task::Abort(task) => {
                             let mut state_guard = state.lock().await;
-                            let respond = match task.respond {
-                                Boolean::True => true,
-                                Boolean::False => false,
-                            };
                             state_guard
-                                .abort(task.task_target, syncerd_task.source, respond)
+                                .abort(task.task_target, syncerd_task.source, task.respond)
                                 .await;
                             drop(state_guard);
                         }

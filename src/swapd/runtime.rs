@@ -14,7 +14,7 @@ use crate::swapd::temporal_safety::SWEEP_MONERO_THRESHOLD;
 use crate::swapd::Opts;
 use crate::syncerd::bitcoin_syncer::p2wpkh_signed_tx_fee;
 use crate::syncerd::types::{Event, TransactionConfirmations};
-use crate::syncerd::{Abort, Boolean, Task, TaskTarget};
+use crate::syncerd::{Abort, Task, TaskTarget};
 use crate::{
     bus::ctl::{BitcoinFundingInfo, Checkpoint, CtlMsg, FundingInfo},
     bus::info::{InfoMsg, SwapInfo},
@@ -830,7 +830,7 @@ impl Runtime {
     pub fn abort_all_syncer_tasks(&mut self, endpoints: &mut Endpoints) -> Result<(), Error> {
         let abort_all = Task::Abort(Abort {
             task_target: TaskTarget::AllTasks,
-            respond: Boolean::False,
+            respond: false,
         });
 
         endpoints.send_to(

@@ -87,7 +87,6 @@ impl_strict_encoding!(WrappedEncryptedSignature);
 #[display("Alice's Swap Key Manager")]
 pub struct AliceSwapKeyManager {
     pub alice: Alice,
-    pub local_trade_role: TradeRole,
     pub local_params: Parameters,
     pub key_manager: KeyManager,
     pub target_bitcoin_address: bitcoin::Address,
@@ -97,7 +96,6 @@ pub struct AliceSwapKeyManager {
 impl Encodable for AliceSwapKeyManager {
     fn consensus_encode<W: io::Write>(&self, writer: &mut W) -> Result<usize, io::Error> {
         let mut len = self.alice.consensus_encode(writer)?;
-        len += self.local_trade_role.consensus_encode(writer)?;
         len += self.local_params.consensus_encode(writer)?;
         len += self.key_manager.consensus_encode(writer)?;
         len += self
@@ -116,7 +114,6 @@ impl Decodable for AliceSwapKeyManager {
     fn consensus_decode<D: io::Read>(d: &mut D) -> Result<Self, consensus::Error> {
         Ok(AliceSwapKeyManager {
             alice: Decodable::consensus_decode(d)?,
-            local_trade_role: Decodable::consensus_decode(d)?,
             local_params: Decodable::consensus_decode(d)?,
             key_manager: Decodable::consensus_decode(d)?,
             target_bitcoin_address: bitcoin::Address::from_canonical_bytes(
@@ -134,7 +131,6 @@ impl_strict_encoding!(AliceSwapKeyManager);
 impl AliceSwapKeyManager {
     pub fn new(
         alice: Alice,
-        local_trade_role: TradeRole,
         local_params: Parameters,
         key_manager: KeyManager,
         target_bitcoin_address: bitcoin::Address,
@@ -142,7 +138,6 @@ impl AliceSwapKeyManager {
     ) -> Self {
         Self {
             alice,
-            local_trade_role,
             local_params,
             key_manager,
             target_bitcoin_address,
@@ -155,7 +150,6 @@ impl AliceSwapKeyManager {
 #[display("Bob's Swap Key Manager")]
 pub struct BobSwapKeyManager {
     pub bob: Bob,
-    pub local_trade_role: TradeRole,
     pub local_params: Parameters,
     pub key_manager: KeyManager,
     pub funding_tx: FundingTx,
@@ -166,7 +160,6 @@ pub struct BobSwapKeyManager {
 impl Encodable for BobSwapKeyManager {
     fn consensus_encode<W: io::Write>(&self, writer: &mut W) -> Result<usize, io::Error> {
         let mut len = self.bob.consensus_encode(writer)?;
-        len += self.local_trade_role.consensus_encode(writer)?;
         len += self.local_params.consensus_encode(writer)?;
         len += self.key_manager.consensus_encode(writer)?;
         len += self.funding_tx.consensus_encode(writer)?;
@@ -186,7 +179,6 @@ impl Decodable for BobSwapKeyManager {
     fn consensus_decode<D: io::Read>(d: &mut D) -> Result<Self, consensus::Error> {
         Ok(BobSwapKeyManager {
             bob: Decodable::consensus_decode(d)?,
-            local_trade_role: Decodable::consensus_decode(d)?,
             local_params: Decodable::consensus_decode(d)?,
             key_manager: Decodable::consensus_decode(d)?,
             funding_tx: Decodable::consensus_decode(d)?,
@@ -203,7 +195,6 @@ impl Decodable for BobSwapKeyManager {
 impl BobSwapKeyManager {
     pub fn new(
         bob: Bob,
-        local_trade_role: TradeRole,
         local_params: Parameters,
         key_manager: KeyManager,
         funding_tx: FundingTx,
@@ -212,7 +203,6 @@ impl BobSwapKeyManager {
     ) -> Self {
         Self {
             bob,
-            local_trade_role,
             local_params,
             key_manager,
             funding_tx,
@@ -245,7 +235,6 @@ impl AliceSwapKeyManager {
         let local_params = alice.generate_parameters(&mut key_manager, &runtime.deal)?;
         Ok(AliceSwapKeyManager::new(
             alice,
-            TradeRole::Taker,
             local_params,
             key_manager,
             // None,
@@ -255,7 +244,7 @@ impl AliceSwapKeyManager {
     }
 
     pub fn taker_commit(
-        &mut self,
+        &self,
         event: &mut Event,
         runtime: &mut Runtime,
     ) -> Result<CommitAliceParameters, Error> {
@@ -291,10 +280,8 @@ impl AliceSwapKeyManager {
         );
         let local_params = alice.generate_parameters(&mut key_manager, &runtime.deal)?;
         runtime.log_info(format!("Loading {}", "Alice Swap Key Manager".label()));
-        let local_trade_role = TradeRole::Maker;
         Ok(AliceSwapKeyManager::new(
             alice,
-            local_trade_role,
             local_params,
             key_manager,
             target_bitcoin_address,
@@ -303,7 +290,7 @@ impl AliceSwapKeyManager {
     }
 
     pub fn maker_commit(
-        &mut self,
+        &self,
         event: &mut Event,
         runtime: &mut Runtime,
     ) -> Result<CommitAliceParameters, Error> {
@@ -372,10 +359,7 @@ impl AliceSwapKeyManager {
         // Nothing to do yet, waiting for Msg CoreArbitratingSetup to proceed
     }
 
-    pub fn create_reveal_from_local_params(
-        &mut self,
-        runtime: &mut Runtime,
-    ) -> Result<Reveal, Error> {
+    pub fn create_reveal_from_local_params(&self, runtime: &mut Runtime) -> Result<Reveal, Error> {
         let AliceSwapKeyManager { local_params, .. } = self;
         runtime.log_debug("Generating reveal alice message");
         Ok(Reveal::Alice {
@@ -671,7 +655,6 @@ impl BobSwapKeyManager {
         runtime.log_info(format!("Loading {}", "Bob's Swap Key Manager".label()));
         Ok(BobSwapKeyManager::new(
             bob,
-            TradeRole::Taker,
             local_params,
             key_manager,
             funding,
@@ -681,7 +664,7 @@ impl BobSwapKeyManager {
     }
 
     pub fn taker_commit(
-        &mut self,
+        &self,
         event: &mut Event,
         runtime: &mut Runtime,
     ) -> Result<CommitBobParameters, Error> {
@@ -736,7 +719,6 @@ impl BobSwapKeyManager {
         runtime.log_info(format!("Loading {}", "Bob's Swap Key Manager".label()));
         Ok(BobSwapKeyManager::new(
             bob,
-            TradeRole::Maker,
             local_params,
             key_manager,
             funding,
@@ -746,7 +728,7 @@ impl BobSwapKeyManager {
     }
 
     pub fn maker_commit(
-        &mut self,
+        &self,
         event: &mut Event,
         runtime: &mut Runtime,
     ) -> Result<CommitBobParameters, Error> {
@@ -769,10 +751,7 @@ impl BobSwapKeyManager {
         Ok(local_params.commit_bob(runtime.swap_id, &engine))
     }
 
-    pub fn create_reveal_from_local_params(
-        &mut self,
-        runtime: &mut Runtime,
-    ) -> Result<Reveal, Error> {
+    pub fn create_reveal_from_local_params(&self, runtime: &mut Runtime) -> Result<Reveal, Error> {
         let BobSwapKeyManager { local_params, .. } = self;
         // craft the correct reveal depending on role
         Ok(Reveal::Bob {
