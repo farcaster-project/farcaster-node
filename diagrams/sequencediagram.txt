@@ -41,7 +41,6 @@ t_wallet -> t_farcasterd : Ctl SwapKeys
 t_farcasterd -> t_farcasterd:launch syncer
 t_syncer->t_farcasterd:Ctl Hello [from Syncer Bitcoin [if newly launched] OR Swapd (if syncer reused)]
 t_swap <- t_farcasterd : Ctl TakeSwap
-t_syncer<-t_swap:Ctl EstimateFee (btc)
 t_syncer <- t_swap : Ctl WatchHeight
 t_swap -> peerd : Msg TakerCommit
 peerd -> m_farcasterd : Msg TakerCommit
@@ -51,36 +50,27 @@ m_wallet -> m_farcasterd : Ctl SwapKeys
 m_farcasterd -> m_farcasterd:launch syncer
 m_farcasterd -> m_swap : Ctl MakeSwap
 
-m_swap->m_syncer:Ctl EstimateFee (btc)
 m_swap->m_syncer:Ctl WatchHeight
 m_swap -> peerd : Msg MakerCommit
 t_swap <- peerd : Msg MakerCommit
 // TODO: verify that swapd launches no matter what
 m_farcasterd<-m_syncer:Ctl Hello [from Syncer Bitcoin (if newly launched) OR Swapd (if syncer reused)]
-group for Bob swap role
-t_syncer <- t_swap : Watch Arbitrating Funding Address
-end
 t_swap -> peerd : Msg Reveal (taker is sender)
 peerd -> m_swap : Msg Reveal (taker is sender)
 group for Bob swap role
 // Add Alice reveal message to state for later processing once the funding transaction is available 
-m_swap -> m_swap : Add to state Msg Reveal
-m_swap -> m_farcasterd : Ctl FundingInfo
-m_swap -> m_syncer: Watch Arbitrating Funding Address
+m_swap->m_syncer:Ctl EstimateFee (btc)
 
 end
 peerd <- m_swap : Msg Reveal (maker is sender)
 peerd -> t_swap : Msg Reveal (maker is sender)
 
-group for Bob swap role
 // Add Alice reveal message to state for later processing once the funding transaction is available 
-t_swap -> t_swap : Add to state Msg Reveal
-t_swap -> t_farcasterd : Ctl FundingInfo
-m_swap -> m_syncer: Watch Arbitrating Funding Address
-end
 ==Commit-Reveal Complete==
 ==Changing semantics: On Commit-Reveal, Maker and Taker were the key roles. From now on Bob or Alice are the key roles. Now t_ is bob_ on the left and m_ is alice_ on the right.==
 ==Swap setup: Bob is left, Alice right==
+t_swap -> t_farcasterd: Ctl FundingInfo
+t_swap -> t_syncer: Watch Arbitrating Funding Address
 t_syncer -> t_swap: Arbitrating Funding event
 activate t_swap
 t_swap->t_farcasterd: Ctl FundingCompleted Bitcoin
