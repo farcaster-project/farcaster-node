@@ -94,7 +94,7 @@ impl Decodable for WrappedEncryptedSignature {
 }
 impl_strict_encoding!(WrappedEncryptedSignature);
 
-#[derive(Display, Clone, Debug)]
+#[derive(Display, Clone, Debug, StrictEncode, StrictDecode)]
 #[display("Alice's Swap Key Manager")]
 pub struct AliceSwapKeyManager {
     pub alice: Alice,
@@ -103,41 +103,6 @@ pub struct AliceSwapKeyManager {
     pub target_bitcoin_address: bitcoin::Address,
     pub target_monero_address: monero::Address,
 }
-
-impl Encodable for AliceSwapKeyManager {
-    fn consensus_encode<W: io::Write>(&self, writer: &mut W) -> Result<usize, io::Error> {
-        let mut len = self.alice.consensus_encode(writer)?;
-        len += self.local_params.consensus_encode(writer)?;
-        len += self.key_manager.consensus_encode(writer)?;
-        len += self
-            .target_bitcoin_address
-            .as_canonical_bytes()
-            .consensus_encode(writer)?;
-        len += self
-            .target_monero_address
-            .as_canonical_bytes()
-            .consensus_encode(writer)?;
-        Ok(len)
-    }
-}
-
-impl Decodable for AliceSwapKeyManager {
-    fn consensus_decode<D: io::Read>(d: &mut D) -> Result<Self, consensus::Error> {
-        Ok(AliceSwapKeyManager {
-            alice: Decodable::consensus_decode(d)?,
-            local_params: Decodable::consensus_decode(d)?,
-            key_manager: Decodable::consensus_decode(d)?,
-            target_bitcoin_address: bitcoin::Address::from_canonical_bytes(
-                farcaster_core::unwrap_vec_ref!(d).as_ref(),
-            )?,
-            target_monero_address: monero::Address::from_canonical_bytes(
-                farcaster_core::unwrap_vec_ref!(d).as_ref(),
-            )?,
-        })
-    }
-}
-
-impl_strict_encoding!(AliceSwapKeyManager);
 
 impl AliceSwapKeyManager {
     pub fn new(
