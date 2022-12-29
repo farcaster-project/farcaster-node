@@ -35,7 +35,7 @@ swap-cli make --btc-addr tb1q935eq5fl2a3ajpqp0e3d7z36g7vctcgv05f5lf\
     --xmr-addr 54EYTy2HYFcAXwAbFQ3HmAis8JLNmxRdTC9DwQL7sGJd4CAUYimPxuQHYkMNg1EELNP85YqFwqraLd4ovz6UeeekFLoCKiu\
     --btc-amount "0.0000135 BTC" --xmr-amount "0.001 XMR"\
     --network testnet --arb-blockchain bitcoin --acc-blockchain monero\
-    --maker-role Bob --cancel-timelock 4 --punish-timelock 5 --fee-strategy "1 satoshi/vByte"\
+    --maker-role Bob --cancel-timelock 4 --punish-timelock 5 --fee-strategy "1500 satoshi/kvB"\
     --public-ip-addr {your-public-ip} --public-port 7067
 ```
 
@@ -43,7 +43,7 @@ swap-cli make --btc-addr tb1q935eq5fl2a3ajpqp0e3d7z36g7vctcgv05f5lf\
 
 The `btc-addr` and `xmr-addr` are your external wallet addresses, where the coins will end up upon successful or failure cases. They are followed by the amounts exchanged. Assets and networks defaults to Bitcoin and Monero on testnet (Bitcoin testnet3, Monero stagenet).
 
-The role for the maker is specified in the deal with `--maker-role`. `Alice` sells moneroj for bitcoins, `Bob` sells bitcoins for moneroj. Timelock parameters are set to **4** and **5** (testnet values, for mainnet this should be bigger) for cancel and punish and the transaction fee that must be applied is **1 satoshi per vByte**.
+The role for the maker is specified in the deal with `--maker-role`. `Alice` sells moneroj for bitcoins, `Bob` sells bitcoins for moneroj. Timelock parameters are set to **4** and **5** (testnet values, for mainnet this should be bigger) for cancel and punish and the transaction fee that must be applied is **1500 satoshi per kilo virtual bytes, i.e. 1.5 sat per virtual byte**.
 
 Here the maker will send bitcoins and will receive moneroj in her `54EYTy2HYFcAXwAbFQ3HmAis8JLNmxRdTC9DwQL7sGJd4CAUYimPxuQHYkMNg1EELNP85YqFwqraLd4ovz6UeeekFLoCKiu` address if the swap is successful.
 

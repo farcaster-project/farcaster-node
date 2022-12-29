@@ -20,12 +20,6 @@ This diagram presents the state recovery mechanism. During a swap checkpoints ar
 
 ![State recovery sequence](./staterecovery_sequencediagram.svg)
 
-## [State machine](./swap_state_machine.txt)
-
-This diagram shows the states and transition messages of swapd state and can be edited with [edotor.net](https://edotor.net/).
-
-![State machine](./swap_state_machine.svg)
-
 ## [Node buses design (excalidraw format)](./node-buses.excalidraw)
 
 This diagram shows the buses used by the microservices to communicate and who is communicating on which one. (All microservices have access to all buses, but some do not listen for every one.)
