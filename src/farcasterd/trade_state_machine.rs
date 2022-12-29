@@ -1513,7 +1513,7 @@ fn attempt_transition_to_end(
                                         break;
                                     } else {
                                         warn!("{} | Auto-funding Monero transaction failed with {}, retrying, {} retries left", &swap_id.swap_id(), err, retries);
-                                        tokio::time::sleep(std::time::Duration::from_secs(retries)).await;
+                                        tokio::time::sleep(std::time::Duration::from_millis(10 * retries)).await;
                                     }
                                 }
                             }
