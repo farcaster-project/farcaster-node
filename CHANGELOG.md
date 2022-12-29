@@ -7,6 +7,199 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.8.2] - 2022-12-28
+
+### Changed
+
+- Syncer(monero): Disregard unlock time transactions by @TheCharlatan in <https://github.com/farcaster-project/farcaster-node/pull/874>
+- Syncer: Lower the time spent sleeping on the syncer receiver by @TheCharlatan in <https://github.com/farcaster-project/farcaster-node/pull/873>
+- Swapd: Refactor retrieving txs in syncer client by @TheCharlatan in <https://github.com/farcaster-project/farcaster-node/pull/870>
+- Errors: Wrap error types in Error enum instead of converting to Farcaster::Error by @TheCharlatan in <https://github.com/farcaster-project/farcaster-node/pull/864>
+- Syncer: Some Refactors for better logging and ergonomics by @TheCharlatan in <https://github.com/farcaster-project/farcaster-node/pull/866>
+- Cli: health check ignore local by default by @h4sh3d in <https://github.com/farcaster-project/farcaster-node/pull/878>
+- Grpcd: Add helper function for executing health check by @TheCharlatan in <https://github.com/farcaster-project/farcaster-node/pull/883>
+- Logs: move syncer state transitions logs to debug level by @h4sh3d in <https://github.com/farcaster-project/farcaster-node/pull/884>
+- Swapd: Use transaction directly from transaction confirmations by @TheCharlatan in <https://github.com/farcaster-project/farcaster-node/pull/879>
+- Swapd: Cache all transaction related syncer events by @TheCharlatan in <https://github.com/farcaster-project/farcaster-node/pull/881>
+- Swap: If punish only end when punish final, and Bob check punish too by @Lederstrumpf in <https://github.com/farcaster-project/farcaster-node/pull/842>
+- Swapd: Complete swap key manager refactor by @TheCharlatan in <https://github.com/farcaster-project/farcaster-node/pull/882>
+- Refactor: temporal safety renaming and cleaning by @h4sh3d in <https://github.com/farcaster-project/farcaster-node/pull/885>
+- Swapd: Fix broken build by @TheCharlatan in <https://github.com/farcaster-project/farcaster-node/pull/888>
+- Swapd: Only make accesses to swap key manager mut that need to be by @TheCharlatan in <https://github.com/farcaster-project/farcaster-node/pull/889>
+- Swapd: Remove local trade role from SwapKeyManager by @TheCharlatan in <https://github.com/farcaster-project/farcaster-node/pull/890>
+- Syncer: Remove Boolean type and replace with raw type by @TheCharlatan in <https://github.com/farcaster-project/farcaster-node/pull/891>
+- Swapd: Always abort all tasks on swap end by @TheCharlatan in <https://github.com/farcaster-project/farcaster-node/pull/887>
+- Swap: Move transactions from Runtime to State machine by @TheCharlatan in <https://github.com/farcaster-project/farcaster-node/pull/892>
+- Swap: Move AccLockHeight from Runtime to State by @TheCharlatan in <https://github.com/farcaster-project/farcaster-node/pull/893>
+- Core: update to version 0.6.2 by @h4sh3d in <https://github.com/farcaster-project/farcaster-node/pull/894>
+- Swap: Add swap logging to syncer client by @TheCharlatan in <https://github.com/farcaster-project/farcaster-node/pull/896>
+
+## [0.8.1] - 2022-12-21
+
+### Changed
+
+- Swapd: Logging improvements by @TheCharlatan in <https://github.com/farcaster-project/farcaster-node/pull/850>
+- Deps: Run cargo update by @TheCharlatan in <https://github.com/farcaster-project/farcaster-node/pull/849>
+- Bob verifies Alice's Reveal eagerly by @Lederstrumpf in <https://github.com/farcaster-project/farcaster-node/pull/841>
+- Feat: log errors outside of farcaster too by @h4sh3d in <https://github.com/farcaster-project/farcaster-node/pull/858>
+- Syncer health patch by @TheCharlatan in <https://github.com/farcaster-project/farcaster-node/pull/859>
+- Swap state: Don't emit Bob aborted swap message twice by @TheCharlatan in <https://github.com/farcaster-project/farcaster-node/pull/844>
+- Syncer State Machine: Handle Task Aborted by @TheCharlatan in <https://github.com/farcaster-project/farcaster-node/pull/831>
+- Syncer: Support Incoming and Outgoing AddressTransaction events by @TheCharlatan in <https://github.com/farcaster-project/farcaster-node/pull/855>
+- Swap State Machine: Remove Alice Punish state by @TheCharlatan in <https://github.com/farcaster-project/farcaster-node/pull/863>
+- Service: Implement Reporter trait by @TheCharlatan in <https://github.com/farcaster-project/farcaster-node/pull/848>
+- Deal or No Deal? by @TheCharlatan in <https://github.com/farcaster-project/farcaster-node/pull/852>
+- Chore: fix url for ci badge by @h4sh3d in <https://github.com/farcaster-project/farcaster-node/pull/867>
+- Chore: Handle some clippy findings by @TheCharlatan in <https://github.com/farcaster-project/farcaster-node/pull/869>
+- Swapd: Handle re-orgs and possible mempool drops of broadcasted txs. by @TheCharlatan in <https://github.com/farcaster-project/farcaster-node/pull/865>
+- Grpc: Add deal suffix to selector by @TheCharlatan in <https://github.com/farcaster-project/farcaster-node/pull/871>
+- Grpc: Handle handler drops (usually on client disconnect) by @TheCharlatan in <https://github.com/farcaster-project/farcaster-node/pull/872>
+- Database: Cleanup Open Deals as well on CleanDanglingDeals by @TheCharlatan in <https://github.com/farcaster-project/farcaster-node/pull/851>
+- Feature: Add and consume trade role and status in deal history by @TheCharlatan in <https://github.com/farcaster-project/farcaster-node/pull/861>
+
+## [0.8.0] - 2022-12-15
+
+### Changed
+
+- Swap state machine by @TheCharlatan in <https://github.com/farcaster-project/farcaster-node/pull/804>
+- Deps: Bump monero-rpc to latest version (v0.3.2) by @TheCharlatan in <https://github.com/farcaster-project/farcaster-node/pull/821>
+- Grpc: Added decoded OfferInfo field to returned offers by @TheCharlatan in <https://github.com/farcaster-project/farcaster-node/pull/817>
+- TSM: Remove unneeded peerd check by @TheCharlatan in <https://github.com/farcaster-project/farcaster-node/pull/829>
+- Monero syncer: Use creation height when checking balance by @TheCharlatan in <https://github.com/farcaster-project/farcaster-node/pull/830>
+- Database: Improve error handling by @TheCharlatan in <https://github.com/farcaster-project/farcaster-node/pull/832>
+- Remove `swapd.runtime.syncer_state.{bitcoin,monero}_amount` by @Lederstrumpf in <https://github.com/farcaster-project/farcaster-node/pull/838>
+- Monero socks proxy by @TheCharlatan in <https://github.com/farcaster-project/farcaster-node/pull/824>
+- Grpc: Add network selectors to data queries by @TheCharlatan in <https://github.com/farcaster-project/farcaster-node/pull/818>
+- Alice: broadcast cancel tx eventually even if Alice overfunded by @Lederstrumpf in <https://github.com/farcaster-project/farcaster-node/pull/840>
+- Grpcd: Remove commented dead code block by @TheCharlatan in <https://github.com/farcaster-project/farcaster-node/pull/843>
+- Deps: Update core to v0.6 by @TheCharlatan in <https://github.com/farcaster-project/farcaster-node/pull/836>
+- Swapd: state refactors by @Lederstrumpf in <https://github.com/farcaster-project/farcaster-node/pull/839>
+
+## [0.7.0] - 2022-12-13
+
+### Changed
+
+- Swap wallet by @TheCharlatan in <https://github.com/farcaster-project/farcaster-node/pull/789>
+- Config: expose swap finality parameters by @h4sh3d in <https://github.com/farcaster-project/farcaster-node/pull/800>
+- Tests: Add retries to grpc progress message test by @TheCharlatan in <https://github.com/farcaster-project/farcaster-node/pull/823>
+- Grpc: Handle recoverable server runtime panics by @TheCharlatan in <https://github.com/farcaster-project/farcaster-node/pull/816>
+- Feat: Use creation height when sweeping Monero by @TheCharlatan in <https://github.com/farcaster-project/farcaster-node/pull/784>
+- Relisten maker restore by @TheCharlatan in <https://github.com/farcaster-project/farcaster-node/pull/772>
+- Syncer: Chunk Txs to overcome strict encoding limitation by @TheCharlatan in <https://github.com/farcaster-project/farcaster-node/pull/820>
+- Chore: update headers and housekeeping by @h4sh3d in <https://github.com/farcaster-project/farcaster-node/pull/807>
+
+## [0.6.0] - 2022-12-06
+
+### Changed
+
+- Grpc: Add retries when retrieving the funding info by @TheCharlatan in <https://github.com/farcaster-project/farcaster-node/pull/802>
+- Auto-restore checkpoint on startup by @TheCharlatan in <https://github.com/farcaster-project/farcaster-node/pull/773>
+- Busses: Remove transcoders from bridge bus senders by @TheCharlatan in <https://github.com/farcaster-project/farcaster-node/pull/790>
+- Syncer: Logic for conditional broadcast by @TheCharlatan in <https://github.com/farcaster-project/farcaster-node/pull/750>
+- Cli: Implement endpoint for listing funding addresses by @TheCharlatan in <https://github.com/farcaster-project/farcaster-node/pull/764>
+- Config: Define global static bind address by @TheCharlatan in <https://github.com/farcaster-project/farcaster-node/pull/766>
+- Farcaster: Handle take offer failure by @TheCharlatan in <https://github.com/farcaster-project/farcaster-node/pull/796>
+- Grpc/Server: Add network args to health check by @TheCharlatan in <https://github.com/farcaster-project/farcaster-node/pull/803>
+
+## [0.5.0] - 2022-12-05
+
+### Changed
+
+- Refactor: Improve reliability of peerd connections by @TheCharlatan in <https://github.com/farcaster-project/farcaster-node/pull/792>
+- Add richer data to the progress messages by @TheCharlatan in <https://github.com/farcaster-project/farcaster-node/pull/761>
+- Swapd: Simplify checkpoint encoding by @TheCharlatan in <https://github.com/farcaster-project/farcaster-node/pull/786>
+- Swapd: Some patches and improvements by @TheCharlatan in <https://github.com/farcaster-project/farcaster-node/pull/783>
+- Farcaster: Cleanup dangling swap info on restart by @TheCharlatan in <https://github.com/farcaster-project/farcaster-node/pull/779>
+- Database: Change secret key encoding by @TheCharlatan in <https://github.com/farcaster-project/farcaster-node/pull/782>
+- Tests: Use retries until swap id is available in grpc test by @TheCharlatan in <https://github.com/farcaster-project/farcaster-node/pull/797>
+- Cli: Implement endpoint for checking syncer health by @TheCharlatan in <https://github.com/farcaster-project/farcaster-node/pull/755>
+
+## [0.4.0] - 2022-11-30
+
+### Changed
+
+- doc: move documentation to wiki by @h4sh3d in <https://github.com/farcaster-project/farcaster-node/pull/642>
+- Add Support for electrum client Tor proxy by @TheCharlatan in <https://github.com/farcaster-project/farcaster-node/pull/645>
+- swapd: improve PendingRequests and add associated fn defer_request by @zkao in <https://github.com/farcaster-project/farcaster-node/pull/637>
+- fix(nix): fix git revision and format file according to statix by @LeoNero in <https://github.com/farcaster-project/farcaster-node/pull/653>
+- ci: remove nightly usage by @h4sh3d in <https://github.com/farcaster-project/farcaster-node/pull/656>
+- Deps: Bump to core 0.5.1 by @TheCharlatan in <https://github.com/farcaster-project/farcaster-node/pull/655>
+- ci: bumps containers in tests by @h4sh3d in <https://github.com/farcaster-project/farcaster-node/pull/614>
+- Walletd: Remove funding information by @TheCharlatan in <https://github.com/farcaster-project/farcaster-node/pull/659>
+- Swap: Remove log used while debugging by @TheCharlatan in <https://github.com/farcaster-project/farcaster-node/pull/662>
+- Syncers: Add better controls to task receiver loop by @TheCharlatan in <https://github.com/farcaster-project/farcaster-node/pull/663>
+- Small improvements by @LeoNero in <https://github.com/farcaster-project/farcaster-node/pull/665>
+- syncerclient: rm unneeded mut by @zkao in <https://github.com/farcaster-project/farcaster-node/pull/668>
+- Syncer: Remove polling switch by @TheCharlatan in <https://github.com/farcaster-project/farcaster-node/pull/654>
+- wallet: improve wallet permission by @zkao in <https://github.com/farcaster-project/farcaster-node/pull/646>
+- Some clippy fixes by @TheCharlatan in <https://github.com/farcaster-project/farcaster-node/pull/671>
+- Swap: Remove unused/dead storage by @TheCharlatan in <https://github.com/farcaster-project/farcaster-node/pull/672>
+- Support TLS monerod servers and fix warning in functional-swap test by @LeoNero in <https://github.com/farcaster-project/farcaster-node/pull/667>
+- docs(lnp): remove old lnp docs by @LeoNero in <https://github.com/farcaster-project/farcaster-node/pull/678>
+- Add shell completions for databased and grpcd by @LeoNero in <https://github.com/farcaster-project/farcaster-node/pull/681>
+- Remove configure_me from project by @LeoNero in <https://github.com/farcaster-project/farcaster-node/pull/682>
+- Docs: Correct s/checkpoint/database/ in sequence diagram by @TheCharlatan in <https://github.com/farcaster-project/farcaster-node/pull/688>
+- refactor: display for rpc msg by @h4sh3d in <https://github.com/farcaster-project/farcaster-node/pull/675>
+- Add few comments with some explanations for some decisions by @LeoNero in <https://github.com/farcaster-project/farcaster-node/pull/679>
+- Fix /compose and Dockerfile by @LeoNero in <https://github.com/farcaster-project/farcaster-node/pull/685>
+- Disallow dead code and unused imports by @LeoNero in <https://github.com/farcaster-project/farcaster-node/pull/680>
+- Swapd: Update peer service id on reconnect if it has not been set yet by @TheCharlatan in <https://github.com/farcaster-project/farcaster-node/pull/691>
+- Farcasterd: Warm-up phase by @TheCharlatan in <https://github.com/farcaster-project/farcaster-node/pull/670>
+- Lint: Remove unused imports to fix compilation by @TheCharlatan in <https://github.com/farcaster-project/farcaster-node/pull/696>
+- Request: Encode PublicOffer as itself, not as a String by @TheCharlatan in <https://github.com/farcaster-project/farcaster-node/pull/694>
+- refactor: shell completion generation by @h4sh3d in <https://github.com/farcaster-project/farcaster-node/pull/692>
+- Farcasterd: Add 10 retries for Monero auto-funding by @TheCharlatan in <https://github.com/farcaster-project/farcaster-node/pull/686>
+- Functional tests: Add bitcoin manual sweep test by @TheCharlatan in <https://github.com/farcaster-project/farcaster-node/pull/697>
+- Some tests improvements (fix warnings, etc) by @LeoNero in <https://github.com/farcaster-project/farcaster-node/pull/702>
+- Fix some typos and comments by @LeoNero in <https://github.com/farcaster-project/farcaster-node/pull/699>
+- Fix warning in functional-swap test by @LeoNero in <https://github.com/farcaster-project/farcaster-node/pull/684>
+- Improve formatting by @LeoNero in <https://github.com/farcaster-project/farcaster-node/pull/700>
+- Small style improvements (formatting, removing comments, etc) by @LeoNero in <https://github.com/farcaster-project/farcaster-node/pull/683>
+- Doc/wiki sync and diagrams by @h4sh3d in <https://github.com/farcaster-project/farcaster-node/pull/703>
+- electrs failures: reattempt `script_get_history(...)` by @Lederstrumpf in <https://github.com/farcaster-project/farcaster-node/pull/708>
+- Syncer: normalize treatment between different failure cases when polling transactions by @TheCharlatan in <https://github.com/farcaster-project/farcaster-node/pull/713>
+- Farcasterd state machines by @TheCharlatan in <https://github.com/farcaster-project/farcaster-node/pull/693>
+- Sweep address streamline by @TheCharlatan in <https://github.com/farcaster-project/farcaster-node/pull/718>
+- fix sweep failures on intermittent daemon irresponsiveness by @Lederstrumpf in <https://github.com/farcaster-project/farcaster-node/pull/725>
+- Refactor: introduce sync and rpc buses by @h4sh3d in <https://github.com/farcaster-project/farcaster-node/pull/707>
+- tests: remove --rpc-ssl on monerod container by @LeoNero in <https://github.com/farcaster-project/farcaster-node/pull/720>
+- chore(deps): bump actions/checkout from 2 to 3 by @dependabot in <https://github.com/farcaster-project/farcaster-node/pull/721>
+- bump electrum-client to 0.11.0 by @Lederstrumpf in <https://github.com/farcaster-project/farcaster-node/pull/735>
+- Swap: Force transition to buy state if Buy transaction is retrieved by @TheCharlatan in <https://github.com/farcaster-project/farcaster-node/pull/698>
+- Restore swap refactor by @TheCharlatan in <https://github.com/farcaster-project/farcaster-node/pull/704>
+- Farcasterd connect refactor by @TheCharlatan in <https://github.com/farcaster-project/farcaster-node/pull/711>
+- State machines: Add Executor trait by @TheCharlatan in <https://github.com/farcaster-project/farcaster-node/pull/705>
+- feat: log as info level p2p msg sent and received per swap by @h4sh3d in <https://github.com/farcaster-project/farcaster-node/pull/738>
+- Feat: improve swap-cli commands by @h4sh3d in <https://github.com/farcaster-project/farcaster-node/pull/731>
+- Style: improve logs and colors by @h4sh3d in <https://github.com/farcaster-project/farcaster-node/pull/730>
+- chore(deps): bump Swatinem/rust-cache from 2.0.0 to 2.0.1 by @dependabot in <https://github.com/farcaster-project/farcaster-node/pull/741>
+- chore(deps): bump Swatinem/rust-cache from 2.0.1 to 2.0.2 by @dependabot in <https://github.com/farcaster-project/farcaster-node/pull/749>
+- Refactor: implement strict bus usage and message type by @h4sh3d in <https://github.com/farcaster-project/farcaster-node/pull/742>
+- Restore key entry by @TheCharlatan in <https://github.com/farcaster-project/farcaster-node/pull/716>
+- Bugfix: Use refund address for sweeping bitcoin through walletd by @TheCharlatan in <https://github.com/farcaster-project/farcaster-node/pull/744>
+- Fix(syncer_client): remove dangerous unwrap in handle tx confs by @h4sh3d in <https://github.com/farcaster-project/farcaster-node/pull/740>
+- Cli: Return exit code 1 on error by @TheCharlatan in <https://github.com/farcaster-project/farcaster-node/pull/753>
+- chore(deps): bump Swatinem/rust-cache from 2.0.2 to 2.1.0 by @dependabot in <https://github.com/farcaster-project/farcaster-node/pull/760>
+- chore(deps): bump Swatinem/rust-cache from 2.1.0 to 2.2.0 by @dependabot in <https://github.com/farcaster-project/farcaster-node/pull/767>
+- Feature: Extend Grpc implementation by @TheCharlatan in <https://github.com/farcaster-project/farcaster-node/pull/739>
+- Syncer: Check for dust amount in sweep bitcoin method by @TheCharlatan in <https://github.com/farcaster-project/farcaster-node/pull/748>
+- Cli: Handle routing errors when routing through farcasterd by @TheCharlatan in <https://github.com/farcaster-project/farcaster-node/pull/754>
+- Database (Bugfix): Correct delete checkpoint info by @TheCharlatan in <https://github.com/farcaster-project/farcaster-node/pull/763>
+- Grpc: Wait longer for swap id to show up by @TheCharlatan in <https://github.com/farcaster-project/farcaster-node/pull/775>
+- Test: Wait 10s more for lock in grpc test by @TheCharlatan in <https://github.com/farcaster-project/farcaster-node/pull/776>
+- Database: Remove spammy debug log by @TheCharlatan in <https://github.com/farcaster-project/farcaster-node/pull/781>
+- Refactor: reunite reveal messages by @h4sh3d in <https://github.com/farcaster-project/farcaster-node/pull/743>
+- Swap: Check empty funding before funding Alice by @TheCharlatan in <https://github.com/farcaster-project/farcaster-node/pull/747>
+- Peerd: Use message receipts to confirm receival by @TheCharlatan in <https://github.com/farcaster-project/farcaster-node/pull/759>
+- Enforce msg and bus coupling by @TheCharlatan in <https://github.com/farcaster-project/farcaster-node/pull/765>
+- Ci: update containers by @h4sh3d in <https://github.com/farcaster-project/farcaster-node/pull/734>
+- Feat: new grpc config options by @h4sh3d in <https://github.com/farcaster-project/farcaster-node/pull/791>
+- Cli: send encoded funding info by @TheCharlatan in <https://github.com/farcaster-project/farcaster-node/pull/751>
+- Grpc: Support list offers endpoint by @TheCharlatan in <https://github.com/farcaster-project/farcaster-node/pull/778>
+- Grpc improve error handling by @TheCharlatan in <https://github.com/farcaster-project/farcaster-node/pull/785>
+- Add richer data to the swap info by @TheCharlatan in <https://github.com/farcaster-project/farcaster-node/pull/769>
+- Database: Add NodeInfo to CheckpointEntry by @TheCharlatan in <https://github.com/farcaster-project/farcaster-node/pull/770>
+
 ## [0.3.0] - 2022-08-10
 
 ### Changed
@@ -114,7 +307,14 @@ Initial version of Farcaster Node :tada:
 - Farcaster daemon to orchestrate the micro-services
 - Swap cli to control farcasterd and other services
 
-[Unreleased]: https://github.com/farcaster-project/farcaster-node/compare/v0.3.0...HEAD
+[Unreleased]: https://github.com/farcaster-project/farcaster-node/compare/v0.8.2...HEAD
+[0.8.2]: https://github.com/farcaster-project/farcaster-node/compare/v0.8.1...v0.8.2
+[0.8.1]: https://github.com/farcaster-project/farcaster-node/compare/v0.8.0...v0.8.1
+[0.8.0]: https://github.com/farcaster-project/farcaster-node/compare/v0.7.0...v0.8.0
+[0.7.0]: https://github.com/farcaster-project/farcaster-node/compare/v0.6.0...v0.7.0
+[0.6.0]: https://github.com/farcaster-project/farcaster-node/compare/v0.5.0...v0.6.0
+[0.5.0]: https://github.com/farcaster-project/farcaster-node/compare/v0.4.0...v0.5.0
+[0.4.0]: https://github.com/farcaster-project/farcaster-node/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/farcaster-project/farcaster-node/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/farcaster-project/farcaster-node/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/farcaster-project/farcaster-node/compare/6c42e2892c18d600d4597356a9f827d58026b54a...v0.1.0

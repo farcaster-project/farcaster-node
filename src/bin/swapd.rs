@@ -1,16 +1,8 @@
-// LNP Node: node running lightning network protocol and generalized lightning
-// channels.
-// Written in 2020 by
-//     Dr. Maxim Orlovsky <orlovsky@pandoracore.com>
+// Copyright 2020-2022 Farcaster Devs & LNP/BP Standards Association
 //
-// To the extent possible under law, the author(s) have dedicated all
-// copyright and related and neighboring rights to this software to
-// the public domain worldwide. This software is distributed without
-// any warranty.
-//
-// You should have received a copy of the MIT License
-// along with this software.
-// If not, see <https://opensource.org/licenses/MIT>.
+// Use of this source code is governed by an MIT-style
+// license that can be found in the LICENSE file or at
+// https://opensource.org/licenses/MIT.
 
 #![recursion_limit = "256"]
 // Coding conventions
@@ -24,7 +16,7 @@
     missing_docs
 )]
 
-//! Main executable for swapd: farcaster node swap operations microservice
+//! Main executable for swapd: Farcaster Node swap operations microservice
 
 #[macro_use]
 extern crate log;
@@ -45,23 +37,8 @@ fn main() {
     debug!("MSG RPC socket {}", &service_config.msg_endpoint);
     debug!("CTL RPC socket {}", &service_config.ctl_endpoint);
 
-    /*
-    use self::internal::ResultExt;
-    let (config_from_file, _) =
-        internal::Config::custom_args_and_optional_files(std::iter::empty::<
-            &str,
-        >())
-        .unwrap_or_exit();
-     */
-
     debug!("Starting runtime ...");
-    swapd::run(
-        service_config,
-        opts.swap_id,
-        opts.public_offer,
-        opts.trade_role,
-    )
-    .expect("Error running swapd runtime");
+    swapd::run(service_config, opts).expect("Error running swapd runtime");
 
     unreachable!()
 }

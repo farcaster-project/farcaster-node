@@ -1,34 +1,47 @@
+// Copyright 2020-2022 Farcaster Devs & LNP/BP Standards Association
+//
+// Use of this source code is governed by an MIT-style
+// license that can be found in the LICENSE file or at
+// https://opensource.org/licenses/MIT.
+
 use crate::{
-    rpc::ServiceBus,
+    bus::ServiceBus,
     service::{Endpoints, LogStyle},
     syncerd::{
-        Abort, AddressAddendum, Boolean, BroadcastTransaction, BtcAddressAddendum, GetTx,
-        SweepAddress, SweepAddressAddendum, SweepBitcoinAddress, SweepMoneroAddress, TaskTarget,
-        TransactionBroadcasted, WatchAddress, WatchEstimateFee, WatchHeight, WatchTransaction,
-        XmrAddressAddendum,
+        Abort, AddressAddendum, BroadcastTransaction, BtcAddressAddendum, GetTx, SweepAddress,
+        SweepAddressAddendum, SweepBitcoinAddress, SweepMoneroAddress, TaskTarget,
+        TransactionBroadcasted, TxFilter, Txid, WatchAddress, WatchEstimateFee, WatchHeight,
+        WatchTransaction, XmrAddressAddendum,
     },
     Error,
 };
-use bitcoin::{consensus::Decodable, Txid};
-use farcaster_core::{blockchain::Blockchain, swap::SwapId, transaction::TxLabel};
-use std::collections::{HashMap, HashSet};
+use bitcoin::consensus::Decodable;
+use farcaster_core::{
+    blockchain::Blockchain,
+    role::{SwapRole, TradeRole},
+    swap::SwapId,
+    transaction::TxLabel,
+};
+use std::collections::HashMap;
 
 use crate::{
-    rpc::Request,
+    bus::sync::SyncMsg,
+    bus::BusMsg,
     syncerd::{Task, TaskId},
     ServiceId,
 };
+
+use super::runtime::SwapLogging;
 
 pub struct SyncerTasks {
     pub counter: u32,
     pub watched_txs: HashMap<TaskId, TxLabel>,
     pub final_txs: HashMap<TxLabel, bool>,
     pub watched_addrs: HashMap<TaskId, TxLabel>,
-    pub retrieving_txs: HashMap<TaskId, (TxLabel, Task)>,
-    pub broadcasting_txs: HashSet<TaskId>,
+    pub retrieving_txs: HashMap<TaskId, TxLabel>,
+    pub broadcasting_txs: HashMap<TaskId, TxLabel>,
     pub sweeping_addr: Option<TaskId>,
-    // external address: needed to subscribe for buy (bob) or refund (alice) address_txs
-    pub txids: HashMap<TxLabel, Txid>,
+    pub txids: HashMap<TxLabel, bitcoin::Txid>,
     pub tasks: HashMap<TaskId, Task>,
 }
 
@@ -41,21 +54,28 @@ impl SyncerTasks {
 
 pub struct SyncerState {
     pub swap_id: SwapId,
+    pub local_swap_role: SwapRole,
+    pub local_trade_role: TradeRole,
     pub tasks: SyncerTasks,
     pub bitcoin_height: u64,
     pub monero_height: u64,
     pub confirmation_bound: u32,
-    pub lock_tx_confs: Option<Request>,
-    pub cancel_tx_confs: Option<Request>,
+    pub last_tx_event: HashMap<TxLabel, SyncMsg>,
     pub network: farcaster_core::blockchain::Network,
     pub bitcoin_syncer: ServiceId,
     pub monero_syncer: ServiceId,
-    pub monero_amount: monero::Amount,
-    pub bitcoin_amount: bitcoin::Amount,
     pub xmr_addr_addendum: Option<XmrAddressAddendum>,
+    pub confirmations: HashMap<TxLabel, Option<u32>>,
     pub awaiting_funding: bool,
-    pub btc_fee_estimate_sat_per_kvb: Option<u64>,
+    pub broadcasted_txs: HashMap<TxLabel, bitcoin::Transaction>,
 }
+
+impl SwapLogging for SyncerState {
+    fn swap_info(&self) -> (SwapId, SwapRole, TradeRole) {
+        (self.swap_id, self.local_swap_role, self.local_trade_role)
+    }
+}
+
 impl SyncerState {
     pub fn task_lifetime(&self, blockchain: Blockchain) -> u64 {
         let height = self.height(blockchain);
@@ -64,18 +84,6 @@ impl SyncerState {
         } else {
             u64::MAX
         }
-    }
-    pub fn syncer(&self, blockchain: Blockchain) -> &ServiceId {
-        match blockchain {
-            Blockchain::Bitcoin => &self.bitcoin_syncer,
-            Blockchain::Monero => &self.monero_syncer,
-        }
-    }
-    pub fn is_syncer(&self, blockchain: Blockchain, source: &ServiceId) -> bool {
-        self.syncer(blockchain) == source
-    }
-    pub fn any_syncer(&self, source: &ServiceId) -> bool {
-        self.is_syncer(Blockchain::Bitcoin, source) || self.is_syncer(Blockchain::Monero, source)
     }
     pub fn bitcoin_syncer(&self) -> ServiceId {
         self.bitcoin_syncer.clone()
@@ -95,17 +103,22 @@ impl SyncerState {
             Blockchain::Monero => &mut self.monero_height,
         };
         if &new_height > height {
-            debug!("{} new height {}", blockchain, &new_height);
             *height = new_height;
+            self.log_debug(format!("{} new height {}", blockchain, &new_height));
         } else {
-            warn!("block height did not increment, maybe syncer sends multiple events");
+            self.log_warn("block height did not increment, maybe syncer sends multiple events");
         }
     }
     pub fn abort_task(&mut self, id: TaskId) -> Task {
         Task::Abort(Abort {
             task_target: TaskTarget::TaskId(id),
-            respond: Boolean::False,
+            respond: false,
         })
+    }
+
+    pub fn broadcasted_tx(&self, tx_label: &TxLabel) -> bool {
+        self.broadcasted_txs.contains_key(tx_label)
+            || self.tasks.broadcasting_txs.values().any(|l| l == tx_label)
     }
 
     pub fn estimate_fee_btc(&mut self) -> Task {
@@ -118,20 +131,25 @@ impl SyncerState {
         task
     }
 
-    pub fn watch_tx_btc(&mut self, txid: Txid, tx_label: TxLabel) -> Task {
+    pub fn watch_tx_btc(&mut self, txid: bitcoin::Txid, tx_label: TxLabel) -> Task {
+        if self.is_watched_tx(&tx_label) {
+            self.log_warn(format!(
+                "Already watching for tx with label {} - notifications will be repeated",
+                tx_label.label()
+            ));
+        }
         let id = self.tasks.new_taskid();
         self.tasks.watched_txs.insert(id, tx_label);
         self.tasks.txids.insert(tx_label, txid);
-        info!(
-            "{} | Watching {} transaction ({})",
-            self.swap_id.bright_blue_italic(),
-            tx_label.bright_white_bold(),
-            txid.bright_yellow_italic()
-        );
+        self.log_info(format!(
+            "Watching {} transaction ({})",
+            tx_label.label(),
+            txid.tx_hash()
+        ));
         let task = Task::WatchTransaction(WatchTransaction {
             id,
             lifetime: self.task_lifetime(Blockchain::Bitcoin),
-            hash: txid.to_vec(),
+            hash: txid.into(),
             confirmation_bound: self.confirmation_bound,
         });
         self.tasks.tasks.insert(id, task.clone());
@@ -140,16 +158,22 @@ impl SyncerState {
     pub fn is_watched_tx(&self, tx_label: &TxLabel) -> bool {
         self.tasks.watched_txs.values().any(|tx| tx == tx_label)
     }
-    pub fn watch_tx_xmr(&mut self, hash: Vec<u8>, tx_label: TxLabel) -> Task {
+    pub fn watch_tx_xmr(&mut self, hash: Txid, tx_label: TxLabel) -> Task {
+        if self.is_watched_tx(&tx_label) {
+            self.log_warn(format!(
+                "Already watching for tx with label {} - notifications will be repeated",
+                tx_label.label()
+            ));
+        }
         let id = self.tasks.new_taskid();
         self.tasks.watched_txs.insert(id, tx_label);
-        info!(
-            "{} | Watching {} transaction ({})",
-            self.swap_id.bright_blue_italic(),
-            tx_label.bright_white_bold(),
-            hex::encode(&hash).bright_yellow_italic(),
-        );
-        debug!("Watching transaction {} with {}", hex::encode(&hash), id);
+
+        self.log_info(format!(
+            "Watching {} transaction ({})",
+            tx_label.label(),
+            hash,
+        ));
+        self.log_debug(format!("Watching transaction {} with {}", hash, id));
         let task = Task::WatchTransaction(WatchTransaction {
             id,
             lifetime: self.task_lifetime(Blockchain::Monero),
@@ -161,35 +185,38 @@ impl SyncerState {
     }
     pub fn retrieve_tx_btc(&mut self, txid: Txid, tx_label: TxLabel) -> Task {
         let id = self.tasks.new_taskid();
-        let task = Task::GetTx(GetTx {
-            id,
-            hash: txid.to_vec(),
-        });
-        self.tasks
-            .retrieving_txs
-            .insert(id, (tx_label, task.clone()));
+        let task = Task::GetTx(GetTx { id, hash: txid });
+        self.tasks.retrieving_txs.insert(id, tx_label);
         self.tasks.tasks.insert(id, task.clone());
         task
     }
     pub fn watch_addr_btc(&mut self, address: bitcoin::Address, tx_label: TxLabel) -> Task {
+        if self.is_watched_addr(&tx_label) {
+            self.log_warn(format!(
+                "Address already watched for {} - notifications will be repeated",
+                tx_label.label()
+            ));
+        }
         let id = self.tasks.new_taskid();
-        let from_height = self.from_height(Blockchain::Bitcoin, 6);
         self.tasks.watched_addrs.insert(id, tx_label);
-        info!(
-            "{} | Watching address {} for {} transaction",
-            self.swap_id.bright_blue_italic(),
-            address.bright_blue_italic(),
-            tx_label.bright_white_bold(),
-        );
-        let addendum = BtcAddressAddendum {
-            from_height,
-            address,
+        self.log_info(format!(
+            "Watching {} on address {}",
+            tx_label.label(),
+            address.addr(),
+        ));
+        let addendum = BtcAddressAddendum { address };
+        let filter = if TxLabel::Cancel == tx_label {
+            // If this is the cancel transaction, only look for outgoing transactions
+            TxFilter::Outgoing
+        } else {
+            TxFilter::Incoming
         };
         let task = Task::WatchAddress(WatchAddress {
             id,
             lifetime: self.task_lifetime(Blockchain::Bitcoin),
             addendum: AddressAddendum::Bitcoin(addendum),
-            include_tx: Boolean::True,
+            include_tx: true,
+            filter,
         });
         self.tasks.tasks.insert(id, task.clone());
         task
@@ -198,36 +225,30 @@ impl SyncerState {
     pub fn is_watched_addr(&self, tx_label: &TxLabel) -> bool {
         self.tasks.watched_addrs.values().any(|tx| tx == tx_label)
     }
-    pub fn from_height(&self, blockchain: Blockchain, delta: u64) -> u64 {
-        let height = self.height(blockchain);
-        let delta = if height > delta { delta } else { height };
-        height - delta
-    }
 
+    /// Watches an xmr address from provided height.
     pub fn watch_addr_xmr(
         &mut self,
-        spend: monero::PublicKey,
+        address: monero::Address,
         view: monero::PrivateKey,
         tx_label: TxLabel,
-        from_height: Option<u64>,
+        from_height: u64,
     ) -> Task {
-        debug!(
-            "{} | Address's secret view key for {}: {}",
-            self.swap_id.bright_blue_italic(),
+        if self.is_watched_addr(&tx_label) {
+            self.log_warn(format!(
+                "Address {} already watched for {} - notifications will be repeated",
+                address,
+                tx_label.label()
+            ));
+        }
+        self.log_debug(format!(
+            "Address {} secret view key for {}: {}",
+            address,
             tx_label.bright_white_bold(),
             view.bright_white_italic()
-        );
-        debug!(
-            "{} | Address's public spend key for {}: {}",
-            self.swap_id.bright_blue_italic(),
-            tx_label.bright_white_bold(),
-            spend.bright_white_italic()
-        );
-        let viewpair = monero::ViewPair { spend, view };
-        let address = monero::Address::from_viewpair(self.network.into(), &viewpair);
-        let from_height = from_height.unwrap_or(self.from_height(Blockchain::Monero, 20));
+        ));
         let addendum = XmrAddressAddendum {
-            spend_key: spend,
+            address,
             view_key: view,
             from_height,
         };
@@ -237,33 +258,49 @@ impl SyncerState {
         let id = self.tasks.new_taskid();
         self.tasks.watched_addrs.insert(id, tx_label);
 
-        info!(
-            "{} | Watching {} on address {}",
-            self.swap_id.bright_blue_italic(),
-            tx_label.bright_white_bold(),
-            address
-        );
+        self.log_info(format!(
+            "Watching {} on address {} from height {} - current height {}",
+            tx_label.label(),
+            address.addr(),
+            from_height,
+            self.monero_height,
+        ));
 
         let watch_addr = WatchAddress {
             id,
             lifetime: self.task_lifetime(Blockchain::Monero),
             addendum: AddressAddendum::Monero(addendum),
-            include_tx: Boolean::False,
+            include_tx: false,
+            filter: TxFilter::Incoming,
         };
         let task = Task::WatchAddress(watch_addr);
         self.tasks.tasks.insert(id, task.clone());
         task
     }
 
-    pub fn watch_height(&mut self, blockchain: Blockchain) -> Task {
-        let id = self.tasks.new_taskid();
-        trace!("Watch height {}", blockchain);
+    pub fn watch_height(
+        &mut self,
+        endpoints: &mut Endpoints,
+        blockchain: Blockchain,
+    ) -> Result<(), Error> {
+        let swap_id = ServiceId::Swap(self.swap_id);
+        let task_id = self.tasks.new_taskid();
+        self.log_trace(format!("Watch height {}", blockchain));
         let task = Task::WatchHeight(WatchHeight {
-            id,
+            id: task_id,
             lifetime: self.task_lifetime(blockchain),
         });
-        self.tasks.tasks.insert(id, task.clone());
-        task
+        self.tasks.tasks.insert(task_id, task.clone());
+        endpoints.send_to(
+            ServiceBus::Sync,
+            swap_id,
+            match blockchain {
+                Blockchain::Bitcoin => self.bitcoin_syncer(),
+                Blockchain::Monero => self.monero_syncer(),
+            },
+            BusMsg::Sync(SyncMsg::Task(task)),
+        )?;
+        Ok(())
     }
 
     pub fn sweep_btc(&mut self, addendum: SweepBitcoinAddress, retry: bool) -> Task {
@@ -275,7 +312,6 @@ impl SyncerState {
             lifetime,
             addendum: SweepAddressAddendum::Bitcoin(addendum),
             retry,
-            from_height: None,
         };
         let task = Task::SweepAddress(sweep_task);
         self.tasks.tasks.insert(id, task.clone());
@@ -291,39 +327,61 @@ impl SyncerState {
             lifetime,
             addendum: SweepAddressAddendum::Monero(addendum),
             retry,
-            from_height: None,
         };
         let task = Task::SweepAddress(sweep_task);
         self.tasks.tasks.insert(id, task.clone());
         task
     }
 
-    pub fn broadcast(&mut self, tx: bitcoin::Transaction) -> Task {
+    pub fn broadcast(&mut self, tx: bitcoin::Transaction, label: TxLabel) -> Task {
         let id = self.tasks.new_taskid();
         let task = Task::BroadcastTransaction(BroadcastTransaction {
             id,
             tx: bitcoin::consensus::serialize(&tx),
+            broadcast_after_height: None,
         });
         self.tasks.tasks.insert(id, task.clone());
-        self.tasks.broadcasting_txs.insert(id);
+        self.tasks.broadcasting_txs.insert(id, label);
         task
     }
     pub fn transaction_broadcasted(&mut self, event: &TransactionBroadcasted) {
-        self.tasks.broadcasting_txs.remove(&event.id);
-        self.tasks.tasks.remove(&event.id);
+        if let Some(txlabel) = self.tasks.broadcasting_txs.remove(&event.id) {
+            self.tasks.tasks.remove(&event.id);
+            if let Some(ref err) = event.error {
+                self.log_warn(format!(
+                    "Error broadcasting {} transaction: {}",
+                    txlabel, err
+                ));
+            } else {
+                let tx = match bitcoin::Transaction::consensus_decode(std::io::Cursor::new(
+                    event.tx.clone(),
+                )) {
+                    Ok(tx) => tx,
+                    Err(_) => {
+                        self.log_warn(format!(
+                            "Error while consensus decoding broadcasted {} transaction",
+                            txlabel
+                        ));
+                        return;
+                    }
+                };
+                self.broadcasted_txs.insert(txlabel, tx);
+            }
+        }
     }
-    pub fn pending_broadcast_txs(&self) -> Vec<bitcoin::Transaction> {
+    pub fn pending_broadcast_txs(&self) -> Vec<(bitcoin::Transaction, TxLabel)> {
         self.tasks
             .broadcasting_txs
             .iter()
-            .filter_map(|id| {
+            .filter_map(|(id, label)| {
                 if let Task::BroadcastTransaction(broadcast_tx) = self.tasks.tasks.get(id)? {
-                    Some(
+                    Some((
                         bitcoin::Transaction::consensus_decode(std::io::Cursor::new(
                             broadcast_tx.tx.clone(),
                         ))
                         .ok()?,
-                    )
+                        *label,
+                    ))
                 } else {
                     None
                 }
@@ -343,106 +401,89 @@ impl SyncerState {
         confirmations: &Option<u32>,
         swapid: SwapId,
         finality_thr: u32,
+        endpoints: &mut Endpoints,
     ) {
-        if let Some(txlabel) = self.tasks.watched_txs.get(id) {
-            if !self.tasks.final_txs.contains_key(txlabel)
+        if let Some(txlabel) = self.tasks.watched_txs.get(id).cloned() {
+            if !self.tasks.final_txs.contains_key(&txlabel)
                 && confirmations.is_some()
                 && confirmations.unwrap() >= finality_thr
             {
-                info!(
-                    "{} | Tx {} {} with {} {}",
-                    self.swap_id.bright_blue_italic(),
-                    txlabel.bright_white_bold(),
+                self.log_info(format!(
+                    "Tx {} {} with {} {}",
+                    txlabel.label(),
                     "final".bright_green_bold(),
                     confirmations.unwrap().bright_green_bold(),
                     "confirmations".bright_green_bold()
-                );
-                self.tasks.final_txs.insert(*txlabel, true);
-            } else if self.tasks.final_txs.contains_key(txlabel) {
-                debug!(
-                    "{} | Tx {} {} with {} {}",
-                    self.swap_id.bright_blue_italic(),
-                    txlabel.bright_white_bold(),
-                    "final".bright_green_bold(),
-                    confirmations.unwrap().bright_green_bold(),
-                    "confirmations".bright_green_bold()
-                );
+                ));
+                self.tasks.final_txs.insert(txlabel, true);
+            } else if let Some(finality) = self.tasks.final_txs.get(&txlabel) {
+                self.log_info(format!(
+                    "Tx {} {}",
+                    txlabel.label(),
+                    if *finality {
+                        "final".bright_green_bold()
+                    } else {
+                        "non-final".red_bold()
+                    },
+                ));
             } else {
                 match confirmations {
                     Some(0) => {
-                        info!(
-                            "{} | Tx {} on mempool but hasn't been mined",
-                            swapid.bright_blue_italic(),
-                            txlabel.bright_white_bold()
-                        );
+                        self.log_info(format!(
+                            "Tx {} on mempool but hasn't been mined",
+                            txlabel.label()
+                        ));
                     }
                     Some(confs) => {
-                        info!(
-                            "{} | Tx {} mined with {} {}",
-                            swapid.bright_blue_italic(),
-                            txlabel.bright_white_bold(),
+                        self.log_info(format!(
+                            "Tx {} mined with {} {}",
+                            txlabel.label(),
                             confs.bright_green_bold(),
                             "confirmations".bright_green_bold(),
-                        )
+                        ));
                     }
                     None => {
-                        info!(
-                            "{} | Tx {} not on the mempool",
-                            swapid.bright_blue_italic(),
-                            txlabel.bright_white_bold()
-                        );
+                        if let Some(tx) = self.broadcasted_txs.get(&txlabel) {
+                            let tx = tx.clone();
+                            self.log_warn(format!("Tx {} was re-orged or dropped from the mempool. Re-broadcasting tx", txlabel.label()));
+                            let task = self.broadcast(tx, txlabel);
+                            if let Err(err) = endpoints.send_to(
+                                ServiceBus::Sync,
+                                ServiceId::Swap(swapid),
+                                self.bitcoin_syncer(),
+                                BusMsg::Sync(SyncMsg::Task(task)),
+                            ) {
+                                self.log_error(format!(
+                                    "Failed to send task for re-broadcasting {} transaction: {}",
+                                    txlabel, err
+                                ));
+                            }
+                        }
+                        self.log_info(format!("Tx {} not on the mempool", txlabel.label()));
                     }
                 }
             }
+            self.confirmations.insert(txlabel, *confirmations);
         } else {
-            error!(
-                "received event with unknown transaction and task id {}",
+            self.log_error(format!(
+                "Received event with unknown transaction and task id {}",
                 &id
-            )
+            ));
         }
     }
-    pub fn watch_fee_and_height(&mut self, endpoints: &mut Endpoints) -> Result<(), Error> {
-        let identity = ServiceId::Swap(self.swap_id.clone());
+    pub fn watch_bitcoin_fee(&mut self, endpoints: &mut Endpoints) -> Result<(), Error> {
+        let identity = ServiceId::Swap(self.swap_id);
         let task = self.estimate_fee_btc();
         endpoints.send_to(
-            ServiceBus::Ctl,
-            identity.clone(),
-            self.bitcoin_syncer(),
-            Request::SyncerTask(task),
-        )?;
-        let watch_height_btc_task = self.watch_height(Blockchain::Bitcoin);
-        endpoints.send_to(
-            ServiceBus::Ctl,
-            identity.clone(),
-            self.bitcoin_syncer(),
-            Request::SyncerTask(watch_height_btc_task),
-        )?;
-        // assumes xmr syncer will be up as well at this point
-        let watch_height_xmr_task = self.watch_height(Blockchain::Monero);
-        endpoints.send_to(
-            ServiceBus::Ctl,
+            ServiceBus::Sync,
             identity,
-            self.monero_syncer(),
-            Request::SyncerTask(watch_height_xmr_task),
+            self.bitcoin_syncer(),
+            BusMsg::Sync(SyncMsg::Task(task)),
         )?;
         Ok(())
     }
-}
 
-pub fn log_tx_seen(swap_id: SwapId, txlabel: &TxLabel, txid: &Txid) {
-    info!(
-        "{} | {} transaction ({}) in mempool or blockchain, forward to walletd",
-        swap_id.bright_blue_italic(),
-        txlabel.bright_white_bold(),
-        txid.bright_yellow_italic(),
-    );
-}
-
-pub fn log_tx_received(swap_id: SwapId, txlabel: TxLabel) {
-    info!(
-        "{} | {} transaction received from {}",
-        swap_id.bright_blue_italic(),
-        txlabel.bright_white_bold(),
-        ServiceId::Wallet
-    );
+    pub fn get_confs(&self, label: TxLabel) -> Option<u32> {
+        self.confirmations.get(&label).copied().flatten()
+    }
 }

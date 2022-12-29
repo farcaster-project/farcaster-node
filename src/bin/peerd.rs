@@ -1,16 +1,8 @@
-// LNP Node: node running lightning network protocol and generalized lightning
-// channels.
-// Written in 2020 by
-//     Dr. Maxim Orlovsky <orlovsky@pandoracore.com>
+// Copyright 2020-2022 Farcaster Devs & LNP/BP Standards Association
 //
-// To the extent possible under law, the author(s) have dedicated all
-// copyright and related and neighboring rights to this software to
-// the public domain worldwide. This software is distributed without
-// any warranty.
-//
-// You should have received a copy of the MIT License
-// along with this software.
-// If not, see <https://opensource.org/licenses/MIT>.
+// Use of this source code is governed by an MIT-style
+// license that can be found in the LICENSE file or at
+// https://opensource.org/licenses/MIT.
 
 #![recursion_limit = "256"]
 // Coding conventions
@@ -24,8 +16,7 @@
     missing_docs
 )]
 
-//! Main executable for peerd: lightning peer network connection
-//! microservice.
+//! Main executable for peerd: peer network connection microservice.
 //!
 //! Program operations
 //! ==================
@@ -85,8 +76,7 @@
 //! --------
 //!
 //! Node key, used for node identification and in generation of the encryption
-//! keys, is read from the file specified in `--key-file` parameter, or (if the
-//! parameter is absent) from `LNP_NODE_KEY_FILE` environment variable.
+//! keys, is read from the file specified in `--peer-secret-key` parameter.
 
 #[macro_use]
 extern crate log;
@@ -156,22 +146,22 @@ fn main() {
 
     let local_node = opts.peer_key_opts.local_node();
     info!(
-        "{}: {}",
+        "{}: {}, {}: {}",
         "Local node id".bright_green_bold(),
-        local_node.node_id().bright_yellow_bold()
+        local_node.node_id().bright_yellow_bold(),
+        "PID".bright_green_bold(),
+        std::process::id().bright_yellow_bold(),
     );
 
     let peer_socket = PeerSocket::from(opts.clone());
     debug!("Peer socket parameter interpreted as {}", peer_socket);
 
     let mut local_socket: Option<InetSocketAddr> = None;
-    let mut remote_node_addr: Option<NodeAddr> = None;
-    let forked_from_listener: bool;
+    let remote_node_addr: Option<NodeAddr> = None;
     let connection = match peer_socket {
         PeerSocket::Listen(inet_addr) => {
             debug!("Running in LISTEN mode");
 
-            forked_from_listener = true;
             local_socket = Some(inet_addr);
 
             debug!("Binding TCP socket {}", inet_addr);
@@ -220,13 +210,10 @@ fn main() {
         }
         PeerSocket::Connect(remote_node) => {
             debug!("Peerd running in CONNECT mode");
-
-            forked_from_listener = false;
-            remote_node_addr = Some(remote_node);
-
             debug!("Connecting to {}", &remote_node.addr());
-            PeerConnection::connect_brontozaur(local_node, remote_node)
-                .expect("Unable to connect to the remote peer")
+            peerd::run_from_connect(service_config, remote_node, local_socket, local_node)
+                .expect("Error running peerd runtime");
+            unreachable!()
         }
     };
 
@@ -241,13 +228,12 @@ fn main() {
         remote_node_addr: full internet2 remote node address
         local_socket: None
         connect: true */
-    peerd::run(
+    peerd::run_from_listener(
         service_config,
         connection,
         remote_node_addr,
         local_socket,
         local_node,
-        forked_from_listener,
     )
     .expect("Error running peerd runtime");
 

@@ -1,16 +1,9 @@
-// LNP Node: node running lightning network protocol and generalized lightning
-// channels.
-// Written in 2020 by
-//     Dr. Maxim Orlovsky <orlovsky@pandoracore.com>
+// Copyright 2020-2022 Farcaster Devs & LNP/BP Standards Association
 //
-// To the extent possible under law, the author(s) have dedicated all
-// copyright and related and neighboring rights to this software to
-// the public domain worldwide. This software is distributed without
-// any warranty.
-//
-// You should have received a copy of the MIT License
-// along with this software.
-// If not, see <https://opensource.org/licenses/MIT>.
+// Use of this source code is governed by an MIT-style
+// license that can be found in the LICENSE file or at
+// https://opensource.org/licenses/MIT.
+
 #![recursion_limit = "256"]
 // Coding conventions
 #![deny(
@@ -42,16 +35,18 @@ extern crate serde_crate as serde;
 #[macro_use]
 extern crate serde_with;
 
+#[cfg(feature = "_rpc")]
+pub mod bus;
+mod chains;
 #[cfg(feature = "cli")]
 pub mod cli;
+pub mod client;
 #[cfg(feature = "_rpc")]
 pub mod config;
 pub mod error;
 pub mod event;
 #[cfg(feature = "shell")]
 pub mod opts;
-#[cfg(feature = "_rpc")]
-pub mod rpc;
 
 #[cfg(feature = "node")]
 pub mod databased;
@@ -74,6 +69,7 @@ pub mod walletd;
 pub use crate::config::Config;
 #[cfg(feature = "_rpc")]
 pub use crate::service::ServiceConfig;
+pub use chains::{AccordantBlockchain, ArbitratingBlockchain};
 pub use error::Error;
 #[cfg(feature = "_rpc")]
 pub use service::{CtlServer, Endpoints, LogStyle, Service, ServiceId, TryToServiceId};

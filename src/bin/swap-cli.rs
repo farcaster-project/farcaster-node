@@ -1,18 +1,10 @@
-// LNP Node: node running lightning network protocol and generalized lightning
-// channels.
-// Written in 2020 by
-//     Dr. Maxim Orlovsky <orlovsky@pandoracore.com>
+// Copyright 2020-2022 Farcaster Devs & LNP/BP Standards Association
 //
-// To the extent possible under law, the author(s) have dedicated all
-// copyright and related and neighboring rights to this software to
-// the public domain worldwide. This software is distributed without
-// any warranty.
-//
-// You should have received a copy of the MIT License
-// along with this software.
-// If not, see <https://opensource.org/licenses/MIT>.
+// Use of this source code is governed by an MIT-style
+// license that can be found in the LICENSE file or at
+// https://opensource.org/licenses/MIT.
 
-//! Command-line interface to LNP node
+//! Command-line interface to Farcaster Node
 
 #[macro_use]
 extern crate log;
@@ -20,7 +12,7 @@ extern crate log;
 use clap::Parser;
 
 use farcaster_node::cli::Opts;
-use farcaster_node::rpc::Client;
+use farcaster_node::client::Client;
 use farcaster_node::LogStyle;
 use farcaster_node::ServiceConfig;
 use microservices::shell::Exec;
@@ -39,7 +31,9 @@ fn main() {
     let mut client = Client::with(service_config).expect("Error initializing client");
 
     trace!("Executing command: {:?}", opts.command);
-    opts.command
-        .exec(&mut client)
-        .unwrap_or_else(|err| eprintln!("{} {}", "error:".err(), err.err()));
+
+    if let Err(err) = opts.command.exec(&mut client) {
+        eprintln!("{} {}", "error:".err(), err.err());
+        std::process::exit(1);
+    }
 }

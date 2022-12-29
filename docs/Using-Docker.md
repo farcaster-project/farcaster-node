@@ -4,34 +4,34 @@ This project provides some docker images and a docker compose setup to help runn
 
 You can use the Docker image [`farcasterd`](https://github.com/farcaster-project/farcaster-node/pkgs/container/farcaster-node%2Ffarcasterd) and images from the [`containers`](https://github.com/orgs/farcaster-project/packages?repo_name=containers) repo.
 
-The easiest way is to use `docker-compose` to run both the node and the Monero wallet. Check our example in `compose/docker-compose.yml` file or clone the repo and run:
+The easiest way is to use `docker compose` to run both the node and the Monero wallet. Check our example in `compose/docker-compose.yml` file or clone the repo and run:
 
 ```
 cd compose
-docker-compose up -d
+docker compose up -d
 ```
 
-:mag_right: If you plan to make offer with the Docker stack make sure you understand what ports need to be open and reachable on your host and exposed from the container (port `9735` is exposed in the provided compose file). You might need to additionally configure your firewall to enable takers to connect.
+:mag_right: If you plan to make deals with the Docker stack make sure you understand what ports need to be open and reachable on your host and exposed from the container (port `7067` is exposed in the provided compose file). You might need to additionally configure your firewall to enable takers to connect.
 
 To follow live `farcaster`'s logs run in another terminal (in the `compose/` folder):
 
 ```
-docker-compose logs -f --no-log-prefix farcasterd
+docker compose logs -f --no-log-prefix farcasterd
 ```
 
 To interact with the node use `swap-cli` command line tool. The tool is installed in `farcasterd` container and already setup. To execute a command run:
 
 ```
-docker-compose exec farcasterd swap-cli [command]
+docker compose exec farcasterd swap-cli [command]
 ```
 
 To stop and remove the containers simply run:
 
 ```
-docker-compose down
+docker compose down
 ```
 
-Daemons used by the services are public testnet servers, you can change them by modifying `compose/farcaster.toml` file. After launching the containers you will see a new folder `compose/.farcaster` appears, this folder contains all node's data (nodeid key, database) and is stored on your machine so restarting the containers doesn't reset your node identity nor erase check-pointed data (public offers, swaps checkpoints, etc.)
+Daemons used by the services are public testnet servers, you can change them by modifying `compose/farcaster.toml` file. After launching the containers you will see a new folder `compose/.farcaster` appears, this folder contains all node's data (nodeid key, databases, etc) and is stored on your machine so restarting the containers doesn't reset your node identity nor erase check-pointed data (deals, swaps checkpoints, etc.)
 
 ### Images used
 
@@ -40,14 +40,14 @@ Images used in the docker compose are produced by the `farcaster-project` direct
 | Service      | Image                                                             |
 | ------------ | ----------------------------------------------------------------- |
 | `farcasterd` | `ghcr.io/farcaster-project/farcaster-node/farcasterd:latest`      |
-| `walletrpc`  | `ghcr.io/farcaster-project/containers/monero-wallet-rpc:0.18.0.0` |
+| `walletrpc`  | `ghcr.io/farcaster-project/containers/monero-wallet-rpc:0.18.1.2` |
 
 ## Docker image
 
 You can use the docker image directly with:
 
 ```
-docker run --rm --init -t -p 9735\
+docker run --rm --init -t -p 7067\
     --mount type=bind,source=<config folder>,destination=/etc/farcaster\
     --name farcaster_node\
     ghcr.io/farcaster-project/farcaster-node/farcasterd:latest\
@@ -62,7 +62,7 @@ or first build the node image locally and then start a container with `farcaster
 docker build --no-cache -t farcasterd:latest .
 ```
 
-The container will be removed after execution (`--rm`), allocate a pseudo-TTY (`-t`), and publish exposed port `9735` on the host in case you want to listens for incoming takers on the default port. If you only take public offers you can remove `-p 9735`.
+The container will be removed after execution (`--rm`), allocate a pseudo-TTY (`-t`), and publish exposed port `7067` on the host in case you want to listens for incoming takers on the default port. If you only take deals you can remove `-p 7067`.
 
 Stop the container with `ctrl+c` or `docker stop farcaster_node`.
 
@@ -89,4 +89,5 @@ Then use the following values in `farcasterd` configuration file:
 | mainnet             | `http://localhost:18083` |
 | stagenet            | `http://localhost:38083` |
 
-Remove `--stagenet` add change `--rpc-bind-port` and `-p` values to `18083` and connect to a **mainnet** daemon host, see [:bulb: Use public infrastructure](./Home) for public mainnet daemon hosts.
+Remove `--stagenet` add change `--rpc-bind-port` and `-p` values to `18083` and connect to a **mainnet** daemon host, see [:bulb: Use public infrastructure](./Home#use-public-infrastructure) for public mainnet daemon hosts.
+

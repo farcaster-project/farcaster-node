@@ -1,16 +1,8 @@
-// LNP Node: node running lightning network protocol and generalized lightning
-// channels.
-// Written in 2020 by
-//     Dr. Maxim Orlovsky <orlovsky@pandoracore.com>
+// Copyright 2020-2022 Farcaster Devs & LNP/BP Standards Association
 //
-// To the extent possible under law, the author(s) have dedicated all
-// copyright and related and neighboring rights to this software to
-// the public domain worldwide. This software is distributed without
-// any warranty.
-//
-// You should have received a copy of the MIT License
-// along with this software.
-// If not, see <https://opensource.org/licenses/MIT>.
+// Use of this source code is governed by an MIT-style
+// license that can be found in the LICENSE file or at
+// https://opensource.org/licenses/MIT.
 
 #![recursion_limit = "256"]
 // Coding conventions
@@ -24,7 +16,7 @@
     missing_docs
 )]
 
-//! Main executable for farcasterd: farcaster node management microservice.
+//! Main executable for farcasterd: Farcaster Node management microservice.
 
 #[macro_use]
 extern crate log;
@@ -38,9 +30,9 @@ use clap::Parser;
 use farcaster_node::Error;
 use farcaster_node::ServiceConfig;
 use farcaster_node::{
+    bus::ctl::Token,
     config::parse_config,
     farcasterd::{self, Opts},
-    rpc::request::Token,
 };
 
 fn main() -> Result<(), Error> {
@@ -62,6 +54,13 @@ fn main() -> Result<(), Error> {
     let mut dest = [0u8; 16];
     thread_rng().fill_bytes(&mut dest);
     let token = Token(dest.to_hex());
+
+    let pid = nix::unistd::getpid();
+    trace!("Pid: {}", pid);
+    match nix::unistd::setsid() {
+        Ok(sid) => trace!("Sid: {}", sid),
+        Err(e) => warn!("Failed to set new session id: {}", e),
+    };
 
     debug!("Starting runtime ...");
     farcasterd::run(service_config, config, opts, token).expect("Error running farcasterd runtime");

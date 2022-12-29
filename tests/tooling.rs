@@ -8,7 +8,7 @@ mod utils;
 #[test]
 fn tooling_cfg_node_with_proto_serde() {
     let s = "---\nhost: \"localhost\"\nport: 123\nprotocol: \"http\"\n";
-    let node: NodeConfig = serde_yaml::from_str(&s).unwrap();
+    let node: NodeConfig = serde_yaml::from_str(s).unwrap();
     assert_eq!(
         node,
         NodeConfig {
@@ -33,7 +33,7 @@ fn tooling_cfg_node_with_proto_display() {
 #[test]
 fn tooling_cfg_node_without_proto_serde() {
     let s = "---\nhost: \"localhost\"\nport: 123\n";
-    let node: NodeConfig = serde_yaml::from_str(&s).unwrap();
+    let node: NodeConfig = serde_yaml::from_str(s).unwrap();
     assert_eq!(
         node,
         NodeConfig {

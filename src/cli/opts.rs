@@ -1,16 +1,8 @@
-// LNP Node: node running lightning network protocol and generalized lightning
-// channels.
-// Written in 2020 by
-//     Dr. Maxim Orlovsky <orlovsky@pandoracore.com>
+// Copyright 2020-2022 Farcaster Devs & LNP/BP Standards Association
 //
-// To the extent possible under law, the author(s) have dedicated all
-// copyright and related and neighboring rights to this software to
-// the public domain worldwide. This software is distributed without
-// any warranty.
-//
-// You should have received a copy of the MIT License
-// along with this software.
-// If not, see <https://opensource.org/licenses/MIT>.
+// Use of this source code is governed by an MIT-style
+// license that can be found in the LICENSE file or at
+// https://opensource.org/licenses/MIT.
 
 use bitcoin::Address as BtcAddress;
 use clap_complete::shells::Shell;
@@ -19,11 +11,14 @@ use std::net::IpAddr;
 use std::str::FromStr;
 
 use farcaster_core::{
-    bitcoin::{fee::SatPerVByte, timelock::CSVTimelock},
+    bitcoin::{fee::SatPerKvB, timelock::CSVTimelock},
     blockchain::{Blockchain, FeeStrategy, Network},
     role::SwapRole,
-    swap::{btcxmr::PublicOffer, SwapId},
+    swap::{btcxmr::Deal, SwapId},
 };
+
+use crate::bus::info::Address;
+use crate::bus::HealthCheckSelector;
 
 /// Command-line tool for working with Farcaster node
 #[derive(Parser, Clone, PartialEq, Eq, Debug)]
@@ -51,9 +46,9 @@ pub enum Command {
     /// General information about the running node
     #[display("info<{subject:?}>")]
     Info {
-        /// Remote peer address or temporary/permanent/short channel id. If
-        /// absent, returns information about the node itself
-        subject: Option<String>,
+        /// Remote peer address, swap id, or blockchain and network. If absent, returns information
+        /// about the node itself
+        subject: Vec<String>,
     },
 
     /// Lists existing peer connections
@@ -63,33 +58,63 @@ pub enum Command {
     #[clap(aliases = &["ls"])]
     ListSwaps,
 
-    /// Lists public offers created by daemon
-    #[clap(aliases = &["lo"])]
-    ListOffers {
+    /// Lists deals created by daemon
+    #[clap(aliases = &["ld"])]
+    ListDeals {
         #[clap(
             short,
             long,
             default_value = "open",
             possible_values = &["open", "Open", "inprogress", "in_progress", "ended", "Ended", "all", "All"],
         )]
-        select: OfferSelector,
+        select: DealSelector,
     },
 
-    /// Gives information on an open offer
-    #[clap(aliases = &["oi"])]
-    #[display("offer-info<{public_offer}>")]
-    OfferInfo {
-        /// The offer to be canceled.
-        public_offer: PublicOffer,
+    /// Gives information on an open deal
+    #[clap(aliases = &["di"])]
+    #[display("deal-info<{deal}>")]
+    DealInfo {
+        /// The deal to be canceled.
+        deal: Deal,
     },
 
     /// Lists listeners created by daemon
     #[clap(aliases = &["ll"])]
     ListListens,
 
+    /// Lists tasks currently treated by a syncer
+    #[clap(aliases = &["lt"])]
+    ListTasks {
+        /// The blockchain for which we want to list the tasks
+        blockchain: Blockchain,
+
+        /// The network for which we want to list the tasks
+        network: Network,
+    },
+
     /// Lists saved checkpoints of the swaps
     #[clap(aliases = &["lc"])]
-    ListCheckpoints,
+    ListCheckpoints {
+        #[clap(
+            short,
+            long,
+            default_value = "all",
+            possible_values = &["all", "All", "available", "Available", "available-for-restore"],
+        )]
+        select: CheckpointSelector,
+    },
+
+    /// Checks the health of the syncers. By default 'mainnet' and 'testnet' are checked, use the
+    /// selector to change this behavior.
+    #[clap(aliases = &["hc"])]
+    HealthCheck {
+        #[clap(
+            short,
+            long,
+            possible_values = &["Mainnet", "mainnet", "Testnet", "testnet", "Local", "local", "all", "All"]
+        )]
+        selector: Option<HealthCheckSelector>,
+    },
 
     /// Restores saved checkpoint of a swap
     #[clap(aliases = &["r"])]
@@ -98,9 +123,16 @@ pub enum Command {
         swap_id: SwapId,
     },
 
-    /// Maker creates offer and start listening for incoming connections. Command used to to print
-    /// the resulting public offer that shall be shared with Taker. Additionally it spins up the
-    /// listener awaiting for connection related to this offer.
+    /// Connects a running swap to its counterparty
+    #[clap(aliases = &["c"])]
+    Connect {
+        // The swap id of the swap we wish to connect again
+        swap_id: SwapId,
+    },
+
+    /// Maker creates deal and start listening for incoming connections. Command used to to print
+    /// the resulting deal that shall be shared with Taker. Additionally it spins up the
+    /// listener awaiting for connection related to this deal.
     ///
     /// Example usage:
     ///
@@ -163,24 +195,25 @@ pub enum Command {
         #[clap(long, default_value = "5")]
         punish_timelock: CSVTimelock,
 
-        /// The chosen fee strategy for the arbitrating transactions.
-        #[clap(long, default_value = "1 satoshi/vByte")]
-        fee_strategy: FeeStrategy<SatPerVByte>,
+        /// The chosen fee for the arbitrating transactions.
+        #[clap(long, default_value = "1000 satoshi/kvB")]
+        fee_strategy: FeeStrategy<SatPerKvB>,
 
-        /// Public IPv4 or IPv6 address present in the public offer allowing taker to connect.
+        /// Public IPv4 or IPv6 address to advertise in the deal. This allows taker to
+        /// connect; defaults to 127.0.0.1.
         #[clap(short = 'I', long, default_value = "127.0.0.1")]
         public_ip_addr: IpAddr,
 
-        /// IPv4 or IPv6 address to bind to, listening for takers.
-        #[clap(short, long, default_value = "0.0.0.0")]
-        bind_ip_addr: IpAddr,
-
-        /// Port to use; defaults to the native LN port.
-        #[clap(short, long, default_value = "9735")]
-        port: u16,
+        /// Public port to advertise in the deal; defaults to the FC port 7067.
+        ///
+        /// This port should either be equal to 'farcasterd.bind_port' value in your config file or
+        /// you should setup a proxy to forward trafic from {-I}:{-p} to
+        /// {farcasterd.bind_ip}:{farcasterd.bind_port}
+        #[clap(short = 'p', long, default_value = "7067")]
+        public_port: u16,
     },
 
-    /// Taker accepts offer and connects to maker's daemon to start the trade.
+    /// Taker accepts deal and connects to maker's daemon to start the trade.
     Take {
         /// Bitcoin address used as destination or refund address.
         #[clap(long = "btc-addr")]
@@ -190,20 +223,20 @@ pub enum Command {
         #[clap(long = "xmr-addr")]
         monero_address: XmrAddress,
 
-        /// An encoded public offer.
-        #[clap(short = 'o', long = "offer")]
-        public_offer: PublicOffer,
+        /// An encoded deal.
+        #[clap(short = 'D', long = "deal")]
+        deal: Deal,
 
-        /// Accept the public offer without validation.
+        /// Accept the deal without validation.
         #[clap(short, long)]
         without_validation: bool,
     },
 
-    /// Revoke offer accepts an offer and revokes it within the runtime.
-    #[display("revoke-offer<{public_offer}>")]
-    RevokeOffer {
-        /// The offer to be canceled.
-        public_offer: PublicOffer,
+    /// Revoke deal accepts a deal and revokes it within the runtime.
+    #[display("revoke-deal<{deal}>")]
+    RevokeDeal {
+        /// The deal to be canceled.
+        deal: Deal,
     },
 
     /// Abort a swap if it has not locked yet.
@@ -231,6 +264,13 @@ pub enum Command {
         blockchain: Blockchain,
     },
 
+    /// Returns previously created funding addresses for blockchain.
+    #[display("list-funding-address<{blockchain}>")]
+    ListFundingAddresses {
+        /// Retrieve funding addresses for a particular blockchain.
+        blockchain: Blockchain,
+    },
+
     /// Attempts to sweep any funds on a given bitcoin funding address
     #[display("sweep-bitcoin-address<{source_address} {destination_address}>")]
     SweepBitcoinAddress {
@@ -247,6 +287,13 @@ pub enum Command {
         source_address: XmrAddress,
         /// The destination address receiving the coins.
         destination_address: XmrAddress,
+    },
+
+    /// Returns the balance for a given address. The needs to be a previous funding address
+    #[display("get-balance<{address}>")]
+    GetBalance {
+        /// Address for which the balance should be retrieved.
+        address: Address,
     },
 
     /// Output shell completion code for the specified shell (bash, zsh or fish)
@@ -268,7 +315,7 @@ pub enum Command {
 }
 
 #[derive(Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Debug, Display, From)]
-pub enum OfferSelector {
+pub enum DealSelector {
     #[display("Open")]
     Open,
     #[display("In Progress")]
@@ -278,24 +325,50 @@ pub enum OfferSelector {
     #[display("All")]
     All,
 }
-
-impl FromStr for OfferSelector {
-    type Err = OfferSelectorParseError;
-    fn from_str(input: &str) -> Result<OfferSelector, Self::Err> {
+impl FromStr for DealSelector {
+    type Err = DealSelectorParseError;
+    fn from_str(input: &str) -> Result<DealSelector, Self::Err> {
         match input {
-            "open" | "Open" => Ok(OfferSelector::Open),
-            "in_progress" | "inprogress" => Ok(OfferSelector::InProgress),
-            "ended" | "Ended" => Ok(OfferSelector::Ended),
-            "all" | "All" => Ok(OfferSelector::All),
-            _ => Err(OfferSelectorParseError::Invalid),
+            "open" | "Open" => Ok(DealSelector::Open),
+            "in_progress" | "inprogress" => Ok(DealSelector::InProgress),
+            "ended" | "Ended" => Ok(DealSelector::Ended),
+            "all" | "All" => Ok(DealSelector::All),
+            _ => Err(DealSelectorParseError::Invalid),
         }
     }
 }
 
 #[derive(Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Debug, Display, Error, From)]
 #[display(doc_comments)]
-pub enum OfferSelectorParseError {
-    /// The provided value can't be parsed as an offer selector
+pub enum DealSelectorParseError {
+    /// The provided value can't be parsed as a deal selector
+    Invalid,
+}
+
+#[derive(Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Debug, Display, From)]
+#[display(Debug)]
+pub enum CheckpointSelector {
+    All,
+    AvailableForRestore,
+}
+
+impl FromStr for CheckpointSelector {
+    type Err = CheckpointSelectorParseError;
+    fn from_str(input: &str) -> Result<CheckpointSelector, Self::Err> {
+        match input {
+            "all" | "All" => Ok(CheckpointSelector::All),
+            "available" | "Available" | "available-for-restore" => {
+                Ok(CheckpointSelector::AvailableForRestore)
+            }
+            _ => Err(CheckpointSelectorParseError::Invalid),
+        }
+    }
+}
+
+#[derive(Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Debug, Display, Error, From)]
+#[display(doc_comments)]
+pub enum CheckpointSelectorParseError {
+    /// The provided value can't be parsed as a deal selector
     Invalid,
 }
 

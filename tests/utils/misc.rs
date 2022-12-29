@@ -1,19 +1,19 @@
 //! Miscellaneous helper functions.
 
-use farcaster_node::rpc::Request;
+use farcaster_node::bus::BusMsg;
 use internet2::transport::MAX_FRAME_SIZE;
 use internet2::Decrypt;
 use internet2::PlainTranscoder;
 use internet2::RoutedFrame;
 use internet2::{CreateUnmarshaller, Unmarshall};
 
-pub fn get_request_from_message(message: Vec<Vec<u8>>) -> Request {
-    // Receive a Request
-    let unmarshaller = Request::create_unmarshaller();
+pub fn get_request_from_message(message: Vec<Vec<u8>>) -> BusMsg {
+    // Receive a BusMsg
+    let unmarshaller = BusMsg::create_unmarshaller();
     let mut transcoder = PlainTranscoder {};
     let routed_message = recv_routed(message);
     let plain_message = transcoder.decrypt(routed_message.msg).unwrap();
-    (&*unmarshaller.unmarshall(&*plain_message).unwrap()).clone()
+    (*unmarshaller.unmarshall(&*plain_message).unwrap()).clone()
 }
 
 // as taken from the rust-internet2 crate - for now we only use the message
@@ -30,7 +30,7 @@ pub fn recv_routed(message: std::vec::Vec<std::vec::Vec<u8>>) -> RoutedFrame {
         panic!("multipart message empty");
     }
     let len = msg.len();
-    if len > MAX_FRAME_SIZE as usize {
+    if len > MAX_FRAME_SIZE {
         panic!(
             "multipart message frame
 size too big"

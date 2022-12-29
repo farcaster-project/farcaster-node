@@ -1,6 +1,19 @@
-[farcasterd.grpc]
-use_grpc = true
-port = 23432
+[farcasterd]
+auto_restore = false
+bind_port = 7067
+bind_ip = "0.0.0.0"
+
+[grpc]
+enable = true
+bind_port = 23432
+bind_ip = "0.0.0.0"
+
+[swap.bitcoin.local]
+safety = 3
+finality = 1
+
+[swap.monero.local]
+finality = 1
 
 [syncers.local]
 electrum_server = "tcp://localhost:60401"

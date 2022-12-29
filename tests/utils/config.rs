@@ -20,12 +20,13 @@ struct FullConfig {
     compose: TestConfig,
 }
 
-#[derive(Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(crate = "serde_crate")]
 pub struct TestConfig {
     pub bitcoin: BitcoinConfig,
     pub electrs: NodeConfig,
     pub monero: MoneroConfig,
+    pub grpc: GrpcConfig,
 }
 
 impl TestConfig {
@@ -46,7 +47,7 @@ impl TestConfig {
     }
 }
 
-#[derive(Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(crate = "serde_crate")]
 pub struct NodeConfig {
     pub host: String,
@@ -63,7 +64,7 @@ impl fmt::Display for NodeConfig {
     }
 }
 
-#[derive(Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(crate = "serde_crate")]
 pub struct BitcoinConfig {
     pub daemon: NodeConfig,
@@ -78,7 +79,7 @@ impl BitcoinConfig {
     }
 }
 
-#[derive(Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(crate = "serde_crate")]
 pub struct BitcoinAuthConfig {
     pub cookie: Option<String>,
@@ -102,7 +103,7 @@ impl BitcoinAuthConfig {
     }
 }
 
-#[derive(Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(crate = "serde_crate")]
 pub struct MoneroConfig {
     pub daemon: NodeConfig,
@@ -138,5 +139,25 @@ impl From<WalletIndex> for usize {
             WalletIndex::Secondary => 1,
             WalletIndex::Tertiary => 2,
         }
+    }
+}
+
+#[derive(Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(crate = "serde_crate")]
+pub struct GrpcConfig {
+    pub fc1: GrpcNode,
+    pub fc2: GrpcNode,
+}
+
+#[derive(Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(crate = "serde_crate")]
+pub struct GrpcNode {
+    pub host: String,
+    pub port: u16,
+}
+
+impl fmt::Display for GrpcNode {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "http://{}:{}", self.host, self.port)
     }
 }

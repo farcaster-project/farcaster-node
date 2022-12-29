@@ -45,7 +45,7 @@ jobs:
           override: true
 
       - name: Rust cache
-        uses: Swatinem/rust-cache@v2.0.0
+        uses: Swatinem/rust-cache@v2.2.0
 
       - name: Cargo test
         uses: actions-rs/cargo@v1
@@ -71,21 +71,22 @@ jobs:
           swap_bob_maker_punish_kill_bob,
           swap_bob_maker_refund,
           swap_bob_maker_restore_checkpoint,
+          swap_bob_maker_restore_reconnect_alice_pre_lock,
           swap_bob_maker_user_abort_sweep_btc,
           swap_parallel_execution,
-          swap_revoke_offer_bob_maker_normal,
+          swap_revoke_deal_bob_maker_normal,
           cli,
           grpc,
         ]
         bitcoin: [ '23.0' ]
-        electrs: [ 0.9.7 ]
+        electrs: [ 0.9.9 ]
         include:
         - test: bitcoin_syncer
           bitcoin: '22.0'
           electrs: 0.8.11
         - test: bitcoin_syncer
           bitcoin: '22.0'
-          electrs: 0.9.7
+          electrs: 0.9.9
 
     runs-on: ubuntu-latest
     env:
@@ -115,28 +116,28 @@ jobs:
         volumes:
           - bitcoind-data:/data
       monerod:
-        image: ghcr.io/farcaster-project/containers/monerod:0.18.0.0
+        image: ghcr.io/farcaster-project/containers/monerod:0.18.1.2
         env:
           NETWORK: regtest
           OFFLINE: --offline
           DIFFICULTY: 1
       monero-wallet-rpc-1:
-        image: ghcr.io/farcaster-project/containers/monero-wallet-rpc:0.18.0.0
+        image: ghcr.io/farcaster-project/containers/monero-wallet-rpc:0.18.1.2
         env:
           MONERO_DAEMON_ADDRESS: monerod:18081
           WALLET_RPC_PORT: 18083
       monero-wallet-rpc-2:
-        image: ghcr.io/farcaster-project/containers/monero-wallet-rpc:0.18.0.0
+        image: ghcr.io/farcaster-project/containers/monero-wallet-rpc:0.18.1.2
         env:
           MONERO_DAEMON_ADDRESS: monerod:18081
           WALLET_RPC_PORT: 18083
       monero-wallet-rpc-3:
-        image: ghcr.io/farcaster-project/containers/monero-wallet-rpc:0.18.0.0
+        image: ghcr.io/farcaster-project/containers/monero-wallet-rpc:0.18.1.2
         env:
           MONERO_DAEMON_ADDRESS: monerod:18081
           WALLET_RPC_PORT: 18083
       monero-lws:
-        image: ghcr.io/farcaster-project/containers/monero-lws:monerod-0.18.0.0
+        image: ghcr.io/farcaster-project/containers/monero-lws:monerod-0.18.1.2
         env:
           NETWORK: main
           MONERO_DAEMON_ADDRESS: monerod:18082
@@ -151,7 +152,7 @@ jobs:
         run: DEBIAN_FRONTEND=noninteractive apt-get install -y libssl-dev pkg-config build-essential cmake
 
       - name: Rust cache
-        uses: Swatinem/rust-cache@v2.0.0
+        uses: Swatinem/rust-cache@v2.2.0
         with:
           key: ${{ matrix.test }}
 

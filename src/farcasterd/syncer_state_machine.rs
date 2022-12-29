@@ -1,11 +1,22 @@
-use bitcoin::hashes::{hex::ToHex, Hash};
+// Copyright 2020-2022 Farcaster Devs & LNP/BP Standards Association
+//
+// Use of this source code is governed by an MIT-style
+// license that can be found in the LICENSE file or at
+// https://opensource.org/licenses/MIT.
+
 use farcaster_core::blockchain::{Blockchain, Network};
 
 use crate::{
+    bus::ctl::CtlMsg,
+    bus::info::InfoMsg,
+    bus::BusMsg,
+    bus::{sync::SyncMsg, AddressSecretKey, Failure, FailureCode},
     error::Error,
-    event::{Event, StateMachine},
-    rpc::Request,
-    syncerd::{Event as SyncerEvent, SweepAddress, SweepAddressAddendum, Task, TaskId},
+    event::{Event, StateMachine, StateMachineExecutor},
+    syncerd::{
+        Event as SyncerEvent, GetAddressBalance, Health, HealthCheck, SweepAddress,
+        SweepAddressAddendum, Task, TaskAborted, TaskId,
+    },
     ServiceId,
 };
 
@@ -75,18 +86,29 @@ impl StateMachine<Runtime, Error> for SyncerStateMachine {
             }
         }
     }
+
+    fn name(&self) -> String {
+        "Syncer".to_string()
+    }
+
+    fn log_level(&self) -> log::Level {
+        log::Level::Debug
+    }
 }
+
+pub struct SyncerStateMachineExecutor {}
+impl StateMachineExecutor<Runtime, Error, SyncerStateMachine> for SyncerStateMachineExecutor {}
 
 impl SyncerStateMachine {
     pub fn task_id(&self) -> Option<TaskId> {
         match self {
             SyncerStateMachine::AwaitingSyncer(AwaitingSyncer { syncer_task_id, .. }) => {
-                Some(syncer_task_id.clone())
+                Some(*syncer_task_id)
             }
             SyncerStateMachine::AwaitingSyncerRequest(AwaitingSyncerRequest {
                 syncer_task_id,
                 ..
-            }) => Some(syncer_task_id.clone()),
+            }) => Some(*syncer_task_id),
             _ => None,
         }
     }
@@ -110,7 +132,7 @@ fn attempt_transition_to_awaiting_syncer_or_awaiting_syncer_request(
 ) -> Result<Option<SyncerStateMachine>, Error> {
     let source = event.source.clone();
     match event.request.clone() {
-        Request::SweepAddress(sweep_address) => {
+        BusMsg::Ctl(CtlMsg::SweepAddress(sweep_address)) => {
             let (blockchain, network) = match sweep_address.clone() {
                 SweepAddressAddendum::Monero(addendum) => {
                     let blockchain = Blockchain::Monero;
@@ -135,11 +157,10 @@ fn attempt_transition_to_awaiting_syncer_or_awaiting_syncer_request(
 
             let syncer_task_id = TaskId(runtime.syncer_task_counter);
             let syncer_task = Task::SweepAddress(SweepAddress {
-                id: syncer_task_id.clone(),
+                id: syncer_task_id,
                 retry: false,
                 lifetime: u64::MAX,
                 addendum: sweep_address,
-                from_height: None,
             });
             runtime.syncer_task_counter += 1;
 
@@ -151,7 +172,7 @@ fn attempt_transition_to_awaiting_syncer_or_awaiting_syncer_request(
                 network,
                 &runtime.config,
             )? {
-                event.complete_ctl_service(service_id, Request::SyncerTask(syncer_task))?;
+                event.complete_sync_service(service_id, SyncMsg::Task(syncer_task))?;
                 Ok(Some(SyncerStateMachine::AwaitingSyncerRequest(
                     AwaitingSyncerRequest {
                         source,
@@ -163,13 +184,97 @@ fn attempt_transition_to_awaiting_syncer_or_awaiting_syncer_request(
                 Ok(Some(SyncerStateMachine::AwaitingSyncer(AwaitingSyncer {
                     source,
                     syncer: ServiceId::Syncer(blockchain, network),
-                    syncer_task: syncer_task,
+                    syncer_task,
                     syncer_task_id,
                 })))
             }
         }
 
-        _ => Ok(None),
+        BusMsg::Ctl(CtlMsg::GetBalance(address_secret_key)) => {
+            let syncer_task_id = TaskId(runtime.syncer_task_counter);
+            runtime.syncer_task_counter += 1;
+            let (blockchain, network) = match &address_secret_key {
+                AddressSecretKey::Bitcoin { address, .. } => {
+                    (Blockchain::Bitcoin, address.network.into())
+                }
+                AddressSecretKey::Monero { address, .. } => {
+                    (Blockchain::Monero, address.network.into())
+                }
+            };
+            let syncer_task = Task::GetAddressBalance(GetAddressBalance {
+                id: syncer_task_id,
+                address_secret_key,
+            });
+            // check if a monero syncer is up
+            if let Some(service_id) = syncer_up(
+                &mut runtime.spawning_services,
+                &mut runtime.registered_services,
+                blockchain,
+                network,
+                &runtime.config,
+            )? {
+                event.complete_sync_service(service_id, SyncMsg::Task(syncer_task))?;
+                Ok(Some(SyncerStateMachine::AwaitingSyncerRequest(
+                    AwaitingSyncerRequest {
+                        source,
+                        syncer_task_id,
+                        syncer: ServiceId::Syncer(blockchain, network),
+                    },
+                )))
+            } else {
+                Ok(Some(SyncerStateMachine::AwaitingSyncer(AwaitingSyncer {
+                    source,
+                    syncer: ServiceId::Syncer(blockchain, network),
+                    syncer_task,
+                    syncer_task_id,
+                })))
+            }
+        }
+
+        BusMsg::Ctl(CtlMsg::HealthCheck(blockchain, network)) => {
+            let syncer_task_id = TaskId(runtime.syncer_task_counter);
+            runtime.syncer_task_counter += 1;
+            let syncer_task = Task::HealthCheck(HealthCheck { id: syncer_task_id });
+
+            match syncer_up(
+                &mut runtime.spawning_services,
+                &mut runtime.registered_services,
+                blockchain,
+                network,
+                &runtime.config,
+            ) {
+                Ok(Some(service_id)) => {
+                    event.complete_sync_service(service_id, SyncMsg::Task(syncer_task))?;
+                    Ok(Some(SyncerStateMachine::AwaitingSyncerRequest(
+                        AwaitingSyncerRequest {
+                            source,
+                            syncer_task_id,
+                            syncer: ServiceId::Syncer(blockchain, network),
+                        },
+                    )))
+                }
+                Ok(None) => Ok(Some(SyncerStateMachine::AwaitingSyncer(AwaitingSyncer {
+                    source,
+                    syncer: ServiceId::Syncer(blockchain, network),
+                    syncer_task,
+                    syncer_task_id,
+                }))),
+                Err(err) => {
+                    event.complete_ctl(CtlMsg::HealthResult(Health::ConfigUnavailable(
+                        err.to_string(),
+                    )))?;
+                    Ok(None)
+                }
+            }
+        }
+
+        req => {
+            warn!(
+                "Request {} from {} invalid for state start - invalidating.",
+                req, event.source
+            );
+            Ok(None)
+        }
     }
 }
 
@@ -185,8 +290,8 @@ fn attempt_transition_to_awaiting_syncer_request(
         syncer_task_id,
     } = awaiting_syncer;
     match (event.request.clone(), event.source.clone()) {
-        (Request::Hello, syncer_id) if syncer == syncer_id => {
-            event.complete_ctl_service(syncer.clone(), Request::SyncerTask(syncer_task))?;
+        (BusMsg::Ctl(CtlMsg::Hello), syncer_id) if syncer == syncer_id => {
+            event.complete_sync_service(syncer.clone(), SyncMsg::Task(syncer_task))?;
             Ok(Some(SyncerStateMachine::AwaitingSyncerRequest(
                 AwaitingSyncerRequest {
                     source,
@@ -196,15 +301,15 @@ fn attempt_transition_to_awaiting_syncer_request(
             )))
         }
         (req, source) => {
-            if let Request::Hello = req {
+            if let BusMsg::Ctl(CtlMsg::Hello) = req {
                 trace!(
-                    "Request {} from {} invalid for state awaiting syncer.",
+                    "BusMsg {} from {} invalid for state awaiting syncer.",
                     req,
                     source
                 );
             } else {
                 warn!(
-                    "Request {} from {} invalid for state awaiting syncer.",
+                    "BusMsg {} from {} invalid for state awaiting syncer.",
                     req, source
                 );
             }
@@ -229,57 +334,85 @@ fn attempt_transition_to_end(
         syncer,
     } = awaiting_syncer_request;
     match (event.request.clone(), event.source.clone()) {
-        (Request::SyncerEvent(SyncerEvent::SweepSuccess(success)), syncer_id)
+        (BusMsg::Sync(SyncMsg::Event(SyncerEvent::SweepSuccess(mut success))), syncer_id)
             if syncer == syncer_id && success.id == syncer_task_id =>
         {
-            if let Some(Some(txid)) = success
-                .txids
-                .clone()
-                .pop()
-                .map(|txid| bitcoin::Txid::from_slice(&txid).ok())
-            {
-                event.send_ctl_service(
+            if let Some(txid) = success.txids.pop() {
+                event.send_client_info(
                     source,
-                    Request::String(format!(
+                    InfoMsg::String(format!(
                         "Successfully sweeped address. Transaction Id: {}.",
-                        txid.to_hex()
+                        txid
                     )),
                 )?;
             } else {
-                event.send_ctl_service(source, Request::String("Nothing to sweep.".to_string()))?;
+                event.send_client_info(source, InfoMsg::String("Nothing to sweep.".to_string()))?;
             }
+            runtime.clean_up_after_syncer_usage(event.endpoints)?;
+            Ok(None)
+        }
 
-            runtime.registered_services = runtime
-                .registered_services
-                .clone()
-                .drain()
-                .filter(|service| {
-                    if let ServiceId::Syncer(..) = service {
-                        if !runtime.syncer_has_client(service) {
-                            info!("Terminating {}", service);
-                            event
-                                .send_ctl_service(service.clone(), Request::Terminate)
-                                .is_err()
-                        } else {
-                            true
-                        }
-                    } else {
-                        true
-                    }
-                })
-                .collect();
+        (BusMsg::Sync(SyncMsg::Event(SyncerEvent::AddressBalance(res))), syncer_id)
+            if syncer == syncer_id && res.id == syncer_task_id =>
+        {
+            if let Some(err) = res.err {
+                event.send_client_ctl(
+                    source,
+                    CtlMsg::Failure(Failure {
+                        code: FailureCode::Unknown,
+                        info: format!("Failed to get adddress balance {}", err),
+                    }),
+                )?;
+            } else {
+                event.send_client_info(
+                    source,
+                    InfoMsg::AddressBalance(crate::bus::info::AddressBalance {
+                        address: res.address,
+                        balance: res.balance,
+                    }),
+                )?;
+            }
+            runtime.clean_up_after_syncer_usage(event.endpoints)?;
+            Ok(None)
+        }
+
+        (
+            BusMsg::Sync(SyncMsg::Event(SyncerEvent::TaskAborted(TaskAborted {
+                id, error, ..
+            }))),
+            syncer_id,
+        ) if syncer == syncer_id && id.len() == 1 && id[0] == syncer_task_id => {
+            event.send_client_ctl(
+                source,
+                CtlMsg::Failure(Failure {
+                    code: FailureCode::Unknown,
+                    info: format!(
+                        "Failure in chain query{}",
+                        error.map_or("".to_string(), |e| format!(": {}", e))
+                    ),
+                }),
+            )?;
+            runtime.clean_up_after_syncer_usage(event.endpoints)?;
+            Ok(None)
+        }
+
+        (BusMsg::Sync(SyncMsg::Event(SyncerEvent::HealthResult(res))), syncer_id)
+            if syncer == syncer_id && res.id == syncer_task_id =>
+        {
+            event.send_client_ctl(source, CtlMsg::HealthResult(res.health))?;
+            runtime.clean_up_after_syncer_usage(event.endpoints)?;
             Ok(None)
         }
         (req, source) => {
-            if let Request::Hello = req {
+            if let BusMsg::Ctl(CtlMsg::Hello) = req {
                 trace!(
-                    "Request {} from {} invalid for state awaiting syncer.",
+                    "BusMsg {} from {} invalid for state awaiting syncer.",
                     req,
                     source
                 );
             } else {
                 warn!(
-                    "Request {} from {} invalid for state awaiting syncer.",
+                    "BusMsg {} from {} invalid for state awaiting syncer.",
                     req, source
                 );
             }

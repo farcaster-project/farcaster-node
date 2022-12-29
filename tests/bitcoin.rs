@@ -3,15 +3,16 @@ use bitcoin::hashes::Hash;
 use bitcoincore_rpc::RpcApi;
 use clap::Parser;
 use farcaster_core::blockchain::{Blockchain, Network};
+use farcaster_node::bus::{AddressSecretKey, BitcoinSecretKeyInfo};
 use farcaster_node::syncerd::bitcoin_syncer::BitcoinSyncer;
 use farcaster_node::syncerd::opts::Opts;
 use farcaster_node::syncerd::runtime::SyncerdTask;
 use farcaster_node::syncerd::types::{
-    Abort, AddressAddendum, Boolean, BroadcastTransaction, BtcAddressAddendum, GetTx, SweepAddress,
+    Abort, AddressAddendum, BroadcastTransaction, BtcAddressAddendum, GetTx, SweepAddress,
     SweepAddressAddendum, Task, WatchAddress, WatchEstimateFee, WatchHeight, WatchTransaction,
 };
-use farcaster_node::syncerd::SweepBitcoinAddress;
 use farcaster_node::syncerd::{runtime::Synclet, TaskId, TaskTarget};
+use farcaster_node::syncerd::{GetAddressBalance, SweepBitcoinAddress, TxFilter};
 use farcaster_node::ServiceId;
 use microservices::ZMQ_CONTEXT;
 use ntest::timeout;
@@ -69,7 +70,7 @@ fn bitcoin_syncer_retrieve_transaction_test() {
     let task = SyncerdTask {
         task: Task::GetTx(GetTx {
             id: TaskId(1),
-            hash: txid.to_vec(),
+            hash: txid.into(),
         }),
         source: SOURCE1.clone(),
     };
@@ -210,10 +211,6 @@ the complete existing transaction history
 - Submit a WatchAddress task many times with the same address, ensure we receive
 many times the same event
 
-- Submit a WatchAddress task with a minimum height to an address with a
-transaction below said height, ensure we receive only a later transaction above
-the minimum height
-
 */
 
 #[test]
@@ -224,8 +221,6 @@ fn bitcoin_syncer_address_test() {
     let bitcoin_rpc = bitcoin_setup();
     let (tx, rx_event) = create_bitcoin_syncer("address");
 
-    // generate some blocks to an address
-    let address = bitcoin_rpc.get_new_address(None, None).unwrap();
     // 294 Satoshi is the dust limit for a segwit transaction
     let amount = bitcoin::Amount::ONE_SAT * 294;
     let blocks = bitcoin_rpc.get_block_count().unwrap();
@@ -235,11 +230,9 @@ fn bitcoin_syncer_address_test() {
     let address2 = bitcoin_rpc.get_new_address(None, None).unwrap();
 
     let addendum_1 = AddressAddendum::Bitcoin(BtcAddressAddendum {
-        from_height: 0,
         address: address1.clone(),
     });
     let addendum_2 = AddressAddendum::Bitcoin(BtcAddressAddendum {
-        from_height: 0,
         address: address2.clone(),
     });
     let watch_address_task_1 = SyncerdTask {
@@ -247,21 +240,33 @@ fn bitcoin_syncer_address_test() {
             id: TaskId(1),
             lifetime: blocks + 1,
             addendum: addendum_1,
-            include_tx: Boolean::True,
+            include_tx: true,
+            filter: TxFilter::All,
         }),
         source: SOURCE1.clone(),
     };
     tx.send(watch_address_task_1).unwrap();
+    info!("waiting for empty message");
+    let message = rx_event.recv_multipart(0).unwrap();
+    info!("received empty message");
+    let request = misc::get_request_from_message(message);
+    assert::empty_message(request);
     let watch_address_task_2 = SyncerdTask {
         task: Task::WatchAddress(WatchAddress {
             id: TaskId(1),
             lifetime: blocks + 2,
             addendum: addendum_2.clone(),
-            include_tx: Boolean::True,
+            include_tx: true,
+            filter: TxFilter::All,
         }),
         source: SOURCE1.clone(),
     };
     tx.send(watch_address_task_2).unwrap();
+    info!("waiting for empty message");
+    let message = rx_event.recv_multipart(0).unwrap();
+    info!("received empty message");
+    let request = misc::get_request_from_message(message);
+    assert::empty_message(request);
 
     // send some coins to address1
     let txid = bitcoin_rpc
@@ -271,7 +276,7 @@ fn bitcoin_syncer_address_test() {
     let message = rx_event.recv_multipart(0).unwrap();
     info!("received address transaction message");
     let request = misc::get_request_from_message(message);
-    assert::address_transaction(request, amount.as_sat(), vec![txid.to_vec()]);
+    assert::address_transaction(request, amount.as_sat(), vec![txid.into()]);
 
     // now generate a block for address1, then wait for the response and test it
     let block_hash = bitcoin_rpc.generate_to_address(1, &address1).unwrap();
@@ -285,7 +290,7 @@ fn bitcoin_syncer_address_test() {
     assert::address_transaction(
         request,
         address_transaction_amount,
-        vec![address_txid.to_vec()],
+        vec![address_txid.into()],
     );
 
     // then send a transaction to the other address we are watching
@@ -299,21 +304,13 @@ fn bitcoin_syncer_address_test() {
     let message = rx_event.recv_multipart(0).unwrap();
     info!("received address transaction message");
     let request = misc::get_request_from_message(message);
-    assert::address_transaction(
-        request,
-        amount.as_sat(),
-        vec![txid_1.to_vec(), txid_2.to_vec()],
-    );
+    assert::address_transaction(request, amount.as_sat(), vec![txid_1.into(), txid_2.into()]);
 
     info!("waiting for address transaction message");
     let message = rx_event.recv_multipart(0).unwrap();
     info!("received address transaction message");
     let request = misc::get_request_from_message(message);
-    assert::address_transaction(
-        request,
-        amount.as_sat(),
-        vec![txid_1.to_vec(), txid_2.to_vec()],
-    );
+    assert::address_transaction(request, amount.as_sat(), vec![txid_1.into(), txid_2.into()]);
 
     // watch for the same address, it should already contain transactions
     let watch_address_task_3 = SyncerdTask {
@@ -321,7 +318,8 @@ fn bitcoin_syncer_address_test() {
             id: TaskId(1),
             lifetime: blocks + 2,
             addendum: addendum_2,
-            include_tx: Boolean::True,
+            include_tx: true,
+            filter: TxFilter::All,
         }),
         source: SOURCE1.clone(),
     };
@@ -330,24 +328,15 @@ fn bitcoin_syncer_address_test() {
     let message = rx_event.recv_multipart(0).unwrap();
     info!("received address transaction message");
     let request = misc::get_request_from_message(message);
-    assert::address_transaction(
-        request,
-        amount.as_sat(),
-        vec![txid_1.to_vec(), txid_2.to_vec()],
-    );
+    assert::address_transaction(request, amount.as_sat(), vec![txid_1.into(), txid_2.into()]);
     info!("waiting for address transaction message");
     let message = rx_event.recv_multipart(0).unwrap();
     info!("received address transaction message");
     let request = misc::get_request_from_message(message);
-    assert::address_transaction(
-        request,
-        amount.as_sat(),
-        vec![txid_1.to_vec(), txid_2.to_vec()],
-    );
+    assert::address_transaction(request, amount.as_sat(), vec![txid_1.into(), txid_2.into()]);
 
     let address4 = bitcoin_rpc.get_new_address(None, None).unwrap();
     let addendum_4 = AddressAddendum::Bitcoin(BtcAddressAddendum {
-        from_height: 0,
         address: address4.clone(),
     });
     for i in 0..5 {
@@ -356,12 +345,22 @@ fn bitcoin_syncer_address_test() {
                 id: TaskId(i),
                 lifetime: blocks + 5,
                 addendum: addendum_4.clone(),
-                include_tx: Boolean::True,
+                include_tx: true,
+                filter: TxFilter::All,
             }),
             source: SOURCE1.clone(),
         })
         .unwrap();
     }
+
+    for _ in 0..5 {
+        info!("waiting for repeated empty message");
+        let message = rx_event.recv_multipart(0).unwrap();
+        info!("received repeated empty message");
+        let request = misc::get_request_from_message(message);
+        assert::empty_message(request);
+    }
+
     let txid = bitcoin_rpc
         .send_to_address(&address4, amount, None, None, None, None, None, None)
         .unwrap();
@@ -371,39 +370,8 @@ fn bitcoin_syncer_address_test() {
         let message = rx_event.recv_multipart(0).unwrap();
         info!("received repeated address transaction message");
         let request = misc::get_request_from_message(message);
-        assert::address_transaction(request, amount.as_sat(), vec![txid.to_vec()]);
+        assert::address_transaction(request, amount.as_sat(), vec![txid.into()]);
     }
-
-    let address5 = bitcoin_rpc.get_new_address(None, None).unwrap();
-    bitcoin_rpc
-        .send_to_address(&address5, amount, None, None, None, None, None, None)
-        .unwrap();
-    bitcoin_rpc.generate_to_address(1, &address).unwrap();
-    let blocks = bitcoin_rpc.get_block_count().unwrap();
-
-    let addendum_5 = AddressAddendum::Bitcoin(BtcAddressAddendum {
-        from_height: blocks,
-        address: address5.clone(),
-    });
-    tx.send(SyncerdTask {
-        task: Task::WatchAddress(WatchAddress {
-            id: TaskId(5),
-            lifetime: blocks + 5,
-            addendum: addendum_5,
-            include_tx: Boolean::False,
-        }),
-        source: SOURCE1.clone(),
-    })
-    .unwrap();
-    let txid = bitcoin_rpc
-        .send_to_address(&address5, amount, None, None, None, None, None, None)
-        .unwrap();
-    bitcoin_rpc.generate_to_address(1, &address).unwrap();
-    info!("waiting for address transaction message");
-    let message = rx_event.recv_multipart(0).unwrap();
-    info!("received address transaction message");
-    let request = misc::get_request_from_message(message);
-    assert::address_transaction(request, amount.as_sat(), vec![txid.to_vec()]);
 
     tx.send(SyncerdTask {
         task: Task::Terminate,
@@ -459,7 +427,7 @@ fn bitcoin_syncer_transaction_test() {
         task: Task::WatchTransaction(WatchTransaction {
             id: TaskId(1),
             lifetime: blocks + 5,
-            hash: txid_1.to_vec(),
+            hash: txid_1.into(),
             confirmation_bound: 0,
         }),
         source: SOURCE1.clone(),
@@ -475,7 +443,7 @@ fn bitcoin_syncer_transaction_test() {
         task: Task::WatchTransaction(WatchTransaction {
             id: TaskId(1),
             lifetime: blocks + 5,
-            hash: txid_1.to_vec(),
+            hash: txid_1.into(),
             confirmation_bound: 2,
         }),
         source: SOURCE1.clone(),
@@ -517,7 +485,7 @@ fn bitcoin_syncer_transaction_test() {
         task: Task::WatchTransaction(WatchTransaction {
             id: TaskId(1),
             lifetime: blocks + 5,
-            hash: address_txid.to_vec(),
+            hash: address_txid.into(),
             confirmation_bound: 2,
         }),
         source: SOURCE1.clone(),
@@ -553,7 +521,7 @@ fn bitcoin_syncer_transaction_test() {
         task: Task::WatchTransaction(WatchTransaction {
             id: TaskId(1),
             lifetime: blocks + 5,
-            hash: txid_2.to_vec(),
+            hash: txid_2.into(),
             confirmation_bound: 2,
         }),
         source: SOURCE1.clone(),
@@ -563,7 +531,7 @@ fn bitcoin_syncer_transaction_test() {
         task: Task::WatchTransaction(WatchTransaction {
             id: TaskId(1),
             lifetime: blocks + 5,
-            hash: txid_3.to_vec(),
+            hash: txid_3.into(),
             confirmation_bound: 2,
         }),
         source: SOURCE1.clone(),
@@ -618,7 +586,7 @@ fn bitcoin_syncer_transaction_test() {
         task: Task::WatchTransaction(WatchTransaction {
             id: TaskId(1),
             lifetime: blocks + 5,
-            hash: txid.to_vec(),
+            hash: txid.into(),
             confirmation_bound: 2,
         }),
         source: SOURCE1.clone(),
@@ -676,7 +644,7 @@ fn bitcoin_syncer_abort_test() {
         task: Task::WatchTransaction(WatchTransaction {
             id: TaskId(0),
             lifetime: blocks + 10,
-            hash: vec![0; 32],
+            hash: bitcoin::Txid::from_slice(&[0; 32]).unwrap().into(),
             confirmation_bound: 2,
         }),
         source: SOURCE1.clone(),
@@ -691,7 +659,7 @@ fn bitcoin_syncer_abort_test() {
     let task = SyncerdTask {
         task: Task::Abort(Abort {
             task_target: TaskTarget::TaskId(TaskId(0)),
-            respond: Boolean::True,
+            respond: true,
         }),
         source: SOURCE1.clone(),
     };
@@ -705,7 +673,7 @@ fn bitcoin_syncer_abort_test() {
     let task = SyncerdTask {
         task: Task::Abort(Abort {
             task_target: TaskTarget::TaskId(TaskId(0)),
-            respond: Boolean::True,
+            respond: true,
         }),
         source: SOURCE1.clone(),
     };
@@ -724,7 +692,7 @@ fn bitcoin_syncer_abort_test() {
         task: Task::WatchTransaction(WatchTransaction {
             id: TaskId(0),
             lifetime: blocks + 10,
-            hash: vec![0; 32],
+            hash: bitcoin::Txid::from_slice(&[0; 32]).unwrap().into(),
             confirmation_bound: 2,
         }),
         source: SOURCE1.clone(),
@@ -739,7 +707,7 @@ fn bitcoin_syncer_abort_test() {
         task: Task::WatchTransaction(WatchTransaction {
             id: TaskId(1),
             lifetime: blocks + 10,
-            hash: vec![0; 32],
+            hash: bitcoin::Txid::from_slice(&[0; 32]).unwrap().into(),
             confirmation_bound: 2,
         }),
         source: SOURCE1.clone(),
@@ -753,7 +721,7 @@ fn bitcoin_syncer_abort_test() {
     let task = SyncerdTask {
         task: Task::Abort(Abort {
             task_target: TaskTarget::AllTasks,
-            respond: Boolean::True,
+            respond: true,
         }),
         source: SOURCE1.clone(),
     };
@@ -767,7 +735,7 @@ fn bitcoin_syncer_abort_test() {
     let task = SyncerdTask {
         task: Task::Abort(Abort {
             task_target: TaskTarget::TaskId(TaskId(0)),
-            respond: Boolean::True,
+            respond: true,
         }),
         source: SOURCE1.clone(),
     };
@@ -827,6 +795,7 @@ fn bitcoin_syncer_broadcast_tx_test() {
         task: Task::BroadcastTransaction(BroadcastTransaction {
             id: TaskId(0),
             tx: transaction.hex,
+            broadcast_after_height: None,
         }),
         source: SOURCE1.clone(),
     };
@@ -870,6 +839,7 @@ fn bitcoin_syncer_broadcast_tx_test() {
         task: Task::BroadcastTransaction(BroadcastTransaction {
             id: TaskId(0),
             tx: signed_tx.hex,
+            broadcast_after_height: None,
         }),
         source: SOURCE1.clone(),
     };
@@ -941,7 +911,6 @@ fn bitcoin_syncer_sweep_address_test() {
         task: Task::SweepAddress(SweepAddress {
             id: TaskId(0),
             lifetime: blocks,
-            from_height: None,
             retry: true,
             addendum: SweepAddressAddendum::Bitcoin(SweepBitcoinAddress {
                 source_secret_key,
@@ -1003,7 +972,6 @@ fn bitcoin_syncer_sweep_address_test() {
         task: Task::SweepAddress(SweepAddress {
             id: TaskId(0),
             lifetime: blocks,
-            from_height: None,
             retry: true,
             addendum: SweepAddressAddendum::Bitcoin(SweepBitcoinAddress {
                 source_secret_key,
@@ -1035,6 +1003,50 @@ fn bitcoin_syncer_sweep_address_test() {
     .unwrap();
     let duration = std::time::Duration::from_secs(10);
     std::thread::sleep(duration);
+}
+
+#[test]
+#[timeout(600000)]
+#[ignore]
+fn bitcoin_syncer_address_balance_test() {
+    setup_logging();
+    let bitcoin_rpc = bitcoin_setup();
+    let (tx, rx_event) = create_bitcoin_syncer("sweep");
+
+    let target_address = bitcoin_rpc.get_new_address(None, None).unwrap();
+    let target_secret_key = bitcoin_rpc.dump_private_key(&target_address).unwrap().inner;
+
+    // 294 Satoshi is the dust limit for a segwit transaction
+    let amount = bitcoin::Amount::ONE_SAT * 1000;
+    // send some coins to target_address
+    let _txid = bitcoin_rpc
+        .send_to_address(&target_address, amount, None, None, None, None, None, None)
+        .unwrap();
+
+    // allow some time for things to happen, like the electrum server catching up
+    let duration = std::time::Duration::from_secs(10);
+    std::thread::sleep(duration);
+
+    let task = SyncerdTask {
+        task: Task::GetAddressBalance(GetAddressBalance {
+            id: TaskId(0),
+            address_secret_key: AddressSecretKey::Bitcoin {
+                address: target_address,
+                secret_key_info: BitcoinSecretKeyInfo {
+                    swap_id: None,
+                    secret_key: target_secret_key,
+                },
+            },
+        }),
+        source: SOURCE1.clone(),
+    };
+    tx.send(task).unwrap();
+    // allow some time for things to happen, like the electrum server catching up
+    info!("waiting for address balance message");
+    let message = rx_event.recv_multipart(0).unwrap();
+    info!("received address balance message");
+    let request = misc::get_request_from_message(message);
+    assert::address_balance(request, amount.as_sat());
 }
 
 // =========================

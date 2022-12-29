@@ -2,11 +2,11 @@ This document describes how to test a swap running both participants locally.
 
 You'll need to [build and install](./Install-guide) the node locally.
 
-We'll create two node instances and will make them running a swap, for that make sure to have access to the three services: an `electrum server`, a `monero daemon`, and a `monero rpc wallet`.
+We'll create two node instances and will make them running a testnet swap, for that make sure to have access to the three services: an `electrum server` (can use a public one from default config), a `monero daemon` (can use a public one from default config), and a `monero rpc wallet` (needs to run locally).
 
 ## Run monero rpc wallet with Docker
 
-:warning: You should run two containers, one for each `farcasterd` services, choose different ports and modify `--rpc-bind-port` and `-p` values accordingly. Pull the latest image and launch two containers:
+:warning: You should run two `monero rpc wallet`, one for each `farcasterd` services, choose different ports and modify `--rpc-bind-port` and `-p` values accordingly. Pull the latest image and launch two containers:
 
 ```
 docker pull ghcr.io/farcaster-project/containers/monero-wallet-rpc:latest
@@ -48,11 +48,11 @@ Then launch two `farcasterd` services:
 farcasterd --data-dir {.node01|.node02}
 ```
 
-You can use other public daemons for syncers, see [:bulb: Use public infrastructure](./Home#bulb-use-public-infrastructure) for more details.
+You can use other public daemons for configuring your syncers, see the default values in [:bulb: Use public infrastructure](./Home#bulb-use-public-infrastructure).
 
 ## Configure swap-cli clients
 
-For simplicity you can create two aliases for the `swap-cli`, you will use them to make and take offers:
+For simplicity you can create two aliases for the `swap-cli`, you will use them to make and take deals:
 
 ```
 alias swap1-cli="swap-cli -d .node01"
@@ -63,9 +63,9 @@ alias swap2-cli="swap-cli -d .node02"
 
 You need to have access to Bitcoin (testnet) and Monero (stagenet) test coins, use your wallet of choice. You just need a way to fund the swap in bitcoins and moneroj.
 
-## Make the offer
+## Make a deal
 
-Maker creates offer and start listening. Command used to print a serialized representation of the offer that shall be shared with taker. Additionally it spins up the listener awaiting for connection related to this offer (bound on `0.0.0.0:9735` by default, with an offer public address of `127.0.0.1:9735` by default).
+Maker creates deals. The serialized representation (like an address but longer) of the deal shall be shared with a taker.
 
 ```
 swap1-cli make --btc-addr tb1q4gj53tuew3e6u4a32kdtle2q72su8te39dpceq\
@@ -74,27 +74,27 @@ swap1-cli make --btc-addr tb1q4gj53tuew3e6u4a32kdtle2q72su8te39dpceq\
     --xmr-amount "0.001 XMR"
 ```
 
-The command will create a public offer based on the chosen parameters, spin up a listening `peerd` (in that case `0.0.0.0:9735`), and return the encoded offer (starting with `Offer:...`).
+The command will create a deal based on the chosen parameters, spin up a listening `peerd` (bound to `0.0.0.0:7067` on your machine by default), and return the encoded deal (starting with `Deal:...`).
 
-This public offer should be shared by maker with taker. It also contains information on how to connect to maker (in that case `127.0.0.1:9735`). Additionally, it adds the public offers to the set of public offers in `farcasterd` that will be later used to initiate the swap upon requests from takers.
+This deal should be shared by maker with taker. It contains information on how to connect to the maker (a public address of `127.0.0.1:7067` by default). Additionally, it adds the deal to the set of deals available in `farcasterd` that will be later used to initiate the swap upon requests from takers.
 
 To get a detailed explanation of `make` and more details on all possible arguments you can run `swap1-cli make --help`.
 
-## Take an offer
+## Take a deal
 
-Taker accepts offer and connects to maker's daemon node with the following command (run `swap2-cli take --help` for more details):
+Taker accepts deals and connects to maker's daemon node with the following command (run `swap2-cli take --help` for more details):
 
-Example of taking the offer above produced by maker:
+Example of taking the deal above produced by maker:
 
 ```
 swap2-cli take --btc-addr tb1qt3r3t6yultt8ne88ffgvgyym0sstj4apwsz05j\
     --xmr-addr 54EYTy2HYFcAXwAbFQ3HmAis8JLNmxRdTC9DwQL7sGJd4CAUYimPxuQHYkMNg1EELNP85YqFwqraLd4ovz6UeeekFLoCKiu\
-    --offer Offer:...
+    --deal Deal:...
 ```
 
-The `--btc-addr` argument is the Bitcoin destination address in case the bitcoins need to be refunded or if the swap completes (depending on the swap role), the `--xmr-addr` for Monero, and finally the offer with `--offer` or `-o`.
+The `--btc-addr` argument is the Bitcoin destination address in case the bitcoins need to be refunded or if the swap completes (depending on the trade you're doing), the `--xmr-addr` for Monero, and finally the deal with `--deal` or `-D`.
 
-Upon taking the public offer, its deserialized content is printed and the user is asked for validation with `y` or `n`.
+Upon taking the deal, its deserialized content is printed and the user is asked for validation with `y` or `n`.
 
 :mag_right: Flag of interest: `--without-validation` or `-w`, for externally validated automated setups (skip validation in cli).
 
@@ -131,3 +131,4 @@ electrum_server = "tcp://localhost:60001"
 monero_daemon = "http://localhost:38081"
 monero_rpc_wallet = "http://localhost:38083"
 ```
+

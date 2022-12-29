@@ -1,16 +1,8 @@
-// LNP Node: node running lightning network protocol and generalized lightning
-// channels.
-// Written in 2020 by
-//     Dr. Maxim Orlovsky <orlovsky@pandoracore.com>
+// Copyright 2020-2022 Farcaster Devs & LNP/BP Standards Association
 //
-// To the extent possible under law, the author(s) have dedicated all
-// copyright and related and neighboring rights to this software to
-// the public domain worldwide. This software is distributed without
-// any warranty.
-//
-// You should have received a copy of the MIT License
-// along with this software.
-// If not, see <https://opensource.org/licenses/MIT>.
+// Use of this source code is governed by an MIT-style
+// license that can be found in the LICENSE file or at
+// https://opensource.org/licenses/MIT.
 
 use clap::ValueHint;
 use std::net::SocketAddr;
@@ -35,6 +27,8 @@ pub const FARCASTER_DATA_DIR: &str = ".";
 
 pub const FARCASTER_MSG_SOCKET_NAME: &str = "{data_dir}/msg";
 pub const FARCASTER_CTL_SOCKET_NAME: &str = "{data_dir}/ctl";
+pub const FARCASTER_INFO_SOCKET_NAME: &str = "{data_dir}/info";
+pub const FARCASTER_SYNC_SOCKET_NAME: &str = "{data_dir}/sync";
 
 pub const FARCASTER_KEY_FILE: &str = "{data_dir}/key.dat";
 
@@ -97,6 +91,34 @@ pub struct Opts {
         default_value = FARCASTER_CTL_SOCKET_NAME
     )]
     pub ctl_socket: ServiceAddr,
+
+    /// ZMQ socket name/address for remote procedure call interface
+    ///
+    /// Internal interface for client info RPC protocol communications. Defaults
+    /// to `info.rpc` file inside `--data-dir` directory.
+    #[clap(
+        short = 'i',
+        long,
+        global = true,
+        env = "FARCASTER_INFO_SOCKET",
+        value_hint = ValueHint::FilePath,
+        default_value = FARCASTER_INFO_SOCKET_NAME
+    )]
+    pub info_socket: ServiceAddr,
+
+    /// ZMQ socket name/address for syncer interface
+    ///
+    /// Internal interface for syncer events protocol communications. Defaults
+    /// to `sync.rpc` file inside `--data-dir` directory.
+    #[clap(
+        short = 'S',
+        long,
+        global = true,
+        env = "FARCASTER_SYNC_SOCKET",
+        value_hint = ValueHint::FilePath,
+        default_value = FARCASTER_SYNC_SOCKET_NAME
+    )]
+    pub sync_socket: ServiceAddr,
 }
 
 /// Token used in services
@@ -119,7 +141,7 @@ impl FromStr for TokenString {
 
 impl Opts {
     pub fn process(&mut self) {
-        let env = env_logger::Env::new().default_filter_or("farcaster_node=info");
+        let env = env_logger::Env::new().default_filter_or("error,farcaster_node=info");
         // standard environment variable set to "true" when running in CI environments
         let is_test = matches!(std::env::var("CI"), Ok(v) if v == "true");
         env_logger::from_env(env)
@@ -132,7 +154,12 @@ impl Opts {
         me.data_dir = PathBuf::from(shellexpand::tilde(&me.data_dir.to_string_lossy()).to_string());
         fs::create_dir_all(&me.data_dir).expect("Unable to access data directory");
 
-        for s in vec![&mut self.msg_socket, &mut self.ctl_socket] {
+        for s in vec![
+            &mut self.msg_socket,
+            &mut self.ctl_socket,
+            &mut self.info_socket,
+            &mut self.sync_socket,
+        ] {
             match s {
                 ServiceAddr::Ipc(path) | ServiceAddr::Inproc(path) => {
                     me.process_dir(path);

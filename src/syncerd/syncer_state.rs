@@ -1,4 +1,10 @@
-use crate::rpc::request::SyncerdBridgeEvent;
+// Copyright 2020-2022 Farcaster Devs & LNP/BP Standards Association
+//
+// Use of this source code is governed by an MIT-style
+// license that can be found in the LICENSE file or at
+// https://opensource.org/licenses/MIT.
+
+use crate::bus::sync::BridgeEvent;
 use crate::syncerd::{TaskId, TaskTarget};
 use crate::Error;
 use crate::ServiceId;
@@ -9,6 +15,10 @@ use tokio::sync::mpsc::Sender as TokioSender;
 use crate::service::LogStyle;
 use crate::syncerd::*;
 use hex;
+
+pub type BalanceServiceIdPair = (GetAddressBalance, ServiceId);
+pub type TransactionServiceIdPair = (BroadcastTransaction, ServiceId);
+pub type GetTxServiceIdPair = (GetTx, ServiceId);
 
 #[derive(Debug, Clone, Copy, Eq, PartialEq, PartialOrd, Hash, Display)]
 #[display(Debug)]
@@ -42,10 +52,11 @@ pub struct SyncerState {
     pub transactions: HashMap<InternalId, WatchedTransaction>,
     pub unseen_transactions: HashSet<InternalId>,
     pub sweep_addresses: HashMap<InternalId, SweepAddress>,
-    tx_event: TokioSender<SyncerdBridgeEvent>,
+    tx_event: TokioSender<BridgeEvent>,
     task_count: TaskCounter,
     pub subscribed_addresses: HashSet<AddressAddendum>,
     pub fee_estimation: Option<FeeEstimations>,
+    pub pending_broadcasts: HashSet<(BroadcastTransaction, ServiceId)>,
 }
 
 #[derive(Clone, Debug)]
@@ -59,13 +70,15 @@ pub struct AddressTransactions {
     pub task: WatchAddress,
     known_txs: HashSet<AddressTx>,
     pub subscribed: bool,
+    pub initial_check_done: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Hash, Eq)]
 pub struct AddressTx {
-    pub our_amount: u64,
-    pub tx_id: Vec<u8>,
+    pub amount: u64,
+    pub tx_id: Txid,
     pub tx: Vec<u8>,
+    pub incoming: bool,
 }
 
 pub fn create_set<T: std::hash::Hash + Eq>(xs: Vec<T>) -> HashSet<T> {
@@ -73,7 +86,7 @@ pub fn create_set<T: std::hash::Hash + Eq>(xs: Vec<T>) -> HashSet<T> {
 }
 
 impl SyncerState {
-    pub fn new(tx_event: TokioSender<SyncerdBridgeEvent>, blockchain: Blockchain) -> Self {
+    pub fn new(tx_event: TokioSender<BridgeEvent>, blockchain: Blockchain) -> Self {
         Self {
             block_height: 0,
             block_hash: vec![0],
@@ -90,6 +103,7 @@ impl SyncerState {
             blockchain,
             subscribed_addresses: HashSet::new(),
             fee_estimation: None,
+            pending_broadcasts: HashSet::new(),
         }
     }
 
@@ -293,6 +307,7 @@ impl SyncerState {
             task,
             known_txs: none!(),
             subscribed: false,
+            initial_check_done: false,
         };
         self.addresses.insert(self.task_count.into(), address_txs);
     }
@@ -403,21 +418,27 @@ impl SyncerState {
                 self.block_height = h;
                 self.block_hash = block;
                 info!(
-                    "{} incremented height {}",
-                    self.blockchain.bright_white_bold(),
+                    "{} | Incremented height {}",
+                    self.blockchain.label(),
                     &h.bright_blue_bold()
                 );
             }
             (h, b) if h == self.block_height && b != &self.block_hash => {
+                info!(
+                    "{} | New chain tip at {} ({} -> {})",
+                    self.blockchain.label(),
+                    &h.bright_blue_bold(),
+                    format!("{:x?}", &self.block_hash).tx_hash(),
+                    format!("{:x?}", &b).tx_hash(),
+                );
                 self.block_hash = block;
-                info!("{} new chain tip", self.blockchain.bright_white_bold());
             }
             (h, b) if h < self.block_height && b != &self.block_hash => {
                 self.block_height = h;
                 self.block_hash = block;
                 warn!(
-                    "{} height decreased {}, new chain tip",
-                    self.blockchain.bright_white_bold(),
+                    "{} | Height decreased {}, new chain tip",
+                    self.blockchain.label(),
                     &h.bright_blue_bold()
                 );
             }
@@ -450,40 +471,42 @@ impl SyncerState {
             address_addendum: AddressAddendum,
             txs: HashSet<AddressTx>,
         ) {
-            let changes_detected: bool = addresses
-                .iter()
-                .find_map(|(_, addr)| {
-                    // let new_txs = txs.difference(&addr.known_txs).collect::<Vec<&_>>();
-                    if txs.difference(&addr.known_txs).next().is_some() {
-                        Some(true)
-                    } else {
-                        None
-                    }
-                })
-                .unwrap_or(false);
-
-            if !changes_detected {
-                trace!("no changes to process, skipping...");
-                return;
-            }
-
             *addresses = addresses
                 .drain()
-                .map(|(id, addr)| {
+                .map(|(id, mut addr)| {
                     trace!("processing taskid {} for address {:?}", id, addr);
                     if addr.task.addendum != address_addendum {
-                        trace!("address not changed or not address_addendum of interest");
+                        // not an address of interest
+                        return (id, addr);
+                    }
+                    let txs_diff: HashSet<&AddressTx> = txs.difference(&addr.known_txs).collect();
+                    // emit an empty event if no transactions have been found during the first query
+                    if txs_diff.is_empty() && !addr.initial_check_done {
+                        events.push((
+                            Event::Empty(addr.task.id),
+                            tasks_sources
+                                .get(&id)
+                                .cloned()
+                                .expect("task source missing"),
+                        ));
+                        addr.initial_check_done = true;
                         return (id, addr);
                     }
                     // create events for new transactions
-                    for new_tx in txs.difference(&addr.known_txs).cloned() {
-                        debug!("new tx seen: {}", hex::encode(&new_tx.tx_id));
+                    for new_tx in txs_diff {
+                        debug!("new tx seen: {}", new_tx.tx_id);
                         let address_transaction = AddressTransaction {
                             id: addr.task.id,
                             hash: new_tx.tx_id,
-                            amount: new_tx.our_amount,
+                            amount: new_tx.amount,
                             block: vec![], // eventually this should be removed from the event
-                            tx: new_tx.tx,
+                            tx: new_tx
+                                .tx
+                                .clone()
+                                .chunks(STRICT_ENCODE_MAX_ITEMS.into())
+                                .map(|c| c.to_vec())
+                                .collect(), // chunk as a workaround for the strict encoding length limit
+                            incoming: new_tx.incoming,
                         };
                         events.push((
                             Event::AddressTransaction(address_transaction),
@@ -500,6 +523,7 @@ impl SyncerState {
                             task: addr.task,
                             known_txs: txs.clone(),
                             subscribed: addr.subscribed,
+                            initial_check_done: true,
                         },
                     )
                 })
@@ -513,7 +537,7 @@ impl SyncerState {
 
     pub async fn change_transaction(
         &mut self,
-        tx_id: Vec<u8>,
+        tx_id: Txid,
         block_hash: Option<Vec<u8>>,
         confirmations: Option<u32>,
         tx: Vec<u8>,
@@ -537,7 +561,7 @@ impl SyncerState {
             unseen_transactions: &mut HashSet<InternalId>,
             events: &mut Vec<(Event, ServiceId)>,
             tasks_sources: &mut HashMap<InternalId, ServiceId>,
-            tx_id: Vec<u8>,
+            tx_id: Txid,
             block_hash: Option<Vec<u8>>,
             confirmations: Option<u32>,
             tx: Vec<u8>,
@@ -567,7 +591,11 @@ impl SyncerState {
                             id: watched_tx.task.id,
                             block: block.clone(),
                             confirmations,
-                            tx: tx.clone(),
+                            tx: tx
+                                .clone()
+                                .chunks(STRICT_ENCODE_MAX_ITEMS.into())
+                                .map(|c| c.to_vec())
+                                .collect(), // chunk as a workaround for the strict encoding length limit
                         };
                         events.push((
                             Event::TransactionConfirmations(tx_confs.clone()),
@@ -596,7 +624,7 @@ impl SyncerState {
         send_event(&self.tx_event, &mut events).await;
     }
 
-    pub async fn success_sweep(&mut self, id: &InternalId, txids: Vec<Vec<u8>>) {
+    pub async fn success_sweep(&mut self, id: &InternalId, txids: Vec<Txid>) {
         if let Some(sweep_address) = self.sweep_addresses.get(id) {
             send_event(
                 &self.tx_event,
@@ -651,7 +679,7 @@ impl SyncerState {
                 &self.tx_event,
                 &mut vec![(
                     Event::TaskAborted(TaskAborted {
-                        id: vec![],
+                        id: vec![sweep_address.id],
                         error: Some(
                             "Sweep failed, did not find any assets associated with the address"
                                 .to_string(),
@@ -768,15 +796,20 @@ impl SyncerState {
         self.sweep_addresses.remove(id);
         self.tasks_sources.remove(id);
     }
+
+    pub async fn health_result(&mut self, id: TaskId, health: Health, source: ServiceId) {
+        send_event(
+            &self.tx_event,
+            &mut vec![(Event::HealthResult(HealthResult { id, health }), source)],
+        )
+        .await;
+    }
 }
 
-async fn send_event(
-    tx_event: &TokioSender<SyncerdBridgeEvent>,
-    events: &mut Vec<(Event, ServiceId)>,
-) {
+pub async fn send_event(tx_event: &TokioSender<BridgeEvent>, events: &mut Vec<(Event, ServiceId)>) {
     for (event, source) in events.drain(..) {
         tx_event
-            .send(SyncerdBridgeEvent { event, source })
+            .send(BridgeEvent { event, source })
             .await
             .expect("error sending event from the syncer state");
     }
@@ -787,22 +820,20 @@ async fn syncer_state_transaction() {
     use farcaster_core::blockchain::Network;
 
     use tokio::sync::mpsc::Receiver as TokioReceiver;
-    let (event_tx, mut event_rx): (
-        TokioSender<SyncerdBridgeEvent>,
-        TokioReceiver<SyncerdBridgeEvent>,
-    ) = tokio::sync::mpsc::channel(120);
+    let (event_tx, mut event_rx): (TokioSender<BridgeEvent>, TokioReceiver<BridgeEvent>) =
+        tokio::sync::mpsc::channel(120);
     let mut state = SyncerState::new(event_tx.clone(), Blockchain::Bitcoin);
 
     let transaction_task_one = WatchTransaction {
         id: TaskId(0),
         lifetime: 1,
-        hash: vec![0],
+        hash: monero::Hash::new(vec![0]).into(),
         confirmation_bound: 4,
     };
     let transaction_task_two = WatchTransaction {
         id: TaskId(0),
         lifetime: 3,
-        hash: vec![1],
+        hash: monero::Hash::new(vec![1]).into(),
         confirmation_bound: 4,
     };
     let height_task = WatchHeight {
@@ -827,7 +858,7 @@ async fn syncer_state_transaction() {
     assert!(event_rx.try_recv().is_err());
 
     state
-        .change_transaction(vec![0], none!(), none!(), none!())
+        .change_transaction(monero::Hash::new(vec![0]).into(), none!(), none!(), none!())
         .await;
     assert_eq!(state.lifetimes.len(), 3);
     assert_eq!(state.transactions.len(), 2);
@@ -836,7 +867,7 @@ async fn syncer_state_transaction() {
     assert!(event_rx.try_recv().is_ok());
 
     state
-        .change_transaction(vec![0], none!(), Some(0), none!())
+        .change_transaction(monero::Hash::new(vec![0]).into(), none!(), Some(0), none!())
         .await;
     assert_eq!(state.lifetimes.len(), 3);
     assert_eq!(state.transactions.len(), 2);
@@ -845,7 +876,7 @@ async fn syncer_state_transaction() {
     assert!(event_rx.try_recv().is_ok());
 
     state
-        .change_transaction(vec![0], none!(), Some(0), none!())
+        .change_transaction(monero::Hash::new(vec![0]).into(), none!(), Some(0), none!())
         .await;
     assert_eq!(state.lifetimes.len(), 3);
     assert_eq!(state.transactions.len(), 2);
@@ -854,7 +885,12 @@ async fn syncer_state_transaction() {
     assert!(event_rx.try_recv().is_err());
 
     state
-        .change_transaction(vec![0], Some(vec![1]), Some(1), none!())
+        .change_transaction(
+            monero::Hash::new(vec![0]).into(),
+            Some(vec![1]),
+            Some(1),
+            none!(),
+        )
         .await;
     assert_eq!(state.lifetimes.len(), 3);
     assert_eq!(state.transactions.len(), 2);
@@ -863,7 +899,12 @@ async fn syncer_state_transaction() {
     assert!(event_rx.try_recv().is_ok());
 
     state
-        .change_transaction(vec![0], Some(vec![1]), Some(1), none!())
+        .change_transaction(
+            monero::Hash::new(vec![0]).into(),
+            Some(vec![1]),
+            Some(1),
+            none!(),
+        )
         .await;
     assert_eq!(state.lifetimes.len(), 3);
     assert_eq!(state.transactions.len(), 2);
@@ -872,7 +913,7 @@ async fn syncer_state_transaction() {
     assert!(event_rx.try_recv().is_err());
 
     state
-        .change_transaction(vec![0], none!(), none!(), none!())
+        .change_transaction(monero::Hash::new(vec![0]).into(), none!(), none!(), none!())
         .await;
     assert_eq!(state.lifetimes.len(), 3);
     assert_eq!(state.transactions.len(), 2);
@@ -905,29 +946,36 @@ async fn syncer_state_addresses() {
     use std::str::FromStr;
     use tokio::sync::mpsc::Receiver as TokioReceiver;
 
-    let (event_tx, mut event_rx): (
-        TokioSender<SyncerdBridgeEvent>,
-        TokioReceiver<SyncerdBridgeEvent>,
-    ) = tokio::sync::mpsc::channel(120);
+    let (event_tx, mut event_rx): (TokioSender<BridgeEvent>, TokioReceiver<BridgeEvent>) =
+        tokio::sync::mpsc::channel(120);
     let mut state = SyncerState::new(event_tx.clone(), Blockchain::Bitcoin);
     let address = bitcoin::Address::from_str("32BkaQeAVcd65Vn7pjEziohf5bCiryNQov").unwrap();
-    let addendum = AddressAddendum::Bitcoin(BtcAddressAddendum {
-        from_height: 0,
-        address,
-    });
+    let addendum = AddressAddendum::Bitcoin(BtcAddressAddendum { address });
     let address_task = WatchAddress {
         id: TaskId(0),
         lifetime: 1,
         addendum: addendum.clone(),
-        include_tx: Boolean::False,
+        include_tx: false,
+        filter: TxFilter::All,
     };
     let address_task_two = WatchAddress {
         id: TaskId(0),
         lifetime: 1,
         addendum: addendum.clone(),
-        include_tx: Boolean::False,
+        include_tx: false,
+        filter: TxFilter::All,
     };
     let source1 = ServiceId::Syncer(Blockchain::Bitcoin, Network::Mainnet);
+
+    state.watch_address(address_task.clone(), source1.clone());
+    state
+        .change_address(addendum.clone(), create_set(vec![]))
+        .await;
+    assert!(event_rx.try_recv().is_ok());
+    state
+        .abort(TaskTarget::TaskId(TaskId(0)), source1.clone(), true)
+        .await;
+    assert!(event_rx.try_recv().is_ok());
 
     state.watch_address(address_task_two.clone(), source1.clone());
     state
@@ -943,24 +991,28 @@ async fn syncer_state_addresses() {
     assert_eq!(state.tasks_sources.len(), 1);
     assert_eq!(state.addresses.len(), 1);
     let address_tx_one = AddressTx {
-        our_amount: 1,
-        tx_id: vec![0; 32],
+        amount: 1,
+        tx_id: monero::Hash::new(vec![0]).into(),
         tx: vec![0],
+        incoming: true,
     };
     let address_tx_two = AddressTx {
-        our_amount: 1,
-        tx_id: vec![1; 32],
+        amount: 1,
+        tx_id: monero::Hash::new(vec![1]).into(),
         tx: vec![0],
+        incoming: true,
     };
     let address_tx_three = AddressTx {
-        our_amount: 1,
-        tx_id: vec![2; 32],
+        amount: 1,
+        tx_id: monero::Hash::new(vec![2]).into(),
         tx: vec![0],
+        incoming: true,
     };
     let address_tx_four = AddressTx {
-        our_amount: 1,
-        tx_id: vec![3; 32],
+        amount: 1,
+        tx_id: monero::Hash::new(vec![3]).into(),
         tx: vec![0],
+        incoming: true,
     };
 
     state
@@ -1063,16 +1115,13 @@ async fn syncer_state_sweep_addresses() {
     use std::str::FromStr;
     use tokio::sync::mpsc::Receiver as TokioReceiver;
 
-    let (event_tx, mut event_rx): (
-        TokioSender<SyncerdBridgeEvent>,
-        TokioReceiver<SyncerdBridgeEvent>,
-    ) = tokio::sync::mpsc::channel(120);
+    let (event_tx, mut event_rx): (TokioSender<BridgeEvent>, TokioReceiver<BridgeEvent>) =
+        tokio::sync::mpsc::channel(120);
     let mut state = SyncerState::new(event_tx.clone(), Blockchain::Monero);
     let sweep_task = SweepAddress {
         id: TaskId(0),
         lifetime: 11,
         retry: true,
-        from_height: None,
         addendum: SweepAddressAddendum::Monero(SweepMoneroAddress {
             source_view_key: monero::PrivateKey::from_str(
                 "77916d0cd56ed1920aef6ca56d8a41bac915b68e4c46a589e0956e27a7b77404",
@@ -1087,6 +1136,7 @@ async fn syncer_state_sweep_addresses() {
             )
             .unwrap(),
             minimum_balance: monero::Amount::from_pico(1),
+            from_height: None,
         }),
     };
     let source1 = ServiceId::Syncer(Blockchain::Monero, Network::Mainnet);
@@ -1107,7 +1157,9 @@ async fn syncer_state_sweep_addresses() {
     assert_eq!(state.lifetimes.len(), 1);
     assert_eq!(state.tasks_sources.len(), 1);
     assert_eq!(state.sweep_addresses.len(), 1);
-    state.success_sweep(&InternalId(2), vec![vec![0]]).await;
+    state
+        .success_sweep(&InternalId(2), vec![monero::Hash::new(vec![0]).into()])
+        .await;
     assert_eq!(state.lifetimes.len(), 0);
     assert_eq!(state.tasks_sources.len(), 0);
     assert_eq!(state.sweep_addresses.len(), 0);
@@ -1119,10 +1171,8 @@ async fn syncer_state_height() {
     use farcaster_core::blockchain::Network;
     use tokio::sync::mpsc::Receiver as TokioReceiver;
 
-    let (event_tx, mut event_rx): (
-        TokioSender<SyncerdBridgeEvent>,
-        TokioReceiver<SyncerdBridgeEvent>,
-    ) = tokio::sync::mpsc::channel(120);
+    let (event_tx, mut event_rx): (TokioSender<BridgeEvent>, TokioReceiver<BridgeEvent>) =
+        tokio::sync::mpsc::channel(120);
     let mut state = SyncerState::new(event_tx.clone(), Blockchain::Bitcoin);
     let height_task = WatchHeight {
         id: TaskId(0),

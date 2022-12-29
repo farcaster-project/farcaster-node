@@ -1,7 +1,7 @@
 use std::time;
 use utils::fc::*;
 
-use farcaster_node::rpc::request::MadeOffer;
+use farcaster_node::bus::info::MadeDeal;
 
 #[macro_use]
 extern crate log;
@@ -10,8 +10,8 @@ mod utils;
 
 #[tokio::test]
 #[ignore]
-async fn cli_make_offer() {
-    let (farcasterd_maker, data_dir_maker, farcasterd_taker, _) = setup_clients().await;
+async fn cli_make_deal() {
+    let (_, data_dir_maker, _, _) = launch_farcasterd_pair().await;
 
     // Allow some time for the microservices to start and register each other
     tokio::time::sleep(time::Duration::from_secs(10)).await;
@@ -39,15 +39,13 @@ async fn cli_make_offer() {
         "--punish-timelock",
         "30",
         "--fee-strategy",
-        "1 satoshi/vByte",
-        "-p",
-        "9376",
+        "1000 satoshi/kvB",
     ];
     args.append(&mut data_dir_maker.iter().map(std::ops::Deref::deref).collect());
 
-    let res: MadeOffer = cli(args).unwrap();
+    let res: MadeDeal = cli(args).unwrap();
     println!("{:?}", res);
 
     // clean up processes
-    cleanup_processes(vec![farcasterd_maker, farcasterd_taker]);
+    kill_all();
 }

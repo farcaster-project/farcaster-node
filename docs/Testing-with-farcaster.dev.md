@@ -1,6 +1,6 @@
-**[Farcaster.dev](https://farcaster.dev) is a website for automating Farcaster offers creation and publication (currently only testnet trades).**
+**[Farcaster.dev](https://farcaster.dev) is a website for automating Farcaster deals creation and publication (only testnet trades).**
 
-In this guide we will go through all the necessary steps to install and setup a node on your machine, choose and take a public offer listed there.
+In this guide we will go through all the necessary steps to install and setup a node on your machine, choose and take a deal listed there.
 
 ## Requirements
 
@@ -24,7 +24,7 @@ In this guide we suggest & assume the following setup:
 
 ### Install Farcaster from sources
 
-You find all the necessary steps to install farcaster from sources [here](./Install-guide#install-from-sources).
+You find all the necessary steps to install Farcaster from sources [here](./Install-guide#install-from-sources).
 
 Now you should be able to run in your shell `farcasterd --help` and `swap-cli --help` and receive answers. If this is not the case, check that the binaries compiled successfully and their location is in your `$PATH` (see `cargo install` documentation).
 
@@ -52,9 +52,9 @@ Use the cli to query `farcasterd`
 swap-cli info
 ```
 
-If you manage to go through all the steps above and you have a running node, congrats! you should now be able to try taking an offer on [farcaster.dev](https://farcaster.dev).
+If you manage to go through all the steps above and you have a running node, congrats! you should now be able to try taking a deal on [farcaster.dev](https://farcaster.dev).
 
-## Taking offer on [farcaster.dev](https://farcaster.dev)
+## Taking deal on [farcaster.dev](https://farcaster.dev)
 
 First steps:
 - Get a destination Bitcoin address
@@ -64,9 +64,9 @@ No matter what type of trade you choose to do, BTC->XMR or XMR->BTC, you need an
 1. a success path address to receive traded funds and
 2. a failure path address in case a refund is initiated
 
-When you have these two addresses go to the website and choose an offer that correspond to the trade you want to take. Then use `swap-cli` to start trading
+When you have these two addresses go to the website and choose a deal that correspond to the trade you want to take. Then use `swap-cli` to start trading
 ```
-swap-cli --btc-addr {...} --xmr-addr {...} -o Offer:...
+swap-cli --btc-addr {...} --xmr-addr {...} -D Deal:...
 ```
 
 You can now follow what's happening on the `farcasterd` logs in your shell and use `swap-cli` to query more details. Use
@@ -77,3 +77,4 @@ to see what subcommands are available. You might find the following ones useful 
 - `list-swaps`
 - `needs-funding <btc|xmr>`
 - `progress <swap>`
+

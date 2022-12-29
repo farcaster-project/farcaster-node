@@ -1,12 +1,23 @@
 # Farcasterd configuration
-# configures farcasterd specific behaviors such as auto-funding swaps
+# configures farcasterd specific behaviors such as auto-funding swaps or
+# auto-restoring checkpoints
+
+[farcasterd]
+# Set this to false if you only want manual restore. Defaut to true
+auto_restore = true
+# Sets the port where Farcaster will accept new peer connections through a
+# listening peerd. Default to 7067
+bind_port = 7067
+# Sets the binding ip for the listening peerd launched by Farcaster. Default to
+# 0.0.0.0
+bind_ip = "0.0.0.0"
 
 # Defines auto-funding
 [farcasterd.auto_funding]
 # Set this to true if you want to enable auto-funding, default to false
 # if set to true you need to register the parameter for the networks you
 # want to support: mainnet, testnet, or local
-auto_fund = false
+enable = false
 
 # Auto-funding testnet parameters
 [farcasterd.auto_funding.testnet]
@@ -26,12 +37,34 @@ bitcoin_cookie_path = "~/.bitcoin/testnet3/.cookie"
 # the wallet should have spendable funds
 monero_rpc_wallet = "http://localhost:38084"
 
-# Define grpc
-[farcasterd.grpc]
+# Swap parameter for the Bitcoin blockchain
+[swap.bitcoin.testnet]
+# Avoid broadcasting a transaction if a race can happen in # blocks
+#
+# E.g. if the safety is set to 3 and the the cancel transaction becomes
+# broadcastable in 4 blocks we are safe and we do publish buy, if it becomes
+# broadcastable in 3 blocks or less we do not publish the buy as the safety is
+# not respected.
+safety = 3
+# Number of confirmations required to consider a transaction final. Must be
+# smaller than safety.
+finality = 1
+
+# Swap parameter for the Monero blockchain
+[swap.monero.testnet]
+# Number of confirmations required to consider a transaction final
+finality = 1
+
+# Defines grpc options
+[grpc]
 # Set this to true to enable the grpc daemon
-use_grpc = true
-# If use_grpc=true, also requires a port for grpc clients to connect to
-port = 50051
+enable = true
+# If enabled, also requires a port for grpc clients to connect to
+bind_port = 50051
+# If enabled, where to bind the grpc service. Defaults to 127.0.0.1
+# The grpc interface allow full management of the node, you probably want to
+# keep it only accessible on your local network
+bind_ip = "127.0.0.1"
 
 # Syncers configuration
 # configures the Bitcoin and Monero syncers for the three
@@ -42,7 +75,7 @@ port = 50051
 # Electrum Server used by the Bitcoin syncer
 electrum_server = "ssl://blockstream.info:700"
 # Monero daemon used by the Monero syncer
-monero_daemon = "http://node.monerooutreach.org:18081"
+monero_daemon = "http://node.community.rino.io:18081"
 # Monero Wallet RPC used by the Monero syncer
 # Point to local running wallet
 monero_rpc_wallet = "http://localhost:18083"

@@ -1,23 +1,19 @@
-// LNP Node: node running lightning network protocol and generalized lightning
-// channels.
-// Written in 2020 by
-//     Dr. Maxim Orlovsky <orlovsky@pandoracore.com>
+// Copyright 2020-2022 Farcaster Devs & LNP/BP Standards Association
 //
-// To the extent possible under law, the author(s) have dedicated all
-// copyright and related and neighboring rights to this software to
-// the public domain worldwide. This software is distributed without
-// any warranty.
-//
-// You should have received a copy of the MIT License
-// along with this software.
-// If not, see <https://opensource.org/licenses/MIT>.
+// Use of this source code is governed by an MIT-style
+// license that can be found in the LICENSE file or at
+// https://opensource.org/licenses/MIT.
 
-use crate::rpc::request::{Failure, Progress, Request};
-use crate::rpc::ServiceBus;
+use crate::bus::ctl::CtlMsg;
+use crate::bus::info::InfoMsg;
+use crate::bus::BusMsg;
+use crate::bus::{Failure, Progress, ServiceBus};
 use std::fmt::{self, Display, Formatter};
 use std::str::FromStr;
 
 use bitcoin::hashes::hex::{self, ToHex};
+use colored::Colorize;
+use internet2::addr::NodeId;
 use internet2::{
     addr::{NodeAddr, ServiceAddr},
     zeromq,
@@ -57,6 +53,11 @@ lazy_static! {
     StrictEncode,
     StrictDecode,
 )]
+#[cfg_attr(
+    feature = "serde",
+    derive(Serialize, Deserialize),
+    serde(crate = "serde_crate")
+)]
 pub struct ClientName([u8; 32]);
 
 impl Display for ClientName {
@@ -91,11 +92,17 @@ impl FromStr for ClientName {
 
 #[derive(Debug, Clone, Hash)]
 pub struct ServiceConfig {
-    /// ZMQ socket for lightning peer network message bus
+    /// ZMQ socket for peer-to-peer network message bus
     pub msg_endpoint: ServiceAddr,
 
     /// ZMQ socket for internal service control bus
     pub ctl_endpoint: ServiceAddr,
+
+    /// ZMQ socket for internal info service bus
+    pub info_endpoint: ServiceAddr,
+
+    /// ZMQ socket for syncer events bus
+    pub sync_endpoint: ServiceAddr,
 }
 
 #[cfg(feature = "shell")]
@@ -104,12 +111,19 @@ impl From<Opts> for ServiceConfig {
         ServiceConfig {
             msg_endpoint: opts.msg_socket,
             ctl_endpoint: opts.ctl_socket,
+            info_endpoint: opts.info_socket,
+            sync_endpoint: opts.sync_socket,
         }
     }
 }
 
-/// Identifiers of daemons participating in LNP Node
+/// Identifiers of daemons participating in Farcaster Node
 #[derive(Clone, PartialEq, Eq, Hash, Debug, Display, From, StrictEncode, StrictDecode)]
+#[cfg_attr(
+    feature = "serde",
+    derive(Serialize, Deserialize),
+    serde(crate = "serde_crate")
+)]
 pub enum ServiceId {
     #[display("loopback")]
     Loopback,
@@ -117,9 +131,8 @@ pub enum ServiceId {
     #[display("farcasterd")]
     Farcasterd,
 
-    #[display("peerd<{0}>")]
-    #[from]
-    Peer(NodeAddr),
+    #[display("peerd<{0} {1}>")]
+    Peer(u128, NodeAddr),
 
     #[display("swap<{0}>")]
     #[from]
@@ -156,6 +169,26 @@ impl ServiceId {
         use bitcoin::secp256k1::rand;
         ServiceId::Client(rand::random())
     }
+
+    pub fn node_id(&self) -> Option<NodeId> {
+        if let ServiceId::Peer(_, addr) = self {
+            Some(addr.id)
+        } else {
+            None
+        }
+    }
+
+    pub fn node_addr(&self) -> Option<NodeAddr> {
+        if let ServiceId::Peer(_, addr) = self {
+            Some(*addr)
+        } else {
+            None
+        }
+    }
+
+    pub fn dummy_peer_service_id(node_addr: NodeAddr) -> ServiceId {
+        ServiceId::Peer(0, node_addr)
+    }
 }
 
 impl esb::ServiceAddress for ServiceId {}
@@ -179,16 +212,16 @@ impl From<Vec<u8>> for ServiceId {
 
 pub struct Service<Runtime>
 where
-    Runtime: esb::Handler<ServiceBus, Request = Request>,
+    Runtime: esb::Handler<ServiceBus, Request = BusMsg>,
     esb::Error<ServiceId>: From<Runtime::Error>,
 {
-    esb: esb::Controller<ServiceBus, Request, Runtime>,
+    esb: esb::Controller<ServiceBus, BusMsg, Runtime>,
     broker: bool,
 }
 
 impl<Runtime> Service<Runtime>
 where
-    Runtime: esb::Handler<ServiceBus, Request = Request>,
+    Runtime: esb::Handler<ServiceBus, Request = BusMsg>,
     esb::Error<ServiceId>: From<Runtime::Error>,
 {
     #[cfg(feature = "node")]
@@ -221,6 +254,16 @@ where
             ),
             ServiceBus::Ctl => esb::BusConfig::with_addr(
                 config.ctl_endpoint,
+                api_type,
+                router.clone()
+            ),
+            ServiceBus::Info => esb::BusConfig::with_addr(
+                config.info_endpoint,
+                api_type,
+                router.clone()
+            ),
+            ServiceBus::Sync => esb::BusConfig::with_addr(
+                config.sync_endpoint,
                 api_type,
                 router
             )
@@ -262,16 +305,26 @@ where
 
     #[cfg(feature = "node")]
     pub fn run_loop(mut self) -> Result<(), Error> {
+        let identity = self.esb.handler().identity();
         if !self.is_broker() {
             std::thread::sleep(core::time::Duration::from_secs(1));
-            self.esb
-                .send_to(ServiceBus::Ctl, ServiceId::Farcasterd, Request::Hello)?;
-            self.esb
-                .send_to(ServiceBus::Msg, ServiceId::Farcasterd, Request::Hello)?;
+            self.esb.send_to(
+                ServiceBus::Ctl,
+                ServiceId::Farcasterd,
+                BusMsg::Ctl(CtlMsg::Hello),
+            )?;
+        } else if identity != ServiceId::Farcasterd {
+            warn!(
+                "Not saying hello to Farcasterd: service {} is broker",
+                identity
+            );
         }
 
-        let identity = self.esb.handler().identity();
-        info!("New service {} started", identity);
+        debug!(
+            "New service {} with PID {} started",
+            identity,
+            std::process::id()
+        );
 
         self.esb.run_or_panic(&identity.to_string());
 
@@ -303,123 +356,122 @@ impl TryToServiceId for Option<ServiceId> {
     }
 }
 
+pub trait Reporter
+where
+    Self: esb::Handler<ServiceBus>,
+    esb::Error<ServiceId>: From<Self::Error>,
+{
+    fn report_to(&self) -> Option<ServiceId>;
+
+    fn report_success_message(
+        &mut self,
+        endpoints: &mut Endpoints,
+        msg: Option<impl ToString>,
+    ) -> Result<(), Error> {
+        if let Some(dest) = self.report_to() {
+            endpoints.send_to(
+                ServiceBus::Ctl,
+                self.identity(),
+                dest,
+                BusMsg::Ctl(CtlMsg::Success(msg.map(|m| m.to_string()).into())),
+            )?;
+        }
+        Ok(())
+    }
+
+    fn report_progress(
+        &mut self,
+        endpoints: &mut Endpoints,
+        progress: Progress,
+    ) -> Result<(), Error> {
+        if let Some(dest) = self.report_to() {
+            endpoints.send_to(
+                ServiceBus::Ctl,
+                self.identity(),
+                dest,
+                BusMsg::Ctl(CtlMsg::Progress(progress)),
+            )?;
+        }
+        Ok(())
+    }
+
+    fn report_progress_message(
+        &mut self,
+        endpoints: &mut Endpoints,
+        msg: impl ToString,
+    ) -> Result<(), Error> {
+        if let Some(dest) = self.report_to() {
+            endpoints.send_to(
+                ServiceBus::Ctl,
+                self.identity(),
+                dest,
+                BusMsg::Ctl(CtlMsg::Progress(Progress::Message(msg.to_string()))),
+            )?;
+        }
+        Ok(())
+    }
+
+    fn report_failure(&mut self, endpoints: &mut Endpoints, failure: Failure) -> Error {
+        if let Some(dest) = self.report_to() {
+            // Even if we fail, we still have to terminate :)
+            let _ = endpoints.send_to(
+                ServiceBus::Ctl,
+                self.identity(),
+                dest,
+                BusMsg::Ctl(CtlMsg::Failure(failure.clone())),
+            );
+        }
+        Error::Terminate(failure.to_string())
+    }
+}
+
 pub trait CtlServer
 where
     Self: esb::Handler<ServiceBus>,
     esb::Error<ServiceId>: From<Self::Error>,
 {
-    fn report_success_to(
-        &mut self,
-        senders: &mut Endpoints,
-        dest: impl TryToServiceId,
-        msg: Option<impl ToString>,
-    ) -> Result<(), Error> {
-        if let Some(dest) = dest.try_to_service_id() {
-            senders.send_to(
-                ServiceBus::Ctl,
-                self.identity(),
-                dest,
-                Request::Success(msg.map(|m| m.to_string()).into()),
-            )?;
-        }
-        Ok(())
-    }
-
-    fn report_progress_message_to(
-        &mut self,
-        senders: &mut Endpoints,
-        dest: impl TryToServiceId,
-        msg: impl ToString,
-    ) -> Result<(), Error> {
-        if let Some(dest) = dest.try_to_service_id() {
-            senders.send_to(
-                ServiceBus::Ctl,
-                self.identity(),
-                dest,
-                Request::Progress(Progress::Message(msg.to_string())),
-            )?;
-        }
-        Ok(())
-    }
-
-    fn report_state_transition_progress_message_to(
-        &mut self,
-        senders: &mut Endpoints,
-        dest: impl TryToServiceId,
-        msg: impl ToString,
-    ) -> Result<(), Error> {
-        if let Some(dest) = dest.try_to_service_id() {
-            senders.send_to(
-                ServiceBus::Ctl,
-                self.identity(),
-                dest,
-                Request::Progress(Progress::StateTransition(msg.to_string())),
-            )?;
-        }
-        Ok(())
-    }
-
-    fn report_failure_to(
-        &mut self,
-        senders: &mut Endpoints,
-        dest: impl TryToServiceId,
-        failure: Failure,
-    ) -> Error {
-        if let Some(dest) = dest.try_to_service_id() {
-            // Even if we fail, we still have to terminate :)
-            let _ = senders.send_to(
-                ServiceBus::Ctl,
-                self.identity(),
-                dest,
-                Request::Failure(failure.clone()),
-            );
-        }
-        Error::Terminate(failure.to_string())
-    }
-
     fn send_ctl(
         &mut self,
-        senders: &mut Endpoints,
+        endpoints: &mut Endpoints,
         dest: impl TryToServiceId,
-        request: Request,
+        request: BusMsg,
     ) -> Result<(), Error> {
         if let Some(dest) = dest.try_to_service_id() {
-            senders.send_to(ServiceBus::Ctl, self.identity(), dest, request)?;
+            endpoints.send_to(ServiceBus::Ctl, self.identity(), dest, request)?;
         }
         Ok(())
-    }
-
-    fn send_wallet(
-        &mut self,
-        bus: ServiceBus,
-        senders: &mut Endpoints,
-        request: Request,
-    ) -> Result<(), Error> {
-        let source = self.identity();
-        trace!("sending {} to walletd from {}", request, source);
-        senders
-            .send_to(bus, source, ServiceId::Wallet, request)
-            .map_err(From::from)
     }
 
     fn send_client_ctl(
         &mut self,
-        senders: &mut Endpoints,
+        endpoints: &mut Endpoints,
         dest: ServiceId,
-        request: Request,
+        request: CtlMsg,
     ) -> Result<(), Error> {
         let bus = ServiceBus::Ctl;
         if let ServiceId::GrpcdClient(_) = dest {
-            senders.send_to(bus, dest, ServiceId::Grpcd, request)?;
+            endpoints.send_to(bus, dest, ServiceId::Grpcd, BusMsg::Ctl(request))?;
         } else {
-            senders.send_to(bus, self.identity(), dest, request)?;
+            endpoints.send_to(bus, self.identity(), dest, BusMsg::Ctl(request))?;
+        }
+        Ok(())
+    }
+
+    fn send_client_info(
+        &mut self,
+        endpoints: &mut Endpoints,
+        dest: ServiceId,
+        request: InfoMsg,
+    ) -> Result<(), Error> {
+        let bus = ServiceBus::Info;
+        if let ServiceId::GrpcdClient(_) = dest {
+            endpoints.send_to(bus, dest, ServiceId::Grpcd, BusMsg::Info(request))?;
+        } else {
+            endpoints.send_to(bus, self.identity(), dest, BusMsg::Info(request))?;
         }
         Ok(())
     }
 }
-
-// TODO: Move to LNP/BP Services library
-use colored::Colorize;
 
 pub trait LogStyle: ToString {
     fn bright_blue_bold(&self) -> colored::ColoredString {
@@ -462,8 +514,24 @@ pub trait LogStyle: ToString {
         self.to_string().bold().bright_white()
     }
 
+    // Typed log styles
+    // This is used to standardize color and fonts across the codebase
+    // ----------------
+
+    fn swap_id(&self) -> colored::ColoredString {
+        self.to_string().italic().bright_blue()
+    }
+
+    fn label(&self) -> colored::ColoredString {
+        self.to_string().bold().bright_white()
+    }
+
     fn addr(&self) -> colored::ColoredString {
         self.to_string().bold().bright_yellow()
+    }
+
+    fn tx_hash(&self) -> colored::ColoredString {
+        self.to_string().italic().bright_yellow()
     }
 
     fn err(&self) -> colored::ColoredString {

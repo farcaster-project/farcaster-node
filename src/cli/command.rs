@@ -1,23 +1,13 @@
-// LNP Node: node running lightning network protocol and generalized lightning
-// channels.
-// Written in 2020 by
-//     Dr. Maxim Orlovsky <orlovsky@pandoracore.com>
+// Copyright 2020-2022 Farcaster Devs & LNP/BP Standards Association
 //
-// To the extent possible under law, the author(s) have dedicated all
-// copyright and related and neighboring rights to this software to
-// the public domain worldwide. This software is distributed without
-// any warranty.
-//
-// You should have received a copy of the MIT License
-// along with this software.
-// If not, see <https://opensource.org/licenses/MIT>.
+// Use of this source code is governed by an MIT-style
+// license that can be found in the LICENSE file or at
+// https://opensource.org/licenses/MIT.
 
-use crate::rpc::request::{Address, AddressSecretKey};
-use crate::syncerd::{SweepAddressAddendum, SweepBitcoinAddress, SweepMoneroAddress};
-use farcaster_core::swap::btcxmr::Offer;
+use farcaster_core::swap::btcxmr::{Deal, DealParameters};
+use farcaster_core::Uuid;
 use std::io::{self, Read};
 use std::str::FromStr;
-use uuid::Uuid;
 
 use internet2::addr::{InetSocketAddr, NodeAddr};
 use microservices::shell::Exec;
@@ -25,10 +15,25 @@ use microservices::shell::Exec;
 use clap::IntoApp;
 use clap_complete::generate;
 use clap_complete::shells::*;
-use farcaster_core::{blockchain::Network, negotiation::PublicOffer, role::SwapRole, swap::SwapId};
+use farcaster_core::{
+    blockchain::{Blockchain, Network},
+    role::SwapRole,
+    swap::SwapId,
+};
 
 use super::Command;
-use crate::rpc::{request, Client, Request};
+use crate::bus::{
+    ctl::{self, CtlMsg},
+    info::{Address, InfoMsg},
+    AddressSecretKey,
+};
+use crate::bus::{
+    BusMsg, CompleteHealthReport, DefaultHealthReport, Failure, FailureCode, HealthCheckSelector,
+    ReducedHealthReport,
+};
+use crate::cli::opts::CheckpointSelector;
+use crate::client::Client;
+use crate::syncerd::{Health, SweepAddressAddendum, SweepBitcoinAddress, SweepMoneroAddress};
 use crate::{Error, LogStyle, ServiceId};
 
 impl Exec for Command {
@@ -39,28 +44,78 @@ impl Exec for Command {
         debug!("Performing {:?}: {}", self, self);
         match self {
             Command::Info { subject } => {
-                if let Some(subj) = subject {
-                    if let Ok(node_addr) = NodeAddr::from_str(&subj) {
-                        runtime.request(ServiceId::Peer(node_addr), Request::GetInfo)?;
-                    } else if let Ok(swap_id) = SwapId::from_str(&subj) {
-                        runtime.request(ServiceId::Swap(swap_id), Request::GetInfo)?;
-                    } else {
-                        let err = format!(
-                            "{}",
-                            "Subject parameter must be either remote node \
-                            address or channel id represented by a hex string"
-                                .err()
-                        );
+                let err = format!(
+                    "{}",
+                    "Subject parameter must be either remote node address, swap id, or syncer"
+                        .err()
+                );
+                let target_service_id = match subject.len() {
+                    0 => {
+                        runtime.request_info(ServiceId::Farcasterd, InfoMsg::GetInfo)?;
+                        ServiceId::Farcasterd
+                    }
+                    1 => {
+                        let subj = subject.get(0).expect("vec of lenght 1");
+                        if let Ok(node_addr) = NodeAddr::from_str(subj) {
+                            runtime
+                                .request_info(ServiceId::Peer(0, node_addr), InfoMsg::GetInfo)?;
+                            ServiceId::Peer(0, node_addr)
+                        } else if let Ok(swap_id) = Uuid::from_str(subj).map(SwapId) {
+                            runtime.request_info(ServiceId::Swap(swap_id), InfoMsg::GetInfo)?;
+                            ServiceId::Swap(swap_id)
+                        } else {
+                            return Err(Error::Other(err));
+                        }
+                    }
+                    2 => {
+                        let blockchain =
+                            Blockchain::from_str(subject.get(0).expect("vec of lenght 2"))?;
+                        let network = Network::from_str(subject.get(1).expect("vec of lenght 2"))?;
+                        runtime.request_info(
+                            ServiceId::Syncer(blockchain, network),
+                            InfoMsg::GetInfo,
+                        )?;
+                        ServiceId::Syncer(blockchain, network)
+                    }
+                    _ => {
                         return Err(Error::Other(err));
                     }
-                } else {
-                    // subject is none
-                    runtime.request(ServiceId::Farcasterd, Request::GetInfo)?;
-                }
+                };
                 match runtime.response()? {
-                    Request::NodeInfo(info) => println!("{}", info),
-                    Request::PeerInfo(info) => println!("{}", info),
-                    Request::SwapInfo(info) => println!("{}", info),
+                    BusMsg::Info(InfoMsg::NodeInfo(info)) => println!("{}", info),
+                    BusMsg::Info(InfoMsg::PeerInfo(info)) => println!("{}", info),
+                    BusMsg::Info(InfoMsg::SwapInfo(info)) => println!("{}", info),
+                    BusMsg::Info(InfoMsg::SyncerInfo(info)) => println!("{}", info),
+                    BusMsg::Ctl(CtlMsg::Failure(Failure { code, .. }))
+                        if code == FailureCode::TargetServiceNotFound =>
+                    {
+                        match target_service_id {
+                            ServiceId::Peer(_, node_addr) => {
+                                return Err(Error::Farcaster(format!(
+                                    "No connected peerd with address {}",
+                                    node_addr
+                                )));
+                            }
+                            ServiceId::Swap(swap_id) => {
+                                return Err(Error::Farcaster(format!(
+                                    "No running swap with id {}",
+                                    swap_id
+                                )));
+                            }
+                            ServiceId::Syncer(blockchain, network) => {
+                                return Err(Error::Farcaster(format!(
+                                    "No running syncer for {} {}",
+                                    blockchain, network
+                                )));
+                            }
+                            _ => {
+                                return Err(Error::Farcaster(format!(
+                                    "The service {:?} does not exist",
+                                    subject
+                                )));
+                            }
+                        }
+                    }
                     _ => {
                         return Err(Error::Other(
                             "Server returned unrecognizable response".to_string(),
@@ -70,35 +125,141 @@ impl Exec for Command {
             }
 
             Command::Peers => {
-                runtime.request(ServiceId::Farcasterd, Request::ListPeers)?;
+                runtime.request_info(ServiceId::Farcasterd, InfoMsg::ListPeers)?;
                 runtime.report_response_or_fail()?;
             }
 
             Command::ListSwaps => {
-                runtime.request(ServiceId::Farcasterd, Request::ListSwaps)?;
+                runtime.request_info(ServiceId::Farcasterd, InfoMsg::ListSwaps)?;
                 runtime.report_response_or_fail()?;
             }
 
-            // TODO: only list offers matching list of OfferIds
-            Command::ListOffers { select } => {
-                runtime.request(ServiceId::Farcasterd, Request::ListOffers(select.into()))?;
+            // TODO: only list deals matching list of DealIds
+            Command::ListDeals { select } => {
+                runtime.request_info(ServiceId::Farcasterd, InfoMsg::ListDeals(select.into()))?;
+                runtime.report_response_or_fail()?;
+            }
+
+            Command::ListTasks {
+                blockchain,
+                network,
+            } => {
+                runtime.request_info(ServiceId::Syncer(blockchain, network), InfoMsg::ListTasks)?;
                 runtime.report_response_or_fail()?;
             }
 
             Command::ListListens => {
-                runtime.request(ServiceId::Farcasterd, Request::ListListens)?;
+                runtime.request_info(ServiceId::Farcasterd, InfoMsg::ListListens)?;
                 runtime.report_response_or_fail()?;
             }
 
-            Command::ListCheckpoints => {
-                runtime.request(ServiceId::Database, Request::RetrieveAllCheckpointInfo)?;
+            Command::ListCheckpoints { select } => {
+                match select {
+                    CheckpointSelector::All => {
+                        runtime.request_info(
+                            ServiceId::Database,
+                            InfoMsg::RetrieveAllCheckpointInfo,
+                        )?;
+                    }
+                    CheckpointSelector::AvailableForRestore => {
+                        runtime.request_info(
+                            ServiceId::Database,
+                            InfoMsg::RetrieveAllCheckpointInfo,
+                        )?;
+                        if let BusMsg::Info(InfoMsg::CheckpointList(list)) =
+                            runtime.report_failure()?
+                        {
+                            runtime.request_info(
+                                ServiceId::Farcasterd,
+                                InfoMsg::CheckpointList(list),
+                            )?;
+                        } else {
+                            return Err(Error::Farcaster(
+                                "Received unexpected response".to_string(),
+                            ));
+                        }
+                    }
+                }
                 runtime.report_response_or_fail()?;
             }
 
             Command::RestoreCheckpoint { swap_id } => {
-                runtime.request(ServiceId::Farcasterd, Request::RestoreCheckpoint(swap_id))?;
+                runtime.request_info(ServiceId::Database, InfoMsg::GetCheckpointEntry(swap_id))?;
+                if let BusMsg::Info(InfoMsg::CheckpointEntry(entry)) = runtime.report_failure()? {
+                    runtime.request_ctl(ServiceId::Farcasterd, CtlMsg::RestoreCheckpoint(entry))?;
+                    runtime.report_response_or_fail()?;
+                } else {
+                    return Err(Error::Farcaster("Received unexpected response".to_string()));
+                }
+            }
+
+            Command::Connect { swap_id } => {
+                runtime.request_ctl(ServiceId::Farcasterd, CtlMsg::Connect(swap_id))?;
                 runtime.report_response_or_fail()?;
             }
+
+            Command::HealthCheck { ref selector } => match selector {
+                // no selector, check only mainnet and testnet
+                None => {
+                    use Blockchain::*;
+                    use Network::*;
+
+                    let bitcoin_testnet_health = self.check_health(runtime, Bitcoin, Testnet)?;
+                    let bitcoin_mainnet_health = self.check_health(runtime, Bitcoin, Mainnet)?;
+
+                    let monero_testnet_health = self.check_health(runtime, Monero, Testnet)?;
+                    let monero_mainnet_health = self.check_health(runtime, Monero, Mainnet)?;
+
+                    println!(
+                        "{}",
+                        DefaultHealthReport {
+                            bitcoin_testnet_health,
+                            bitcoin_mainnet_health,
+                            monero_testnet_health,
+                            monero_mainnet_health,
+                        }
+                    );
+                }
+                // user selected a specific network
+                Some(HealthCheckSelector::Network(network)) => {
+                    use Blockchain::*;
+
+                    let bitcoin_health = self.check_health(runtime, Bitcoin, *network)?;
+                    let monero_health = self.check_health(runtime, Monero, *network)?;
+                    println!(
+                        "{}",
+                        ReducedHealthReport {
+                            bitcoin_health,
+                            monero_health,
+                        }
+                    );
+                }
+                // check all networks
+                Some(HealthCheckSelector::All) => {
+                    use Blockchain::*;
+                    use Network::*;
+
+                    let bitcoin_testnet_health = self.check_health(runtime, Bitcoin, Testnet)?;
+                    let bitcoin_mainnet_health = self.check_health(runtime, Bitcoin, Mainnet)?;
+                    let bitcoin_local_health = self.check_health(runtime, Bitcoin, Local)?;
+
+                    let monero_testnet_health = self.check_health(runtime, Monero, Testnet)?;
+                    let monero_mainnet_health = self.check_health(runtime, Monero, Mainnet)?;
+                    let monero_local_health = self.check_health(runtime, Monero, Local)?;
+
+                    println!(
+                        "{}",
+                        CompleteHealthReport {
+                            bitcoin_testnet_health,
+                            bitcoin_mainnet_health,
+                            bitcoin_local_health,
+                            monero_testnet_health,
+                            monero_mainnet_health,
+                            monero_local_health,
+                        }
+                    );
+                }
+            },
 
             Command::Make {
                 network,
@@ -113,8 +274,7 @@ impl Exec for Command {
                 fee_strategy,
                 maker_role,
                 public_ip_addr,
-                bind_ip_addr,
-                port,
+                public_port,
             } => {
                 // Monero local address types are mainnet address types
                 if network != accordant_addr.network.into() && network != Network::Local {
@@ -156,8 +316,8 @@ impl Exec for Command {
                     );
                     return Ok(());
                 }
-                let offer = Offer {
-                    uuid: Uuid::new_v4(),
+                let deal_parameters = DealParameters {
+                    uuid: Uuid::new().into(),
                     network,
                     arbitrating_blockchain,
                     accordant_blockchain,
@@ -168,47 +328,39 @@ impl Exec for Command {
                     fee_strategy,
                     maker_role,
                 };
-                let public_addr = InetSocketAddr::socket(public_ip_addr, port);
-                let bind_addr = InetSocketAddr::socket(bind_ip_addr, port);
-                let proto_offer = request::ProtoPublicOffer {
-                    offer,
+                let public_addr = InetSocketAddr::socket(public_ip_addr, public_port);
+                let proto_deal = ctl::ProtoDeal {
+                    deal_parameters,
                     public_addr,
-                    bind_addr,
                     arbitrating_addr,
                     accordant_addr,
                 };
-                runtime.request(ServiceId::Farcasterd, Request::MakeOffer(proto_offer))?;
+                runtime.request_ctl(ServiceId::Farcasterd, CtlMsg::MakeDeal(proto_deal))?;
                 // report success or failure of the request to cli
                 runtime.report_response_or_fail()?;
             }
 
-            Command::OfferInfo { public_offer } => {
-                println!(
-                    "\n Trading {}\n",
-                    offer_buy_information(&public_offer.offer)
-                );
-                println!(
-                    "{}",
-                    serde_yaml::to_string(&public_offer).expect("already parsed")
-                );
+            Command::DealInfo { deal } => {
+                println!("\n Trading {}\n", deal_buy_information(&deal.parameters));
+                println!("{}", serde_yaml::to_string(&deal).expect("already parsed"));
             }
 
             Command::Take {
-                public_offer,
+                deal,
                 bitcoin_address,
                 monero_address,
                 without_validation,
             } => {
-                let PublicOffer {
+                let Deal {
                     version: _,
-                    offer,
+                    parameters: deal_parameters,
                     node_id,
                     peer_address,
-                } = public_offer.clone();
+                } = deal.clone();
 
-                let network = offer.network;
-                let arbitrating_amount = offer.arbitrating_amount;
-                let accordant_amount = offer.accordant_amount;
+                let network = deal_parameters.network;
+                let arbitrating_amount = deal_parameters.arbitrating_amount;
+                let accordant_amount = deal_parameters.accordant_amount;
 
                 if network != bitcoin_address.network.into() {
                     eprintln!(
@@ -254,33 +406,34 @@ impl Exec for Command {
 
                 if !without_validation {
                     println!(
-                        "\nWant to buy {}?\n\nCarefully validate offer!\n",
-                        offer_buy_information(&offer)
+                        "\nWant to buy {}?\n\nCarefully validate the deal!\n",
+                        deal_buy_information(&deal.parameters)
                     );
                     println!("Trade counterparty: {}@{}\n", &node_id, peer_address);
-                    println!(
-                        "{}",
-                        serde_yaml::to_string(&public_offer).expect("already parsed")
-                    );
+                    println!("{}", serde_yaml::to_string(&deal).expect("already parsed"));
                 }
-                if without_validation || take_offer() {
-                    // pass offer to farcasterd to initiate the swap
-                    runtime.request(
+                if without_validation || take_deal() {
+                    // pass deal to farcasterd to initiate the swap
+                    runtime.request_ctl(
                         ServiceId::Farcasterd,
-                        Request::TakeOffer((public_offer, bitcoin_address, monero_address).into()),
+                        CtlMsg::TakeDeal(ctl::PubDeal {
+                            deal,
+                            bitcoin_address,
+                            monero_address,
+                        }),
                     )?;
                     // report success of failure of the request to cli
                     runtime.report_response_or_fail()?;
                 }
             }
 
-            Command::RevokeOffer { public_offer } => {
-                runtime.request(ServiceId::Farcasterd, Request::RevokeOffer(public_offer))?;
+            Command::RevokeDeal { deal } => {
+                runtime.request_ctl(ServiceId::Farcasterd, CtlMsg::RevokeDeal(deal))?;
                 runtime.report_response_or_fail()?;
             }
 
             Command::AbortSwap { swap_id } => {
-                runtime.request(ServiceId::Swap(swap_id), Request::AbortSwap)?;
+                runtime.request_ctl(ServiceId::Swap(swap_id), CtlMsg::AbortSwap)?;
                 runtime.report_response_or_fail()?;
             }
 
@@ -288,23 +441,32 @@ impl Exec for Command {
                 if follow {
                     // subscribe to progress event and loop until Finish event is received or user
                     // ctrl-c the cli. Expect to recieve a stream of event responses
-                    runtime.request(ServiceId::Farcasterd, Request::SubscribeProgress(swapid))?;
+                    runtime
+                        .request_info(ServiceId::Farcasterd, InfoMsg::SubscribeProgress(swapid))?;
                     let res = runtime.report_progress();
                     // if user didn't ctrl-c before that point we can cleanly unsubscribe the
                     // client from the notification stream and then return the result from report
                     // progress
-                    runtime.request(ServiceId::Farcasterd, Request::UnsubscribeProgress(swapid))?;
+                    runtime.request_info(
+                        ServiceId::Farcasterd,
+                        InfoMsg::UnsubscribeProgress(swapid),
+                    )?;
                     return res;
                 } else {
                     // request a read progress response. Expect to recieve only one response and
                     // quit
-                    runtime.request(ServiceId::Farcasterd, Request::ReadProgress(swapid))?;
+                    runtime.request_info(ServiceId::Farcasterd, InfoMsg::ReadProgress(swapid))?;
                     runtime.report_response_or_fail()?;
                 }
             }
 
             Command::NeedsFunding { blockchain } => {
-                runtime.request(ServiceId::Farcasterd, Request::NeedsFunding(blockchain))?;
+                runtime.request_info(ServiceId::Farcasterd, InfoMsg::NeedsFunding(blockchain))?;
+                runtime.report_response_or_fail()?;
+            }
+
+            Command::ListFundingAddresses { blockchain } => {
+                runtime.request_info(ServiceId::Database, InfoMsg::GetAddresses(blockchain))?;
                 runtime.report_response_or_fail()?;
             }
 
@@ -312,18 +474,20 @@ impl Exec for Command {
                 source_address,
                 destination_address,
             } => {
-                runtime.request(
+                runtime.request_info(
                     ServiceId::Database,
-                    Request::GetAddressSecretKey(Address::Bitcoin(source_address.clone())),
+                    InfoMsg::GetAddressSecretKey(Address::Bitcoin(source_address.clone())),
                 )?;
-                if let Request::AddressSecretKey(AddressSecretKey::Bitcoin { secret_key, .. }) =
-                    runtime.report_failure()?
+                if let BusMsg::Info(InfoMsg::AddressSecretKey(AddressSecretKey::Bitcoin {
+                    secret_key_info,
+                    ..
+                })) = runtime.report_failure()?
                 {
-                    runtime.request(
+                    runtime.request_ctl(
                         ServiceId::Farcasterd,
-                        Request::SweepAddress(SweepAddressAddendum::Bitcoin(SweepBitcoinAddress {
+                        CtlMsg::SweepAddress(SweepAddressAddendum::Bitcoin(SweepBitcoinAddress {
                             source_address,
-                            source_secret_key: secret_key,
+                            source_secret_key: secret_key_info.secret_key,
                             destination_address,
                         })),
                     )?;
@@ -333,24 +497,45 @@ impl Exec for Command {
                 }
             }
 
+            Command::GetBalance { address } => {
+                runtime.request_info(ServiceId::Database, InfoMsg::GetAddressSecretKey(address))?;
+                if let BusMsg::Info(InfoMsg::AddressSecretKey(address_secret_key)) =
+                    runtime.report_failure()?
+                {
+                    runtime.request_ctl(
+                        ServiceId::Farcasterd,
+                        CtlMsg::GetBalance(address_secret_key),
+                    )?;
+                    runtime.report_response_or_fail()?;
+                } else {
+                    return Err(Error::Farcaster(
+                        "Can only get balance for old funding addresses. Address not found"
+                            .to_string(),
+                    ));
+                }
+            }
+
             Command::SweepMoneroAddress {
                 source_address,
                 destination_address,
             } => {
-                runtime.request(
+                runtime.request_info(
                     ServiceId::Database,
-                    Request::GetAddressSecretKey(Address::Monero(source_address)),
+                    InfoMsg::GetAddressSecretKey(Address::Monero(source_address)),
                 )?;
-                if let Request::AddressSecretKey(AddressSecretKey::Monero { view, spend, .. }) =
-                    runtime.report_failure()?
+                if let BusMsg::Info(InfoMsg::AddressSecretKey(AddressSecretKey::Monero {
+                    secret_key_info,
+                    ..
+                })) = runtime.report_failure()?
                 {
-                    runtime.request(
+                    runtime.request_ctl(
                         ServiceId::Farcasterd,
-                        Request::SweepAddress(SweepAddressAddendum::Monero(SweepMoneroAddress {
-                            source_spend_key: spend,
-                            source_view_key: view,
+                        CtlMsg::SweepAddress(SweepAddressAddendum::Monero(SweepMoneroAddress {
+                            source_spend_key: secret_key_info.spend,
+                            source_view_key: secret_key_info.view,
                             destination_address,
                             minimum_balance: monero::Amount::from_pico(0),
+                            from_height: Some(secret_key_info.creation_height),
                         })),
                     )?;
                     runtime.report_response_or_fail()?;
@@ -381,33 +566,57 @@ impl Exec for Command {
     }
 }
 
-fn take_offer() -> bool {
-    println!("Take it? [y/n]");
-    let mut input = [0u8; 1];
-    std::io::stdin().read_exact(&mut input).unwrap_or(());
-    match std::str::from_utf8(&input[..]) {
-        Ok("y") | Ok("Y") => true,
-        Ok("n") | Ok("N") => {
-            println!("Rejecting offer");
-            false
+impl Command {
+    /// Check syncer (coin, net) health via farcasterd and return a [`Health`] result
+    fn check_health(
+        &self,
+        runtime: &mut Client,
+        blockchain: Blockchain,
+        network: Network,
+    ) -> Result<Health, Error> {
+        runtime.request_ctl(
+            ServiceId::Farcasterd,
+            CtlMsg::HealthCheck(blockchain, network),
+        )?;
+        match runtime.response()? {
+            BusMsg::Ctl(CtlMsg::HealthResult(health)) => Ok(health),
+            _ => Err(Error::Other(
+                "Server returned unexpected response for call health check".to_string(),
+            )),
         }
-        _ => take_offer(),
     }
 }
 
-fn offer_buy_information(offer: &Offer) -> String {
-    match offer.maker_role.other() {
+fn take_deal() -> bool {
+    println!("Deal or No Deal? [y/n]");
+    let mut input = [0u8; 1];
+    std::io::stdin().read_exact(&mut input).unwrap_or(());
+    match std::str::from_utf8(&input[..]) {
+        Ok("y") | Ok("Y") => {
+            println!("Deal!");
+            true
+        }
+        Ok("n") | Ok("N") => {
+            println!("No Deal!");
+            false
+        }
+        _ => take_deal(),
+    }
+}
+
+fn deal_buy_information(deal_parameters: &DealParameters) -> String {
+    match deal_parameters.maker_role.other() {
         SwapRole::Alice => format!(
             "{} for {} at {} BTC/XMR",
-            offer.arbitrating_amount,
-            offer.accordant_amount,
-            offer.arbitrating_amount.as_btc() / offer.accordant_amount.as_xmr()
+            deal_parameters.arbitrating_amount,
+            deal_parameters.accordant_amount,
+            deal_parameters.arbitrating_amount.as_btc() / deal_parameters.accordant_amount.as_xmr()
         ),
         SwapRole::Bob => format!(
             "{} for {} at {} XMR/BTC",
-            offer.accordant_amount,
-            offer.arbitrating_amount,
-            offer.accordant_amount.as_xmr() / offer.arbitrating_amount.as_btc()
+            deal_parameters.accordant_amount,
+            deal_parameters.arbitrating_amount,
+            deal_parameters.accordant_amount.as_xmr() / deal_parameters.arbitrating_amount.as_btc()
         ),
     }
 }
