@@ -265,13 +265,15 @@ impl AliceSwapKeyManager {
             "Proposing to take swap".bright_white_bold(),
         ));
 
-        let msg = format!(
-            "Proposing to take swap {} to Maker remote peer",
-            runtime.swap_id.swap_id()
-        );
         // Ignoring possible reporting errors here and after: do not want to
         // halt the swap just because the client disconnected
-        let _ = runtime.report_progress_message(event.endpoints, msg);
+        let _ = runtime.report_progress_message(
+            event.endpoints,
+            format!(
+                "Proposing to take swap {} to Maker remote peer",
+                runtime.swap_id
+            ),
+        );
 
         let engine = CommitmentEngine;
         Ok(local_params.commit_alice(runtime.swap_id, &engine))
@@ -690,13 +692,15 @@ impl BobSwapKeyManager {
             "Proposing to take swap".bright_white_bold(),
         ));
 
-        let msg = format!(
-            "Proposing to take swap {} to Maker remote peer",
-            runtime.swap_id.swap_id()
-        );
         // Ignoring possible reporting errors here and after: do not want to
         // halt the swap just because the client disconnected
-        let _ = runtime.report_progress_message(event.endpoints, msg);
+        let _ = runtime.report_progress_message(
+            event.endpoints,
+            format!(
+                "Proposing to take swap {} to Maker remote peer",
+                runtime.swap_id
+            ),
+        );
 
         let engine = CommitmentEngine;
         Ok(local_params.commit_bob(runtime.swap_id, &engine))
