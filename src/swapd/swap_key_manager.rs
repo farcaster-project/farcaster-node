@@ -4,7 +4,7 @@
 // license that can be found in the LICENSE file or at
 // https://opensource.org/licenses/MIT.
 
-use std::{convert::TryInto, io};
+use std::convert::TryInto;
 
 use bitcoin::secp256k1::ecdsa::Signature;
 use farcaster_core::{
@@ -13,7 +13,7 @@ use farcaster_core::{
         BitcoinSegwitV0,
     },
     blockchain::FeePriority,
-    consensus::{self, CanonicalBytes, Decodable, Encodable},
+    consensus::{self, Decodable, Encodable},
     crypto::{ArbitratingKeyId, CommitmentEngine, GenerateKey, ProveCrossGroupDleq, SharedKeyId},
     impl_strict_encoding,
     monero::{Monero, SHARED_VIEW_KEY_ID},
@@ -94,7 +94,7 @@ impl Decodable for WrappedEncryptedSignature {
 }
 impl_strict_encoding!(WrappedEncryptedSignature);
 
-#[derive(Display, Clone, Debug)]
+#[derive(Display, Clone, Debug, StrictEncode, StrictDecode)]
 #[display("Alice's Swap Key Manager")]
 pub struct AliceSwapKeyManager {
     pub alice: Alice,
@@ -104,60 +104,7 @@ pub struct AliceSwapKeyManager {
     pub target_monero_address: monero::Address,
 }
 
-impl Encodable for AliceSwapKeyManager {
-    fn consensus_encode<W: io::Write>(&self, writer: &mut W) -> Result<usize, io::Error> {
-        let mut len = self.alice.consensus_encode(writer)?;
-        len += self.local_params.consensus_encode(writer)?;
-        len += self.key_manager.consensus_encode(writer)?;
-        len += self
-            .target_bitcoin_address
-            .as_canonical_bytes()
-            .consensus_encode(writer)?;
-        len += self
-            .target_monero_address
-            .as_canonical_bytes()
-            .consensus_encode(writer)?;
-        Ok(len)
-    }
-}
-
-impl Decodable for AliceSwapKeyManager {
-    fn consensus_decode<D: io::Read>(d: &mut D) -> Result<Self, consensus::Error> {
-        Ok(AliceSwapKeyManager {
-            alice: Decodable::consensus_decode(d)?,
-            local_params: Decodable::consensus_decode(d)?,
-            key_manager: Decodable::consensus_decode(d)?,
-            target_bitcoin_address: bitcoin::Address::from_canonical_bytes(
-                farcaster_core::unwrap_vec_ref!(d).as_ref(),
-            )?,
-            target_monero_address: monero::Address::from_canonical_bytes(
-                farcaster_core::unwrap_vec_ref!(d).as_ref(),
-            )?,
-        })
-    }
-}
-
-impl_strict_encoding!(AliceSwapKeyManager);
-
-impl AliceSwapKeyManager {
-    pub fn new(
-        alice: Alice,
-        local_params: Parameters,
-        key_manager: KeyManager,
-        target_bitcoin_address: bitcoin::Address,
-        target_monero_address: monero::Address,
-    ) -> Self {
-        Self {
-            alice,
-            local_params,
-            key_manager,
-            target_bitcoin_address,
-            target_monero_address,
-        }
-    }
-}
-
-#[derive(Display, Clone, Debug)]
+#[derive(Display, Clone, Debug, StrictEncode, StrictDecode)]
 #[display("Bob's Swap Key Manager")]
 pub struct BobSwapKeyManager {
     pub bob: Bob,
@@ -167,63 +114,6 @@ pub struct BobSwapKeyManager {
     pub target_bitcoin_address: bitcoin::Address,
     pub target_monero_address: monero::Address,
 }
-
-impl Encodable for BobSwapKeyManager {
-    fn consensus_encode<W: io::Write>(&self, writer: &mut W) -> Result<usize, io::Error> {
-        let mut len = self.bob.consensus_encode(writer)?;
-        len += self.local_params.consensus_encode(writer)?;
-        len += self.key_manager.consensus_encode(writer)?;
-        len += self.funding_tx.consensus_encode(writer)?;
-        len += self
-            .target_bitcoin_address
-            .as_canonical_bytes()
-            .consensus_encode(writer)?;
-        len += self
-            .target_monero_address
-            .as_canonical_bytes()
-            .consensus_encode(writer)?;
-        Ok(len)
-    }
-}
-
-impl Decodable for BobSwapKeyManager {
-    fn consensus_decode<D: io::Read>(d: &mut D) -> Result<Self, consensus::Error> {
-        Ok(BobSwapKeyManager {
-            bob: Decodable::consensus_decode(d)?,
-            local_params: Decodable::consensus_decode(d)?,
-            key_manager: Decodable::consensus_decode(d)?,
-            funding_tx: Decodable::consensus_decode(d)?,
-            target_bitcoin_address: bitcoin::Address::from_canonical_bytes(
-                farcaster_core::unwrap_vec_ref!(d).as_ref(),
-            )?,
-            target_monero_address: monero::Address::from_canonical_bytes(
-                farcaster_core::unwrap_vec_ref!(d).as_ref(),
-            )?,
-        })
-    }
-}
-
-impl BobSwapKeyManager {
-    pub fn new(
-        bob: Bob,
-        local_params: Parameters,
-        key_manager: KeyManager,
-        funding_tx: FundingTx,
-        target_bitcoin_address: bitcoin::Address,
-        target_monero_address: monero::Address,
-    ) -> Self {
-        Self {
-            bob,
-            local_params,
-            key_manager,
-            funding_tx,
-            target_bitcoin_address,
-            target_monero_address,
-        }
-    }
-}
-
-impl_strict_encoding!(BobSwapKeyManager);
 
 impl AliceSwapKeyManager {
     pub fn local_params(&self) -> Parameters {
@@ -244,14 +134,13 @@ impl AliceSwapKeyManager {
             FeePriority::Low,
         );
         let local_params = alice.generate_parameters(&mut key_manager, &runtime.deal)?;
-        Ok(AliceSwapKeyManager::new(
+        Ok(AliceSwapKeyManager {
             alice,
             local_params,
             key_manager,
-            // None,
             target_bitcoin_address,
             target_monero_address,
-        ))
+        })
     }
 
     pub fn taker_commit(
@@ -293,13 +182,13 @@ impl AliceSwapKeyManager {
         );
         let local_params = alice.generate_parameters(&mut key_manager, &runtime.deal)?;
         runtime.log_info(format!("Loading {}", "Alice Swap Key Manager".label()));
-        Ok(AliceSwapKeyManager::new(
+        Ok(AliceSwapKeyManager {
             alice,
             local_params,
             key_manager,
             target_bitcoin_address,
             target_monero_address,
-        ))
+        })
     }
 
     pub fn maker_commit(
@@ -658,8 +547,8 @@ impl BobSwapKeyManager {
             FeePriority::Low,
         );
         let local_params = bob.generate_parameters(&mut key_manager, &runtime.deal)?;
-        let funding = create_funding(&mut key_manager, deal_parameters.network)?;
-        let funding_addr = funding.get_address()?;
+        let funding_tx = create_funding(&mut key_manager, deal_parameters.network)?;
+        let funding_addr = funding_tx.get_address()?;
         event.send_ctl_service(
             ServiceId::Database,
             CtlMsg::SetAddressSecretKey(AddressSecretKey::Bitcoin {
@@ -671,14 +560,14 @@ impl BobSwapKeyManager {
             }),
         )?;
         runtime.log_info(format!("Loading {}", "Bob's Swap Key Manager".label()));
-        Ok(BobSwapKeyManager::new(
+        Ok(BobSwapKeyManager {
             bob,
             local_params,
             key_manager,
-            funding,
+            funding_tx,
             target_bitcoin_address,
             target_monero_address,
-        ))
+        })
     }
 
     pub fn taker_commit(
@@ -724,8 +613,8 @@ impl BobSwapKeyManager {
             FeePriority::Low,
         );
         let local_params = bob.generate_parameters(&mut key_manager, &runtime.deal)?;
-        let funding = create_funding(&mut key_manager, deal_parameters.network)?;
-        let funding_addr = funding.get_address()?;
+        let funding_tx = create_funding(&mut key_manager, deal_parameters.network)?;
+        let funding_addr = funding_tx.get_address()?;
         event.send_ctl_service(
             ServiceId::Database,
             CtlMsg::SetAddressSecretKey(AddressSecretKey::Bitcoin {
@@ -737,14 +626,14 @@ impl BobSwapKeyManager {
             }),
         )?;
         runtime.log_info(format!("Loading {}", "Bob's Swap Key Manager".label()));
-        Ok(BobSwapKeyManager::new(
+        Ok(BobSwapKeyManager {
             bob,
             local_params,
             key_manager,
-            funding,
+            funding_tx,
             target_bitcoin_address,
             target_monero_address,
-        ))
+        })
     }
 
     pub fn maker_commit(
