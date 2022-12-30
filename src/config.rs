@@ -672,7 +672,9 @@ pub fn parse_config(path: &str) -> Result<Config, Error> {
         info!("Loading config file at: {}", &config_file);
         let mut settings = config::Config::default();
         settings.merge(config::File::with_name(config_file).required(true))?;
-        settings.try_into::<Config>().map_err(Into::into)
+        let conf = settings.try_into::<Config>().map_err(Into::into);
+        trace!("{:#?}", conf);
+        conf
     } else {
         info!("No configuration file found, generating default config");
         let config = Config::default();
