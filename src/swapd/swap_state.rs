@@ -43,10 +43,7 @@ use crate::{
         ctl::{FundingInfo, Tx},
         info::InfoMsg,
     },
-    swapd::{
-        runtime::aggregate_xmr_spend_view,
-        swap_key_manager::{HandleBuyProcedureSignatureRes, HandleRefundProcedureSignaturesRes},
-    },
+    swapd::swap_key_manager::{HandleBuyProcedureSignatureRes, HandleRefundProcedureSignaturesRes},
     syncerd::{SweepSuccess, Task, TransactionConfirmations},
     Endpoints, Error,
 };
@@ -1150,8 +1147,7 @@ fn try_bob_funded_to_bob_refund_procedure_signature(
                 core_arbitrating_setup,
             )?;
             // Process params, aggregate and watch xmr address
-            let (spend, view) =
-                aggregate_xmr_spend_view(&remote_params, &swap_key_manager.local_params());
+            let (spend, view) = swap_key_manager.aggregate_xmr_spend_view(&remote_params);
             let address = monero::Address::from_viewpair(
                 runtime.syncer_state.network.into(),
                 &ViewPair { spend, view },
@@ -1591,8 +1587,7 @@ fn try_alice_core_arbitrating_setup_to_alice_arbitrating_lock_final(
             .final_tx(confirmations, Blockchain::Bitcoin)
             && runtime.syncer_state.tasks.watched_txs.get(&id) == Some(&TxLabel::Lock) =>
         {
-            let (spend, view) =
-                aggregate_xmr_spend_view(&swap_key_manager.local_params(), &remote_params);
+            let (spend, view) = swap_key_manager.aggregate_xmr_spend_view(&remote_params);
             let viewpair = ViewPair { spend, view };
             let address =
                 monero::Address::from_viewpair(runtime.syncer_state.network.into(), &viewpair);

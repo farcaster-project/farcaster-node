@@ -35,10 +35,8 @@ use bitcoin::Txid;
 use colored::ColoredString;
 use farcaster_core::{
     blockchain::Blockchain,
-    crypto::SharedKeyId,
-    monero::SHARED_VIEW_KEY_ID,
     role::{SwapRole, TradeRole},
-    swap::btcxmr::{Deal, DealParameters, Parameters},
+    swap::btcxmr::{Deal, DealParameters},
     swap::SwapId,
     transaction::TxLabel,
 };
@@ -842,25 +840,4 @@ pub trait SwapLogging {
         let (swap_id, swap_role, trade_role) = self.swap_info();
         format!("{} as {} {}", swap_id, swap_role, trade_role,).bright_blue_italic()
     }
-}
-
-pub fn aggregate_xmr_spend_view(
-    alice_params: &Parameters,
-    bob_params: &Parameters,
-) -> (monero::PublicKey, monero::PrivateKey) {
-    let alice_view = *alice_params
-        .accordant_shared_keys
-        .clone()
-        .into_iter()
-        .find(|vk| vk.tag() == &SharedKeyId::new(SHARED_VIEW_KEY_ID))
-        .expect("accordant shared keys should always have a view key")
-        .elem();
-    let bob_view = *bob_params
-        .accordant_shared_keys
-        .clone()
-        .into_iter()
-        .find(|vk| vk.tag() == &SharedKeyId::new(SHARED_VIEW_KEY_ID))
-        .expect("accordant shared keys should always have a view key")
-        .elem();
-    (alice_params.spend + bob_params.spend, alice_view + bob_view)
 }
