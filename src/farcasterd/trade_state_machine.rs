@@ -1587,11 +1587,10 @@ fn attempt_transition_to_end(
                                 }
                                 Err(err) => {
                                     if (err.to_string().contains("not enough") && err.to_string().contains("money")) || retries == 0 {
-                                        log_helper.log_warn(format!("{}", err));
-                                        log_helper.log_error(format!("{} | Auto-funding Monero transaction failed, pushing to cli, use `swap-cli needs-funding Monero` to retrieve address and amount", &swap_id.swap_id()));
+                                        log_helper.log_error(format!("Auto-funding Monero transaction failed, pushing to cli, use `swap-cli needs-funding Monero` to retrieve address and amount: {}", err));
                                         break;
                                     } else {
-                                        log_helper.log_warn(format!("{} | Auto-funding Monero transaction failed with {}, retrying, {} retries left", &swap_id.swap_id(), err, retries));
+                                        log_helper.log_warn(format!("Auto-funding Monero transaction failed with {}, retrying, {} retries left", err, retries));
                                         tokio::time::sleep(std::time::Duration::from_millis(10 * retries)).await;
                                     }
                                 }
@@ -1629,11 +1628,7 @@ fn attempt_transition_to_end(
 
         (BusMsg::Ctl(CtlMsg::FundingCompleted(blockchain)), _) => {
             runtime.stats.incr_funded(&blockchain, &swap_id);
-            log_helper.log_info(format!(
-                "{} | Your {} funding completed",
-                swap_id.swap_id(),
-                blockchain.label()
-            ));
+            log_helper.log_info(format!("Your {} funding completed", blockchain.label()));
             Ok(Some(TradeStateMachine::SwapdRunning(SwapdRunning {
                 peerd,
                 deal,
@@ -1650,11 +1645,7 @@ fn attempt_transition_to_end(
 
         (BusMsg::Ctl(CtlMsg::FundingCanceled(blockchain)), _) => {
             runtime.stats.incr_funding_canceled(&blockchain, &swap_id);
-            log_helper.log_info(format!(
-                "{} | Your {} funding was canceled.",
-                swap_id.swap_id(),
-                blockchain.label()
-            ));
+            log_helper.log_info(format!("Your {} funding was canceled.", blockchain.label()));
             Ok(Some(TradeStateMachine::SwapdRunning(SwapdRunning {
                 peerd,
                 deal,
