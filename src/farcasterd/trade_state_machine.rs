@@ -345,8 +345,7 @@ impl TradeStateMachine {
 
     pub fn swap_role(&self) -> Option<SwapRole> {
         self.deal()
-            .map(|d| self.trade_role().map(|t| d.swap_role(&t)))
-            .flatten()
+            .and_then(|d| self.trade_role().map(|t| d.swap_role(&t)))
     }
 
     pub fn consumed_deal(&self) -> Option<(Deal, TradeRole)> {
