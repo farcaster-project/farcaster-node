@@ -454,6 +454,14 @@ where
         }
         Ok(())
     }
+
+    /// Helper function returning no min nor max amounts
+    pub fn none() -> Self {
+        Self {
+            min_amount: None,
+            max_amount: None,
+        }
+    }
 }
 
 impl ArbConfig {
@@ -611,10 +619,7 @@ impl Default for SwapConfig {
                 }),
                 testnet: Some(ChainSwapConfig {
                     temporality: ArbConfig::btc_testnet_default(),
-                    amounts: TradeableAmounts {
-                        max_amount: None,
-                        min_amount: None,
-                    },
+                    amounts: TradeableAmounts::none(),
                 }),
                 local: None,
             },
@@ -625,10 +630,7 @@ impl Default for SwapConfig {
                 }),
                 testnet: Some(ChainSwapConfig {
                     temporality: AccConfig::xmr_testnet_default(),
-                    amounts: TradeableAmounts {
-                        max_amount: None,
-                        min_amount: None,
-                    },
+                    amounts: TradeableAmounts::none(),
                 }),
                 local: None,
             },
