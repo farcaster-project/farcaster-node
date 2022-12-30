@@ -492,7 +492,7 @@ impl Runtime {
                     deal: self.deal.clone(),
                     local_trade_role: self.local_trade_role,
                     local_swap_role: self.deal.swap_role(&self.local_trade_role),
-                    connected_counterparty_node_id: get_node_id(&self.peer_service),
+                    connected_counterparty_node_id: self.peer_service.node_id(),
                 };
                 self.send_client_info(endpoints, source, InfoMsg::SwapInfo(info))?;
             }
@@ -766,7 +766,7 @@ impl Runtime {
                     pending_broadcasts: self.syncer_state.pending_broadcast_txs(),
                     xmr_addr_addendum: self.syncer_state.xmr_addr_addendum.clone(),
                     local_trade_role: self.local_trade_role,
-                    connected_counterparty_node_id: get_node_id(&self.peer_service),
+                    connected_counterparty_node_id: self.peer_service.node_id(),
                     deal: self.deal.clone(),
                 },
             })),
@@ -841,14 +841,6 @@ pub trait SwapLogging {
     fn log_prefix(&self) -> ColoredString {
         let (swap_id, swap_role, trade_role) = self.swap_info();
         format!("{} as {} {}", swap_id, swap_role, trade_role,).bright_blue_italic()
-    }
-}
-
-pub fn get_node_id(service: &ServiceId) -> Option<NodeId> {
-    if let ServiceId::Peer(_, addr) = service {
-        Some(addr.id)
-    } else {
-        None
     }
 }
 
