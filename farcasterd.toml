@@ -59,9 +59,9 @@ max_amount = "1 btc"
 # Number of confirmations required to consider a transaction final
 finality = 1
 # The minimum acceptable amount of monero to trade
-min_amount = "0.001 xmr"
+min_amount = "0.001 XMR"
 # The maximum acceptable amount of monero to trade
-max_amount = "20 xmr"
+max_amount = "20 XMR"
 
 # Defines grpc options
 [grpc]
