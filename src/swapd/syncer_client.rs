@@ -6,7 +6,7 @@
 
 use crate::{
     bus::ServiceBus,
-    service::{Endpoints, LogStyle, SwapLogging},
+    service::{Endpoints, LogStyle, SwapDetails, SwapLogging},
     syncerd::{
         Abort, AddressAddendum, BroadcastTransaction, BtcAddressAddendum, GetTx, SweepAddress,
         SweepAddressAddendum, SweepBitcoinAddress, SweepMoneroAddress, TaskTarget,
@@ -21,7 +21,6 @@ use farcaster_core::{
     role::{SwapRole, TradeRole},
     swap::SwapId,
     transaction::TxLabel,
-    Uuid,
 };
 use std::collections::HashMap;
 
@@ -70,7 +69,7 @@ pub struct SyncerState {
 }
 
 impl SwapLogging for SyncerState {
-    fn swap_info(&self) -> (Option<Uuid>, Option<SwapRole>, Option<TradeRole>) {
+    fn swap_details(&self) -> SwapDetails {
         (
             Some(self.swap_id.0),
             Some(self.local_swap_role),

@@ -10,7 +10,6 @@ use super::{
     temporal_safety::TemporalSafety,
     StateReport,
 };
-use crate::swapd::Opts;
 use crate::syncerd::bitcoin_syncer::p2wpkh_signed_tx_fee;
 use crate::syncerd::types::{Event, TransactionConfirmations};
 use crate::syncerd::{Abort, Task, TaskTarget};
@@ -22,6 +21,7 @@ use crate::{
     bus::{BusMsg, Outcome, ServiceBus},
     syncerd::{HeightChanged, TransactionRetrieved, XmrAddressAddendum},
 };
+use crate::{service::SwapDetails, swapd::Opts};
 use crate::{service::SwapLogging, swapd::temporal_safety::SWEEP_MONERO_THRESHOLD};
 use crate::{
     service::{Endpoints, Reporter},
@@ -41,7 +41,6 @@ use farcaster_core::{
     swap::btcxmr::{Deal, DealParameters, Parameters},
     swap::SwapId,
     transaction::TxLabel,
-    Uuid,
 };
 
 use internet2::addr::{NodeAddr, NodeId};
@@ -190,7 +189,7 @@ impl Reporter for Runtime {
 }
 
 impl SwapLogging for Runtime {
-    fn swap_info(&self) -> (Option<Uuid>, Option<SwapRole>, Option<TradeRole>) {
+    fn swap_details(&self) -> SwapDetails {
         (
             Some(self.swap_id.0),
             Some(self.local_swap_role),

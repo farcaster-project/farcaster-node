@@ -475,8 +475,10 @@ where
     }
 }
 
+pub type SwapDetails = (Option<Uuid>, Option<SwapRole>, Option<TradeRole>);
+
 pub trait SwapLogging {
-    fn swap_info(&self) -> (Option<Uuid>, Option<SwapRole>, Option<TradeRole>);
+    fn swap_details(&self) -> SwapDetails;
 
     fn log_info(&self, msg: impl std::fmt::Display) {
         info!("{} | {}", self.log_prefix(), msg);

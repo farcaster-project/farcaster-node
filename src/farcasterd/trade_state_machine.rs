@@ -12,7 +12,7 @@ use crate::bus::info::{InfoMsg, MadeDeal, TookDeal, ViewableDeal};
 use crate::bus::p2p::{Commit, PeerMsg};
 use crate::bus::{CheckpointEntry, DealInfo, DealStatus, Failure, FailureCode};
 use crate::farcasterd::runtime::{launch_swapd, syncer_up, Runtime};
-use crate::service::SwapLogging;
+use crate::service::{SwapDetails, SwapLogging};
 use crate::LogStyle;
 use crate::{
     bus::{BusMsg, Outcome},
@@ -282,7 +282,7 @@ struct LogHelper {
 }
 
 impl SwapLogging for LogHelper {
-    fn swap_info(&self) -> (Option<Uuid>, Option<SwapRole>, Option<TradeRole>) {
+    fn swap_details(&self) -> SwapDetails {
         (self.swap_id, self.swap_role, self.trade_role)
     }
 }
