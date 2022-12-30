@@ -1,6 +1,6 @@
 # Farcaster Node Diagrams
 
-This folder contains a collection of diagrams describing node's components behaviour. Different formats are used: [sequencediagram.org](https://sequencediagram.org/), [excalidraw](https://excalidraw.com) and [edotor.net](https://edotor.net/).
+This folder contains a collection of diagrams describing node's components behaviour. Different formats are used: [sequencediagram.org](https://sequencediagram.org/), [excalidraw](https://excalidraw.com).
 
 ## [Services' message flow](./sequencediagram.txt)
 
