@@ -20,8 +20,8 @@ This diagram presents the state recovery mechanism. During a swap checkpoints ar
 
 ![State recovery sequence](./staterecovery_sequencediagram.svg)
 
-## [Node buses design (excalidraw format)](./node-buses.excalidraw)
+## [Node busses design (excalidraw format)](./node-busses.excalidraw)
 
-This diagram shows the buses used by the microservices to communicate and who is communicating on which one. (All microservices have access to all buses, but some do not listen for every one.)
+This diagram shows the busses used by the microservices to communicate and who is communicating on which one. (All microservices have access to all busses, but some do not listen for every one.)
 
-![Node buses](./node-buses.svg)
+![Node busses](./node-busses.svg)
