@@ -276,13 +276,13 @@ impl StateMachine<Runtime, Error> for TradeStateMachine {
 }
 
 struct LogHelper {
-    swap_id: Option<SwapId>,
+    swap_id: Option<Uuid>,
     swap_role: Option<SwapRole>,
     trade_role: Option<TradeRole>,
 }
 
 impl SwapLogging for LogHelper {
-    fn swap_info(&self) -> (Option<SwapId>, Option<SwapRole>, Option<TradeRole>) {
+    fn swap_info(&self) -> (Option<Uuid>, Option<SwapRole>, Option<TradeRole>) {
         (self.swap_id, self.swap_role, self.trade_role)
     }
 }
@@ -293,7 +293,7 @@ impl StateMachineExecutor<Runtime, Error, TradeStateMachine> for TradeStateMachi
 impl TradeStateMachine {
     fn log_helper(&self) -> LogHelper {
         LogHelper {
-            swap_id: self.uuid().map(|u| u.into()),
+            swap_id: self.uuid(),
             swap_role: self.swap_role(),
             trade_role: self.trade_role(),
         }

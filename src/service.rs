@@ -14,6 +14,7 @@ use std::str::FromStr;
 use bitcoin::hashes::hex::{self, ToHex};
 use colored::Colorize;
 use farcaster_core::role::{SwapRole, TradeRole};
+use farcaster_core::Uuid;
 use internet2::addr::NodeId;
 use internet2::{
     addr::{NodeAddr, ServiceAddr},
@@ -475,7 +476,7 @@ where
 }
 
 pub trait SwapLogging {
-    fn swap_info(&self) -> (Option<SwapId>, Option<SwapRole>, Option<TradeRole>);
+    fn swap_info(&self) -> (Option<Uuid>, Option<SwapRole>, Option<TradeRole>);
 
     fn log_info(&self, msg: impl std::fmt::Display) {
         info!("{} | {}", self.log_prefix(), msg);

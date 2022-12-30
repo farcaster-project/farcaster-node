@@ -41,6 +41,7 @@ use farcaster_core::{
     swap::btcxmr::{Deal, DealParameters, Parameters},
     swap::SwapId,
     transaction::TxLabel,
+    Uuid,
 };
 
 use internet2::addr::{NodeAddr, NodeId};
@@ -189,9 +190,9 @@ impl Reporter for Runtime {
 }
 
 impl SwapLogging for Runtime {
-    fn swap_info(&self) -> (Option<SwapId>, Option<SwapRole>, Option<TradeRole>) {
+    fn swap_info(&self) -> (Option<Uuid>, Option<SwapRole>, Option<TradeRole>) {
         (
-            Some(self.swap_id),
+            Some(self.swap_id.0),
             Some(self.local_swap_role),
             Some(self.local_trade_role),
         )

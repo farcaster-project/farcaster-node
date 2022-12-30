@@ -21,6 +21,7 @@ use farcaster_core::{
     role::{SwapRole, TradeRole},
     swap::SwapId,
     transaction::TxLabel,
+    Uuid,
 };
 use std::collections::HashMap;
 
@@ -69,9 +70,9 @@ pub struct SyncerState {
 }
 
 impl SwapLogging for SyncerState {
-    fn swap_info(&self) -> (Option<SwapId>, Option<SwapRole>, Option<TradeRole>) {
+    fn swap_info(&self) -> (Option<Uuid>, Option<SwapRole>, Option<TradeRole>) {
         (
-            Some(self.swap_id),
+            Some(self.swap_id.0),
             Some(self.local_swap_role),
             Some(self.local_trade_role),
         )
