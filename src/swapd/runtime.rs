@@ -61,16 +61,11 @@ pub fn run(config: ServiceConfig, opts: Opts) -> Result<(), Error> {
     let DealParameters {
         cancel_timelock,
         punish_timelock,
-        maker_role, // SwapRole of maker (Alice or Bob)
         network,
         ..
     } = deal.parameters;
 
-    // alice or bob
-    let local_swap_role = match local_trade_role {
-        TradeRole::Maker => maker_role,
-        TradeRole::Taker => maker_role.other(),
-    };
+    let local_swap_role = deal.swap_role(&local_trade_role);
 
     let swap_state_machine = match (local_swap_role, local_trade_role) {
         (SwapRole::Alice, TradeRole::Maker) => SwapStateMachine::StartMaker(SwapRole::Alice),
