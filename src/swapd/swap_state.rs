@@ -22,7 +22,10 @@ use microservices::esb::Handler;
 use monero::ViewPair;
 use strict_encoding::{StrictDecode, StrictEncode};
 
-use crate::{bus::ctl::MoneroFundingInfo, syncerd::AddressTransaction};
+use crate::{
+    bus::ctl::{BitcoinFundingInfo, MoneroFundingInfo},
+    syncerd::{bitcoin_syncer::p2wpkh_signed_tx_fee, AddressTransaction},
+};
 use crate::{bus::p2p::Reveal, swapd::temporal_safety::SWEEP_MONERO_THRESHOLD};
 use crate::{
     bus::{
@@ -40,10 +43,7 @@ use crate::{
         ctl::{FundingInfo, Tx},
         info::InfoMsg,
     },
-    swapd::{
-        runtime::aggregate_xmr_spend_view,
-        swap_key_manager::{HandleBuyProcedureSignatureRes, HandleRefundProcedureSignaturesRes},
-    },
+    swapd::swap_key_manager::{HandleBuyProcedureSignatureRes, HandleRefundProcedureSignaturesRes},
     syncerd::{SweepSuccess, Task, TransactionConfirmations},
     Endpoints, Error,
 };
@@ -1007,11 +1007,33 @@ fn try_bob_reveal_to_bob_fee_estimated(
             let funding_address = swap_key_manager
                 .funding_address()
                 .expect("Am Bob, so have funding address");
-            let required_funding_amount = runtime.ask_bob_to_fund(
+
+            // 1-in-1-out unsigned segwit tx vsize
+            let vsize = 94;
+            let nr_inputs = 1;
+            let total_fees = bitcoin::Amount::from_sat(p2wpkh_signed_tx_fee(
                 *high_priority_sats_per_kvbyte,
-                funding_address.clone(),
-                event.endpoints,
-            )?;
+                vsize,
+                nr_inputs,
+            ));
+            let required_funding_amount = runtime.deal.parameters.arbitrating_amount + total_fees;
+            runtime.log_info(format!(
+                "Send {} to {}, this includes {} for the Lock transaction network fees",
+                required_funding_amount.bright_green_bold(),
+                funding_address.addr(),
+                total_fees.label(),
+            ));
+            runtime.syncer_state.awaiting_funding = true;
+            if let Some(enquirer) = runtime.enquirer.clone() {
+                event.send_ctl_service(
+                    enquirer,
+                    CtlMsg::FundingInfo(FundingInfo::Bitcoin(BitcoinFundingInfo {
+                        swap_id: runtime.swap_id,
+                        address: funding_address.clone(),
+                        amount: required_funding_amount,
+                    })),
+                )?;
+            }
 
             runtime.log_debug(format!("Watch arbitrating funding {}", funding_address));
             let watch_addr_task = runtime
@@ -1161,8 +1183,7 @@ fn try_bob_funded_to_bob_refund_procedure_signature(
                 core_arbitrating_setup,
             )?;
             // Process params, aggregate and watch xmr address
-            let (spend, view) =
-                aggregate_xmr_spend_view(&remote_params, &swap_key_manager.local_params());
+            let (spend, view) = swap_key_manager.aggregate_xmr_spend_view(&remote_params);
             let address = monero::Address::from_viewpair(
                 runtime.syncer_state.network.into(),
                 &ViewPair { spend, view },
@@ -1602,8 +1623,7 @@ fn try_alice_core_arbitrating_setup_to_alice_arbitrating_lock_final(
             .final_tx(confirmations, Blockchain::Bitcoin)
             && runtime.syncer_state.tasks.watched_txs.get(&id) == Some(&TxLabel::Lock) =>
         {
-            let (spend, view) =
-                aggregate_xmr_spend_view(&swap_key_manager.local_params(), &remote_params);
+            let (spend, view) = swap_key_manager.aggregate_xmr_spend_view(&remote_params);
             let viewpair = ViewPair { spend, view };
             let address =
                 monero::Address::from_viewpair(runtime.syncer_state.network.into(), &viewpair);
