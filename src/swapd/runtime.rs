@@ -10,7 +10,6 @@ use super::{
     temporal_safety::TemporalSafety,
     StateReport,
 };
-use crate::swapd::temporal_safety::SWEEP_MONERO_THRESHOLD;
 use crate::swapd::Opts;
 use crate::syncerd::bitcoin_syncer::p2wpkh_signed_tx_fee;
 use crate::syncerd::types::{Event, TransactionConfirmations};
@@ -23,6 +22,7 @@ use crate::{
     bus::{BusMsg, Outcome, ServiceBus},
     syncerd::{HeightChanged, TransactionRetrieved, XmrAddressAddendum},
 };
+use crate::{service::SwapLogging, swapd::temporal_safety::SWEEP_MONERO_THRESHOLD};
 use crate::{
     service::{Endpoints, Reporter},
     syncerd::AddressTransaction,
@@ -33,7 +33,6 @@ use std::any::Any;
 use std::time::{Duration, SystemTime};
 
 use bitcoin::Txid;
-use colored::ColoredString;
 use farcaster_core::{
     blockchain::Blockchain,
     crypto::SharedKeyId,
@@ -190,8 +189,12 @@ impl Reporter for Runtime {
 }
 
 impl SwapLogging for Runtime {
-    fn swap_info(&self) -> (SwapId, SwapRole, TradeRole) {
-        (self.swap_id, self.local_swap_role, self.local_trade_role)
+    fn swap_info(&self) -> (Option<SwapId>, Option<SwapRole>, Option<TradeRole>) {
+        (
+            Some(self.swap_id),
+            Some(self.local_swap_role),
+            Some(self.local_trade_role),
+        )
     }
 }
 
@@ -868,35 +871,6 @@ impl Runtime {
         if let Err(err) = self.report_progress_message(endpoints, msg) {
             self.log_error(format!("Error sending progress message: {}", err))
         }
-    }
-}
-
-pub trait SwapLogging {
-    fn swap_info(&self) -> (SwapId, SwapRole, TradeRole);
-
-    fn log_info(&self, msg: impl std::fmt::Display) {
-        info!("{} | {}", self.log_prefix(), msg);
-    }
-
-    fn log_error(&self, msg: impl std::fmt::Display) {
-        error!("{} | {}", self.log_prefix(), msg);
-    }
-
-    fn log_debug(&self, msg: impl std::fmt::Display) {
-        debug!("{} | {}", self.log_prefix(), msg);
-    }
-
-    fn log_trace(&self, msg: impl std::fmt::Display) {
-        trace!("{} | {}", self.log_prefix(), msg);
-    }
-
-    fn log_warn(&self, msg: impl std::fmt::Display) {
-        warn!("{} | {}", self.log_prefix(), msg);
-    }
-
-    fn log_prefix(&self) -> ColoredString {
-        let (swap_id, swap_role, trade_role) = self.swap_info();
-        format!("{} as {} {}", swap_id, swap_role, trade_role,).bright_blue_italic()
     }
 }
 

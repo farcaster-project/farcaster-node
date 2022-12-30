@@ -41,11 +41,12 @@ use crate::{
         AddressSecretKey, BitcoinSecretKeyInfo, MoneroSecretKeyInfo,
     },
     event::Event,
+    service::SwapLogging,
     syncerd::{SweepBitcoinAddress, SweepMoneroAddress},
     Error, LogStyle, ServiceId,
 };
 
-use super::runtime::{Runtime, SwapLogging};
+use super::runtime::Runtime;
 
 pub struct HandleRefundProcedureSignaturesRes {
     pub buy_procedure_signature: BuyProcedureSignature,

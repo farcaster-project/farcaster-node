@@ -13,6 +13,7 @@ use std::str::FromStr;
 
 use bitcoin::hashes::hex::{self, ToHex};
 use colored::Colorize;
+use farcaster_core::role::{SwapRole, TradeRole};
 use internet2::addr::NodeId;
 use internet2::{
     addr::{NodeAddr, ServiceAddr},
@@ -470,6 +471,50 @@ where
             endpoints.send_to(bus, self.identity(), dest, BusMsg::Info(request))?;
         }
         Ok(())
+    }
+}
+
+pub trait SwapLogging {
+    fn swap_info(&self) -> (Option<SwapId>, Option<SwapRole>, Option<TradeRole>);
+
+    fn log_info(&self, msg: impl std::fmt::Display) {
+        info!("{} | {}", self.log_prefix(), msg);
+    }
+
+    fn log_error(&self, msg: impl std::fmt::Display) {
+        error!("{} | {}", self.log_prefix(), msg);
+    }
+
+    fn log_debug(&self, msg: impl std::fmt::Display) {
+        debug!("{} | {}", self.log_prefix(), msg);
+    }
+
+    fn log_trace(&self, msg: impl std::fmt::Display) {
+        trace!("{} | {}", self.log_prefix(), msg);
+    }
+
+    fn log_warn(&self, msg: impl std::fmt::Display) {
+        warn!("{} | {}", self.log_prefix(), msg);
+    }
+
+    fn log_prefix(&self) -> colored::ColoredString {
+        match self.swap_info() {
+            (Some(swap_id), Some(swap_role), Some(trade_role)) => {
+                format!("{} as {} {}", swap_id, swap_role, trade_role).bright_blue_italic()
+            }
+            (Some(swap_id), None, Some(trade_role)) => {
+                format!("{} as {}", swap_id, trade_role).bright_blue_italic()
+            }
+            (Some(swap_id), Some(swap_role), None) => {
+                format!("{} as {}", swap_id, swap_role).bright_blue_italic()
+            }
+            (None, Some(swap_role), Some(trade_role)) => {
+                format!("… as {} {}", swap_role, trade_role).bright_blue_italic()
+            }
+            (None, None, Some(trade_role)) => format!("… as {}", trade_role).bright_blue_italic(),
+            (None, Some(swap_role), None) => format!("… as {}", swap_role).bright_blue_italic(),
+            _ => "…".bright_blue_italic(),
+        }
     }
 }
 

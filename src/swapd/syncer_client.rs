@@ -6,7 +6,7 @@
 
 use crate::{
     bus::ServiceBus,
-    service::{Endpoints, LogStyle},
+    service::{Endpoints, LogStyle, SwapLogging},
     syncerd::{
         Abort, AddressAddendum, BroadcastTransaction, BtcAddressAddendum, GetTx, SweepAddress,
         SweepAddressAddendum, SweepBitcoinAddress, SweepMoneroAddress, TaskTarget,
@@ -30,8 +30,6 @@ use crate::{
     syncerd::{Task, TaskId},
     ServiceId,
 };
-
-use super::runtime::SwapLogging;
 
 pub struct SyncerTasks {
     pub counter: u32,
@@ -71,8 +69,12 @@ pub struct SyncerState {
 }
 
 impl SwapLogging for SyncerState {
-    fn swap_info(&self) -> (SwapId, SwapRole, TradeRole) {
-        (self.swap_id, self.local_swap_role, self.local_trade_role)
+    fn swap_info(&self) -> (Option<SwapId>, Option<SwapRole>, Option<TradeRole>) {
+        (
+            Some(self.swap_id),
+            Some(self.local_swap_role),
+            Some(self.local_trade_role),
+        )
     }
 }
 

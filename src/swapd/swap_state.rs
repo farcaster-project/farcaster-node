@@ -22,7 +22,7 @@ use microservices::esb::Handler;
 use monero::ViewPair;
 use strict_encoding::{StrictDecode, StrictEncode};
 
-use crate::{bus::ctl::MoneroFundingInfo, syncerd::AddressTransaction};
+use crate::{bus::ctl::MoneroFundingInfo, service::SwapLogging, syncerd::AddressTransaction};
 use crate::{bus::p2p::Reveal, swapd::temporal_safety::SWEEP_MONERO_THRESHOLD};
 use crate::{
     bus::{
@@ -56,7 +56,7 @@ use crate::{
 };
 
 use super::{
-    runtime::{Runtime, SwapLogging},
+    runtime::Runtime,
     swap_key_manager::{
         AliceSwapKeyManager, AliceTxs, BobSwapKeyManager, BobTxs, WrappedEncryptedSignature,
     },
