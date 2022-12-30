@@ -41,7 +41,6 @@ use crate::{
         AddressSecretKey, BitcoinSecretKeyInfo, MoneroSecretKeyInfo,
     },
     event::Event,
-    service::Reporter,
     syncerd::{SweepBitcoinAddress, SweepMoneroAddress},
     Error, LogStyle, ServiceId,
 };
@@ -143,29 +142,9 @@ impl AliceSwapKeyManager {
         })
     }
 
-    pub fn taker_commit(
-        &self,
-        event: &mut Event,
-        runtime: &mut Runtime,
-    ) -> Result<CommitAliceParameters, Error> {
+    pub fn taker_commit(&self, runtime: &mut Runtime) -> CommitAliceParameters {
         let AliceSwapKeyManager { local_params, .. } = self;
-        runtime.log_info(format!(
-            "{} to Maker remote peer",
-            "Proposing to take swap".bright_white_bold(),
-        ));
-
-        // Ignoring possible reporting errors here and after: do not want to
-        // halt the swap just because the client disconnected
-        let _ = runtime.report_progress_message(
-            event.endpoints,
-            format!(
-                "Proposing to take swap {} to Maker remote peer",
-                runtime.swap_id
-            ),
-        );
-
-        let engine = CommitmentEngine;
-        Ok(local_params.commit_alice(runtime.swap_id, &engine))
+        local_params.commit_alice(runtime.swap_id, &CommitmentEngine)
     }
 
     pub fn new_maker_alice(
@@ -191,28 +170,9 @@ impl AliceSwapKeyManager {
         })
     }
 
-    pub fn maker_commit(
-        &self,
-        event: &mut Event,
-        runtime: &mut Runtime,
-    ) -> Result<CommitAliceParameters, Error> {
+    pub fn maker_commit(&self, runtime: &mut Runtime) -> CommitAliceParameters {
         let AliceSwapKeyManager { local_params, .. } = self;
-        runtime.log_info(format!(
-            "{} as Maker from Taker through peerd {}",
-            "Accepting swap".bright_white_bold(),
-            runtime.peer_service.bright_blue_italic()
-        ));
-
-        let msg = format!(
-            "Accepting swap {} as Maker from Taker through peerd {}",
-            runtime.swap_id, runtime.peer_service
-        );
-        // Ignoring possible reporting errors here and after: do not want to
-        // halt the swap just because the enquirer (farcasterd) disconnected
-        let _ = runtime.report_progress_message(event.endpoints, msg);
-
-        let engine = CommitmentEngine;
-        Ok(local_params.commit_alice(runtime.swap_id, &engine))
+        local_params.commit_alice(runtime.swap_id, &CommitmentEngine)
     }
 
     pub fn handle_bob_reveals(
@@ -570,29 +530,9 @@ impl BobSwapKeyManager {
         })
     }
 
-    pub fn taker_commit(
-        &self,
-        event: &mut Event,
-        runtime: &mut Runtime,
-    ) -> Result<CommitBobParameters, Error> {
+    pub fn taker_commit(&self, runtime: &Runtime) -> CommitBobParameters {
         let BobSwapKeyManager { local_params, .. } = self;
-        runtime.log_info(format!(
-            "{} to Maker remote peer",
-            "Proposing to take swap".bright_white_bold(),
-        ));
-
-        // Ignoring possible reporting errors here and after: do not want to
-        // halt the swap just because the client disconnected
-        let _ = runtime.report_progress_message(
-            event.endpoints,
-            format!(
-                "Proposing to take swap {} to Maker remote peer",
-                runtime.swap_id
-            ),
-        );
-
-        let engine = CommitmentEngine;
-        Ok(local_params.commit_bob(runtime.swap_id, &engine))
+        local_params.commit_bob(runtime.swap_id, &CommitmentEngine)
     }
 
     pub fn new_maker_bob(
@@ -636,28 +576,9 @@ impl BobSwapKeyManager {
         })
     }
 
-    pub fn maker_commit(
-        &self,
-        event: &mut Event,
-        runtime: &mut Runtime,
-    ) -> Result<CommitBobParameters, Error> {
+    pub fn maker_commit(&self, runtime: &mut Runtime) -> CommitBobParameters {
         let BobSwapKeyManager { local_params, .. } = self;
-        runtime.log_info(format!(
-            "{} as Maker from Taker through peerd {}",
-            "Accepting swap".bright_white_bold(),
-            runtime.peer_service.bright_blue_italic()
-        ));
-
-        let msg = format!(
-            "Accepting swap {} as Maker from Taker through peerd {}",
-            runtime.swap_id, runtime.peer_service
-        );
-        // Ignoring possible reporting errors here and after: do not want to
-        // halt the swap just because the enquirer (farcasterd) disconnected
-        let _ = runtime.report_progress_message(event.endpoints, msg);
-
-        let engine = CommitmentEngine;
-        Ok(local_params.commit_bob(runtime.swap_id, &engine))
+        local_params.commit_bob(runtime.swap_id, &CommitmentEngine)
     }
 
     pub fn create_reveal_from_local_params(&self, runtime: &mut Runtime) -> Result<Reveal, Error> {

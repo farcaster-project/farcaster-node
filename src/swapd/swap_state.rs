@@ -654,25 +654,34 @@ fn attempt_transition_to_init_taker(
                         target_bitcoin_address.clone(),
                         target_monero_address,
                         key_manager.0.clone(),
-                    )?;
-                    let local_commit =
-                        swap_key_manager
-                            .taker_commit(&mut event, runtime)
-                            .map_err(|err| {
-                                runtime.log_error(&err);
-                                runtime.report_failure(
-                                    event.endpoints,
-                                    Failure {
-                                        code: FailureCode::Unknown,
-                                        info: err.to_string(),
-                                    },
-                                )
-                            })?;
+                    )
+                    .map_err(|err| {
+                        runtime.log_error(&err);
+                        runtime.report_failure(
+                            event.endpoints,
+                            Failure {
+                                code: FailureCode::Unknown,
+                                info: err.to_string(),
+                            },
+                        )
+                    })?;
+                    runtime.log_info(format!(
+                        "{} to Maker remote peer",
+                        "Proposing to take swap".bright_white_bold(),
+                    ));
+                    runtime.report_progress_message_log_fail(
+                        event.endpoints,
+                        format!(
+                            "Proposing to take swap {} to Maker remote peer",
+                            runtime.swap_id
+                        ),
+                    );
+                    // send taker commit message to counter-party
+                    let local_commit = swap_key_manager.taker_commit(runtime);
                     let take_swap = TakerCommit {
                         commit: Commit::BobParameters(local_commit),
                         deal: runtime.deal.clone(),
                     };
-                    // send taker commit message to counter-party
                     runtime.send_peer(event.endpoints, PeerMsg::TakerCommit(take_swap))?;
 
                     Ok(Some(SwapStateMachine::BobInitTaker(BobInitTaker {
@@ -685,25 +694,34 @@ fn attempt_transition_to_init_taker(
                         target_bitcoin_address.clone(),
                         target_monero_address,
                         key_manager.0.clone(),
-                    )?;
-                    let local_commit =
-                        swap_key_manager
-                            .taker_commit(&mut event, runtime)
-                            .map_err(|err| {
-                                runtime.log_error(&err);
-                                runtime.report_failure(
-                                    event.endpoints,
-                                    Failure {
-                                        code: FailureCode::Unknown,
-                                        info: err.to_string(),
-                                    },
-                                )
-                            })?;
+                    )
+                    .map_err(|err| {
+                        runtime.log_error(&err);
+                        runtime.report_failure(
+                            event.endpoints,
+                            Failure {
+                                code: FailureCode::Unknown,
+                                info: err.to_string(),
+                            },
+                        )
+                    })?;
+                    runtime.log_info(format!(
+                        "{} to Maker remote peer",
+                        "Proposing to take swap".bright_white_bold(),
+                    ));
+                    runtime.report_progress_message_log_fail(
+                        event.endpoints,
+                        format!(
+                            "Proposing to take swap {} to Maker remote peer",
+                            runtime.swap_id
+                        ),
+                    );
+                    // send taker commit message to counter-party
+                    let local_commit = swap_key_manager.taker_commit(runtime);
                     let take_swap = TakerCommit {
                         commit: Commit::AliceParameters(local_commit),
                         deal: runtime.deal.clone(),
                     };
-                    // send taker commit message to counter-party
                     runtime.send_peer(event.endpoints, PeerMsg::TakerCommit(take_swap))?;
 
                     Ok(Some(SwapStateMachine::AliceInitTaker(AliceInitTaker {
@@ -762,26 +780,35 @@ fn attempt_transition_to_init_maker(
                         target_bitcoin_address,
                         target_monero_address,
                         key_manager.0,
-                    )?;
-                    let local_commit =
-                        swap_key_manager
-                            .maker_commit(&mut event, runtime)
-                            .map_err(|err| {
-                                runtime.report_failure(
-                                    event.endpoints,
-                                    Failure {
-                                        code: FailureCode::Unknown,
-                                        info: err.to_string(),
-                                    },
-                                )
-                            })?;
+                    )
+                    .map_err(|err| {
+                        runtime.report_failure(
+                            event.endpoints,
+                            Failure {
+                                code: FailureCode::Unknown,
+                                info: err.to_string(),
+                            },
+                        )
+                    })?;
+                    runtime.log_info(format!(
+                        "{} as Maker from Taker through peerd {}",
+                        "Accepting swap".bright_white_bold(),
+                        runtime.peer_service.bright_blue_italic()
+                    ));
+                    runtime.report_progress_message_log_fail(
+                        event.endpoints,
+                        format!(
+                            "Accepting swap {} as Maker from Taker through peerd {}",
+                            runtime.swap_id, runtime.peer_service
+                        ),
+                    );
                     // send maker commit message to counter-party
+                    let local_commit = swap_key_manager.maker_commit(runtime);
                     runtime.log_trace(format!("sending peer MakerCommit msg {}", &local_commit));
                     runtime.send_peer(
                         event.endpoints,
                         PeerMsg::MakerCommit(Commit::BobParameters(local_commit)),
                     )?;
-
                     Ok(Some(SwapStateMachine::BobInitMaker(BobInitMaker {
                         remote_commit,
                         swap_key_manager,
@@ -801,26 +828,35 @@ fn attempt_transition_to_init_maker(
                         target_bitcoin_address,
                         target_monero_address,
                         key_manager.0,
-                    )?;
-                    let local_commit =
-                        swap_key_manager
-                            .maker_commit(&mut event, runtime)
-                            .map_err(|err| {
-                                runtime.report_failure(
-                                    event.endpoints,
-                                    Failure {
-                                        code: FailureCode::Unknown,
-                                        info: err.to_string(),
-                                    },
-                                )
-                            })?;
+                    )
+                    .map_err(|err| {
+                        runtime.report_failure(
+                            event.endpoints,
+                            Failure {
+                                code: FailureCode::Unknown,
+                                info: err.to_string(),
+                            },
+                        )
+                    })?;
+                    runtime.log_info(format!(
+                        "{} as Maker from Taker through peerd {}",
+                        "Accepting swap".bright_white_bold(),
+                        runtime.peer_service.bright_blue_italic()
+                    ));
+                    runtime.report_progress_message_log_fail(
+                        event.endpoints,
+                        format!(
+                            "Accepting swap {} as Maker from Taker through peerd {}",
+                            runtime.swap_id, runtime.peer_service
+                        ),
+                    );
                     // send maker commit message to counter-party
+                    let local_commit = swap_key_manager.maker_commit(runtime);
                     runtime.log_trace(format!("sending peer MakerCommit msg {}", &local_commit));
                     runtime.send_peer(
                         event.endpoints,
                         PeerMsg::MakerCommit(Commit::AliceParameters(local_commit)),
                     )?;
-
                     Ok(Some(SwapStateMachine::AliceInitMaker(AliceInitMaker {
                         remote_commit,
                         swap_key_manager,
