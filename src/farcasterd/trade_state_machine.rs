@@ -307,17 +307,21 @@ impl TradeStateMachine {
         }
     }
 
-    pub fn uuid(&self) -> Option<Uuid> {
+    pub fn deal(&self) -> Option<&Deal> {
         match self {
-            TradeStateMachine::MakeDeal(MakeDeal { deal, .. }) => Some(deal.id().0),
-            TradeStateMachine::TakerConnect(TakerConnect { deal, .. }) => Some(deal.id().0),
-            TradeStateMachine::TakeDeal(TakeDeal { deal, .. }) => Some(deal.id().0),
-            TradeStateMachine::TakerCommit(TakerCommit { deal, .. }) => Some(deal.id().0),
-            TradeStateMachine::SwapdLaunched(SwapdLaunched { deal, .. }) => Some(deal.id().0),
-            TradeStateMachine::RestoringSwapd(RestoringSwapd { deal, .. }) => Some(deal.id().0),
-            TradeStateMachine::SwapdRunning(SwapdRunning { deal, .. }) => Some(deal.id().0),
+            TradeStateMachine::MakeDeal(MakeDeal { deal, .. }) => Some(deal),
+            TradeStateMachine::TakerConnect(TakerConnect { deal, .. }) => Some(deal),
+            TradeStateMachine::TakeDeal(TakeDeal { deal, .. }) => Some(deal),
+            TradeStateMachine::TakerCommit(TakerCommit { deal, .. }) => Some(deal),
+            TradeStateMachine::SwapdLaunched(SwapdLaunched { deal, .. }) => Some(deal),
+            TradeStateMachine::RestoringSwapd(RestoringSwapd { deal, .. }) => Some(deal),
+            TradeStateMachine::SwapdRunning(SwapdRunning { deal, .. }) => Some(deal),
             _ => None,
         }
+    }
+
+    pub fn uuid(&self) -> Option<Uuid> {
+        self.deal().map(|d| d.id().0)
     }
 
     pub fn trade_role(&self) -> Option<TradeRole> {
@@ -340,30 +344,9 @@ impl TradeStateMachine {
     }
 
     pub fn swap_role(&self) -> Option<SwapRole> {
-        match self {
-            TradeStateMachine::MakeDeal(MakeDeal { deal, .. }) => {
-                self.trade_role().map(|t| deal.swap_role(&t))
-            }
-            TradeStateMachine::TakerConnect(TakerConnect { deal, .. }) => {
-                self.trade_role().map(|t| deal.swap_role(&t))
-            }
-            TradeStateMachine::TakeDeal(TakeDeal { deal, .. }) => {
-                self.trade_role().map(|t| deal.swap_role(&t))
-            }
-            TradeStateMachine::TakerCommit(TakerCommit { deal, .. }) => {
-                self.trade_role().map(|t| deal.swap_role(&t))
-            }
-            TradeStateMachine::SwapdLaunched(SwapdLaunched { deal, .. }) => {
-                self.trade_role().map(|t| deal.swap_role(&t))
-            }
-            TradeStateMachine::RestoringSwapd(RestoringSwapd { deal, .. }) => {
-                self.trade_role().map(|t| deal.swap_role(&t))
-            }
-            TradeStateMachine::SwapdRunning(SwapdRunning { deal, .. }) => {
-                self.trade_role().map(|t| deal.swap_role(&t))
-            }
-            _ => None,
-        }
+        self.deal()
+            .map(|d| self.trade_role().map(|t| d.swap_role(&t)))
+            .flatten()
     }
 
     pub fn consumed_deal(&self) -> Option<(Deal, TradeRole)> {
