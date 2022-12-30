@@ -8,8 +8,10 @@ use farcaster_core::blockchain::Network;
 use farcaster_core::swap::btcxmr::DealParameters;
 use internet2::addr::InetSocketAddr;
 use serde::{Deserialize, Serialize};
+use serde_with::DisplayFromStr;
 
 use std::convert::TryInto;
+use std::fmt::Display;
 use std::fs::File;
 use std::io::prelude::*;
 use std::path::Path;
@@ -214,16 +216,22 @@ impl Config {
         // assume arbitrating is bitcoin
         self.swap
             .as_ref()
-            .and_then(|swap| swap.bitcoin.get_for_network(deal.network))
-            .and_then(|net| net.amounts)
+            .and_then(|swap| {
+                swap.bitcoin
+                    .get_for_network(deal.network)
+                    .map(|net| net.amounts)
+            })
             .or_else(|| Self::btc_default_tradeable(deal.network))
             .map(|tradeable| tradeable.map().validate_amount(deal.arbitrating_amount))
             .transpose()?;
         // assume accordant is monero
         self.swap
             .as_ref()
-            .and_then(|swap| swap.monero.get_for_network(deal.network))
-            .and_then(|net| net.amounts)
+            .and_then(|swap| {
+                swap.monero
+                    .get_for_network(deal.network)
+                    .map(|net| net.amounts)
+            })
             .or_else(|| Self::xmr_default_tradeable(deal.network))
             .map(|tradeable| tradeable.map().validate_amount(deal.accordant_amount))
             .transpose()?;
@@ -360,11 +368,17 @@ pub struct SwapConfig {
 /// This struct holds the complete swap config for a chain; this is just an helper
 #[derive(Deserialize, Serialize, Debug, Clone)]
 #[serde(crate = "serde_crate")]
-pub struct ChainSwapConfig<T, A> {
+#[serde(bound(serialize = "T: Serialize, A: Display"))]
+#[serde(bound(deserialize = "T: Deserialize<'de>, A: FromStr, A::Err: Display"))]
+pub struct ChainSwapConfig<T, A>
+where
+    A: FromStr + Display,
+    A::Err: Display,
+{
     #[serde(flatten)]
     pub temporality: T,
     #[serde(flatten)]
-    pub amounts: Option<TradeableAmounts<A>>,
+    pub amounts: TradeableAmounts<A>,
 }
 
 #[derive(Deserialize, Serialize, Debug, Clone)]
@@ -386,20 +400,37 @@ pub struct ArbConfig {
     pub finality: u8,
 }
 
+#[serde_as]
 #[derive(Deserialize, Serialize, Debug, Clone)]
 #[serde(crate = "serde_crate")]
-pub struct TradeableAmounts<T> {
+#[serde(bound(serialize = "T: Display"))]
+#[serde(bound(deserialize = "T: FromStr, T::Err: Display"))]
+pub struct TradeableAmounts<T>
+where
+    T: FromStr + Display,
+    T::Err: Display,
+{
     /// If specified, the minimum acceptable amount to trade (>=)
+    #[serde_as(as = "Option<DisplayFromStr>")]
+    #[serde(default)]
     pub min_amount: Option<T>,
     /// If specified, the maximum acceptable amount to trade (<=)
+    #[serde_as(as = "Option<DisplayFromStr>")]
+    #[serde(default)]
     pub max_amount: Option<T>,
 }
 
-impl<T> TradeableAmounts<T> {
+impl<T> TradeableAmounts<T>
+where
+    T: FromStr + Display,
+    T::Err: Display,
+{
     /// Map tradeable amounts into new type
     pub fn map<U>(self) -> TradeableAmounts<U>
     where
         T: Into<U>,
+        U: FromStr + Display,
+        U::Err: Display,
     {
         TradeableAmounts {
             min_amount: self.min_amount.map(|min| min.into()),
@@ -410,7 +441,7 @@ impl<T> TradeableAmounts<T> {
     /// Validate a given amount based on potential rules (min, max)
     pub fn validate_amount(&self, amount: T) -> Result<(), Error>
     where
-        T: std::fmt::Display + PartialOrd<T> + Copy,
+        T: PartialOrd<T> + Copy,
     {
         use config::ConfigError::Message;
         if let Some(min) = self.min_amount {
@@ -428,9 +459,26 @@ impl<T> TradeableAmounts<T> {
 }
 
 mod btc {
+    use std::fmt::Display;
+    use std::str::FromStr;
+
     #[derive(Deserialize, Serialize, Debug, Clone)]
     #[serde(crate = "serde_crate")]
     pub struct Amount(#[serde(with = "bitcoin::util::amount::serde::as_btc")] pub bitcoin::Amount);
+
+    impl Display for Amount {
+        fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+            write!(f, "{}", self.0)
+        }
+    }
+
+    impl FromStr for Amount {
+        type Err = bitcoin::util::amount::ParseAmountError;
+
+        fn from_str(s: &str) -> Result<Self, Self::Err> {
+            Ok(Amount(bitcoin::Amount::from_str(s)?))
+        }
+    }
 
     impl From<bitcoin::Amount> for Amount {
         fn from(b: bitcoin::Amount) -> Self {
@@ -446,9 +494,26 @@ mod btc {
 }
 
 mod xmr {
+    use std::fmt::Display;
+    use std::str::FromStr;
+
     #[derive(Deserialize, Serialize, Debug, Clone)]
     #[serde(crate = "serde_crate")]
     pub struct Amount(#[serde(with = "monero::util::amount::serde::as_xmr")] pub monero::Amount);
+
+    impl Display for Amount {
+        fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+            write!(f, "{}", self.0)
+        }
+    }
+
+    impl FromStr for Amount {
+        type Err = monero::util::amount::ParsingError;
+
+        fn from_str(s: &str) -> Result<Self, Self::Err> {
+            Ok(Amount(monero::Amount::from_str(s)?))
+        }
+    }
 
     impl From<monero::Amount> for Amount {
         fn from(b: monero::Amount) -> Self {
@@ -614,24 +679,27 @@ impl Default for SwapConfig {
             bitcoin: Networked {
                 mainnet: Some(ChainSwapConfig {
                     temporality: ArbConfig::btc_mainnet_default(),
-                    amounts: Some(TradeableAmounts {
+                    amounts: TradeableAmounts {
                         // ok will always give Some as we use static valid value
                         max_amount: bitcoin::Amount::from_btc(SWAP_MAINNET_BITCOIN_MAX_BTC_AMOUNT)
                             .ok()
                             .map(Into::into),
                         min_amount: None,
-                    }),
+                    },
                 }),
                 testnet: Some(ChainSwapConfig {
                     temporality: ArbConfig::btc_testnet_default(),
-                    amounts: None,
+                    amounts: TradeableAmounts {
+                        max_amount: None,
+                        min_amount: None,
+                    },
                 }),
                 local: None,
             },
             monero: Networked {
                 mainnet: Some(ChainSwapConfig {
                     temporality: AccConfig::xmr_mainnet_default(),
-                    amounts: Some(TradeableAmounts {
+                    amounts: TradeableAmounts {
                         // ok will always give Some as we use static valid value
                         max_amount: monero::Amount::from_xmr(SWAP_MAINNET_MONERO_MAX_XMR_AMOUNT)
                             .ok()
@@ -639,11 +707,14 @@ impl Default for SwapConfig {
                         min_amount: monero::Amount::from_xmr(SWAP_MAINNET_MONERO_MIN_XMR_AMOUNT)
                             .ok()
                             .map(Into::into),
-                    }),
+                    },
                 }),
                 testnet: Some(ChainSwapConfig {
                     temporality: AccConfig::xmr_testnet_default(),
-                    amounts: None,
+                    amounts: TradeableAmounts {
+                        max_amount: None,
+                        min_amount: None,
+                    },
                 }),
                 local: None,
             },
