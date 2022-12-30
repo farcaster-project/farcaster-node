@@ -12,11 +12,10 @@ use super::{
 };
 use crate::swapd::temporal_safety::SWEEP_MONERO_THRESHOLD;
 use crate::swapd::Opts;
-use crate::syncerd::bitcoin_syncer::p2wpkh_signed_tx_fee;
 use crate::syncerd::types::{Event, TransactionConfirmations};
 use crate::syncerd::{Abort, Task, TaskTarget};
 use crate::{
-    bus::ctl::{BitcoinFundingInfo, Checkpoint, CtlMsg, FundingInfo},
+    bus::ctl::{Checkpoint, CtlMsg},
     bus::info::{InfoMsg, SwapInfo},
     bus::p2p::PeerMsg,
     bus::sync::SyncMsg,
@@ -749,39 +748,6 @@ impl Runtime {
             self.report_progress(endpoints, progress)?;
         }
         Ok(())
-    }
-
-    pub fn ask_bob_to_fund(
-        &mut self,
-        sat_per_kvb: u64,
-        address: bitcoin::Address,
-        endpoints: &mut Endpoints,
-    ) -> Result<bitcoin::Amount, Error> {
-        let swap_id = self.swap_id();
-        let vsize = 94;
-        let nr_inputs = 1;
-        let total_fees =
-            bitcoin::Amount::from_sat(p2wpkh_signed_tx_fee(sat_per_kvb, vsize, nr_inputs));
-        let amount = self.deal.parameters.arbitrating_amount + total_fees;
-        self.log_info(format!(
-            "Send {} to {}, this includes {} for the Lock transaction network fees",
-            amount.bright_green_bold(),
-            address.addr(),
-            total_fees.label(),
-        ));
-        let req = BusMsg::Ctl(CtlMsg::FundingInfo(FundingInfo::Bitcoin(
-            BitcoinFundingInfo {
-                swap_id,
-                address,
-                amount,
-            },
-        )));
-        self.syncer_state.awaiting_funding = true;
-
-        if let Some(enquirer) = self.enquirer.clone() {
-            endpoints.send_to(ServiceBus::Ctl, self.identity(), enquirer, req)?;
-        }
-        Ok(amount)
     }
 
     pub fn abort_swap(&mut self, endpoints: &mut Endpoints) -> Result<(), Error> {
