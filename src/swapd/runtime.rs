@@ -860,7 +860,7 @@ impl Runtime {
         ));
     }
 
-    pub fn report_progress_message_no_fail(
+    pub fn report_progress_message_log_fail(
         &mut self,
         endpoints: &mut Endpoints,
         msg: impl ToString,

@@ -669,7 +669,7 @@ fn attempt_transition_to_init_taker(
                         "{} to Maker remote peer",
                         "Proposing to take swap".bright_white_bold(),
                     ));
-                    runtime.report_progress_message_no_fail(
+                    runtime.report_progress_message_log_fail(
                         event.endpoints,
                         format!(
                             "Proposing to take swap {} to Maker remote peer",
@@ -709,7 +709,7 @@ fn attempt_transition_to_init_taker(
                         "{} to Maker remote peer",
                         "Proposing to take swap".bright_white_bold(),
                     ));
-                    runtime.report_progress_message_no_fail(
+                    runtime.report_progress_message_log_fail(
                         event.endpoints,
                         format!(
                             "Proposing to take swap {} to Maker remote peer",
@@ -795,7 +795,7 @@ fn attempt_transition_to_init_maker(
                         "Accepting swap".bright_white_bold(),
                         runtime.peer_service.bright_blue_italic()
                     ));
-                    runtime.report_progress_message_no_fail(
+                    runtime.report_progress_message_log_fail(
                         event.endpoints,
                         format!(
                             "Accepting swap {} as Maker from Taker through peerd {}",
@@ -843,7 +843,7 @@ fn attempt_transition_to_init_maker(
                         "Accepting swap".bright_white_bold(),
                         runtime.peer_service.bright_blue_italic()
                     ));
-                    runtime.report_progress_message_no_fail(
+                    runtime.report_progress_message_log_fail(
                         event.endpoints,
                         format!(
                             "Accepting swap {} as Maker from Taker through peerd {}",
