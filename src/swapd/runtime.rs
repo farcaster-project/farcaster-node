@@ -19,7 +19,7 @@ use crate::{
     bus::info::{InfoMsg, SwapInfo},
     bus::p2p::PeerMsg,
     bus::sync::SyncMsg,
-    bus::{BusMsg, Outcome, ServiceBus},
+    bus::{BusMsg, ServiceBus},
     syncerd::{HeightChanged, TransactionRetrieved, XmrAddressAddendum},
 };
 use crate::{
@@ -747,13 +747,6 @@ impl Runtime {
             self.latest_state_report = new_state_report;
             self.report_progress(endpoints, progress)?;
         }
-        Ok(())
-    }
-
-    pub fn abort_swap(&mut self, endpoints: &mut Endpoints) -> Result<(), Error> {
-        let swap_success_req = BusMsg::Ctl(CtlMsg::SwapOutcome(Outcome::FailureAbort));
-        self.send_ctl(endpoints, ServiceId::Farcasterd, swap_success_req)?;
-        self.log_info("Aborted swap.");
         Ok(())
     }
 
