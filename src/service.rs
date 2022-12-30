@@ -501,7 +501,7 @@ pub trait SwapLogging {
     }
 
     fn log_prefix(&self) -> colored::ColoredString {
-        match self.swap_info() {
+        match self.swap_details() {
             (Some(swap_id), Some(swap_role), Some(trade_role)) => {
                 format!("{} as {} {}", swap_id, swap_role, trade_role).bright_blue_italic()
             }
