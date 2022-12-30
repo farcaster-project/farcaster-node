@@ -311,58 +311,10 @@ impl Exec for Command {
                 without_validation,
             } => {
                 let Deal {
-                    version: _,
-                    parameters: deal_parameters,
                     node_id,
                     peer_address,
-                } = deal.clone();
-
-                let network = deal_parameters.network;
-                let arbitrating_amount = deal_parameters.arbitrating_amount;
-                let accordant_amount = deal_parameters.accordant_amount;
-
-                if network != bitcoin_address.network.into() {
-                    eprintln!(
-                        "Error: The address {} is not for {}",
-                        bitcoin_address, network
-                    );
-                    return Ok(());
-                }
-                // monero local address types are mainnet address types
-                if network != monero_address.network.into() && network != Network::Local {
-                    eprintln!(
-                        "Error: The address {} is not for {}",
-                        monero_address, network
-                    );
-                    return Ok(());
-                }
-
-                if arbitrating_amount > bitcoin::Amount::from_str("0.01 BTC").unwrap()
-                    && network == Network::Mainnet
-                {
-                    eprintln!(
-                        "Error: Bitcoin amount {} too high, mainnet amount capped at 0.01 BTC.",
-                        arbitrating_amount
-                    );
-                    return Ok(());
-                }
-                if accordant_amount > monero::Amount::from_str("2 XMR").unwrap()
-                    && network == Network::Mainnet
-                {
-                    eprintln!(
-                        "Error: Monero amount {} too high, mainnet amount capped at 2 XMR.",
-                        accordant_amount
-                    );
-                    return Ok(());
-                }
-                if accordant_amount < monero::Amount::from_str("0.001 XMR").unwrap() {
-                    eprintln!(
-                        "Error: Monero amount {} too low, require at least 0.001 XMR",
-                        accordant_amount
-                    );
-                    return Ok(());
-                }
-
+                    ..
+                } = deal;
                 if !without_validation {
                     println!(
                         "\nWant to buy {}?\n\nCarefully validate the deal!\n",

@@ -764,41 +764,6 @@ impl Farcaster for FarcasterService {
                 )
             })?;
 
-        // Monero local address types are mainnet address types
-        if network != accordant_addr.network.into() && network != Network::Local {
-            return Err(Status::invalid_argument(format!(
-                "Error: The address {} is not for {}",
-                accordant_addr, network
-            )));
-        }
-        if network != arbitrating_addr.network.into() {
-            return Err(Status::invalid_argument(format!(
-                "Error: The address {} is not for {}",
-                arbitrating_addr, network
-            )));
-        }
-        if arbitrating_amount > bitcoin::Amount::from_str("0.01 BTC").unwrap()
-            && network == Network::Mainnet
-        {
-            return Err(Status::invalid_argument(format!(
-                "Error: Bitcoin amount {} too high, mainnet amount capped at 0.01 BTC.",
-                arbitrating_amount
-            )));
-        }
-        if accordant_amount > monero::Amount::from_str("2 XMR").unwrap()
-            && network == Network::Mainnet
-        {
-            return Err(Status::invalid_argument(format!(
-                "Error: Monero amount {} too high, mainnet amount capped at 2 XMR.",
-                accordant_amount
-            )));
-        }
-        if accordant_amount < monero::Amount::from_str("0.001 XMR").unwrap() {
-            return Err(Status::invalid_argument(format!(
-                "Error: Monero amount {} too low, require at least 0.001 XMR",
-                accordant_amount
-            )));
-        }
         let deal_parameters = DealParameters {
             uuid: Uuid::new_v4().into(),
             network,
