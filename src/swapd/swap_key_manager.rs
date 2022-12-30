@@ -116,10 +116,6 @@ pub struct BobSwapKeyManager {
 }
 
 impl AliceSwapKeyManager {
-    pub fn local_params(&self) -> Parameters {
-        self.local_params.clone()
-    }
-
     pub fn new_taker_alice(
         runtime: &mut Runtime,
         target_bitcoin_address: bitcoin::Address,
@@ -442,15 +438,17 @@ impl AliceSwapKeyManager {
             cancel_tx: finalized_cancel_tx,
             buy_tx: finalized_buy_tx,
         })
-        // buy_adaptor_sig
+    }
+
+    pub fn aggregate_xmr_spend_view(
+        &self,
+        remote_params: &Parameters,
+    ) -> (monero::PublicKey, monero::PrivateKey) {
+        aggregate_xmr_spend_view(remote_params, &self.local_params)
     }
 }
 
 impl BobSwapKeyManager {
-    pub fn local_params(&self) -> Parameters {
-        self.local_params.clone()
-    }
-
     pub fn process_funding_tx(&mut self, runtime: &mut Runtime, tx: Tx) -> Result<(), Error> {
         if let Tx::Funding(tx) = tx {
             if self.funding_tx.was_seen() {
@@ -825,6 +823,13 @@ impl BobSwapKeyManager {
             },
         })
     }
+
+    pub fn aggregate_xmr_spend_view(
+        &self,
+        remote_params: &Parameters,
+    ) -> (monero::PublicKey, monero::PrivateKey) {
+        aggregate_xmr_spend_view(remote_params, &self.local_params)
+    }
 }
 
 pub fn create_funding(
@@ -833,4 +838,25 @@ pub fn create_funding(
 ) -> Result<FundingTx, Error> {
     let pk = key_manager.get_pubkey(ArbitratingKeyId::Lock)?;
     Ok(FundingTx::initialize(pk, net)?)
+}
+
+pub fn aggregate_xmr_spend_view(
+    alice_params: &Parameters,
+    bob_params: &Parameters,
+) -> (monero::PublicKey, monero::PrivateKey) {
+    let alice_view = *alice_params
+        .accordant_shared_keys
+        .clone()
+        .into_iter()
+        .find(|vk| vk.tag() == &SharedKeyId::new(SHARED_VIEW_KEY_ID))
+        .expect("accordant shared keys should always have a view key")
+        .elem();
+    let bob_view = *bob_params
+        .accordant_shared_keys
+        .clone()
+        .into_iter()
+        .find(|vk| vk.tag() == &SharedKeyId::new(SHARED_VIEW_KEY_ID))
+        .expect("accordant shared keys should always have a view key")
+        .elem();
+    (alice_params.spend + bob_params.spend, alice_view + bob_view)
 }

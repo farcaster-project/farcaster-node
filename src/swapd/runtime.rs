@@ -10,15 +10,14 @@ use super::{
     temporal_safety::TemporalSafety,
     StateReport,
 };
-use crate::syncerd::bitcoin_syncer::p2wpkh_signed_tx_fee;
 use crate::syncerd::types::{Event, TransactionConfirmations};
 use crate::syncerd::{Abort, Task, TaskTarget};
 use crate::{
-    bus::ctl::{BitcoinFundingInfo, Checkpoint, CtlMsg, FundingInfo},
+    bus::ctl::{Checkpoint, CtlMsg},
     bus::info::{InfoMsg, SwapInfo},
     bus::p2p::PeerMsg,
     bus::sync::SyncMsg,
-    bus::{BusMsg, Outcome, ServiceBus},
+    bus::{BusMsg, ServiceBus},
     syncerd::{HeightChanged, TransactionRetrieved, XmrAddressAddendum},
 };
 use crate::{service::SwapDetails, swapd::Opts};
@@ -35,10 +34,8 @@ use std::time::{Duration, SystemTime};
 use bitcoin::Txid;
 use farcaster_core::{
     blockchain::Blockchain,
-    crypto::SharedKeyId,
-    monero::SHARED_VIEW_KEY_ID,
     role::{SwapRole, TradeRole},
-    swap::btcxmr::{Deal, DealParameters, Parameters},
+    swap::btcxmr::{Deal, DealParameters},
     swap::SwapId,
     transaction::TxLabel,
 };
@@ -61,16 +58,11 @@ pub fn run(config: ServiceConfig, opts: Opts) -> Result<(), Error> {
     let DealParameters {
         cancel_timelock,
         punish_timelock,
-        maker_role, // SwapRole of maker (Alice or Bob)
         network,
         ..
     } = deal.parameters;
 
-    // alice or bob
-    let local_swap_role = match local_trade_role {
-        TradeRole::Maker => maker_role,
-        TradeRole::Taker => maker_role.other(),
-    };
+    let local_swap_role = deal.swap_role(&local_trade_role);
 
     let swap_state_machine = match (local_swap_role, local_trade_role) {
         (SwapRole::Alice, TradeRole::Maker) => SwapStateMachine::StartMaker(SwapRole::Alice),
@@ -501,7 +493,7 @@ impl Runtime {
                     deal: self.deal.clone(),
                     local_trade_role: self.local_trade_role,
                     local_swap_role: self.deal.swap_role(&self.local_trade_role),
-                    connected_counterparty_node_id: get_node_id(&self.peer_service),
+                    connected_counterparty_node_id: self.peer_service.node_id(),
                 };
                 self.send_client_info(endpoints, source, InfoMsg::SwapInfo(info))?;
             }
@@ -754,46 +746,6 @@ impl Runtime {
         Ok(())
     }
 
-    pub fn ask_bob_to_fund(
-        &mut self,
-        sat_per_kvb: u64,
-        address: bitcoin::Address,
-        endpoints: &mut Endpoints,
-    ) -> Result<bitcoin::Amount, Error> {
-        let swap_id = self.swap_id();
-        let vsize = 94;
-        let nr_inputs = 1;
-        let total_fees =
-            bitcoin::Amount::from_sat(p2wpkh_signed_tx_fee(sat_per_kvb, vsize, nr_inputs));
-        let amount = self.deal.parameters.arbitrating_amount + total_fees;
-        self.log_info(format!(
-            "Send {} to {}, this includes {} for the Lock transaction network fees",
-            amount.bright_green_bold(),
-            address.addr(),
-            total_fees.label(),
-        ));
-        let req = BusMsg::Ctl(CtlMsg::FundingInfo(FundingInfo::Bitcoin(
-            BitcoinFundingInfo {
-                swap_id,
-                address,
-                amount,
-            },
-        )));
-        self.syncer_state.awaiting_funding = true;
-
-        if let Some(enquirer) = self.enquirer.clone() {
-            endpoints.send_to(ServiceBus::Ctl, self.identity(), enquirer, req)?;
-        }
-        Ok(amount)
-    }
-
-    pub fn abort_swap(&mut self, endpoints: &mut Endpoints) -> Result<(), Error> {
-        let swap_success_req = BusMsg::Ctl(CtlMsg::SwapOutcome(Outcome::FailureAbort));
-        self.send_ctl(endpoints, ServiceId::Farcasterd, swap_success_req)?;
-        self.log_info("Aborted swap.");
-        Ok(())
-    }
-
     pub fn checkpoint_state(
         &mut self,
         endpoints: &mut Endpoints,
@@ -815,7 +767,7 @@ impl Runtime {
                     pending_broadcasts: self.syncer_state.pending_broadcast_txs(),
                     xmr_addr_addendum: self.syncer_state.xmr_addr_addendum.clone(),
                     local_trade_role: self.local_trade_role,
-                    connected_counterparty_node_id: get_node_id(&self.peer_service),
+                    connected_counterparty_node_id: self.peer_service.node_id(),
                     deal: self.deal.clone(),
                 },
             })),
@@ -872,33 +824,4 @@ impl Runtime {
             self.log_error(format!("Error sending progress message: {}", err))
         }
     }
-}
-
-pub fn get_node_id(service: &ServiceId) -> Option<NodeId> {
-    if let ServiceId::Peer(_, addr) = service {
-        Some(addr.id)
-    } else {
-        None
-    }
-}
-
-pub fn aggregate_xmr_spend_view(
-    alice_params: &Parameters,
-    bob_params: &Parameters,
-) -> (monero::PublicKey, monero::PrivateKey) {
-    let alice_view = *alice_params
-        .accordant_shared_keys
-        .clone()
-        .into_iter()
-        .find(|vk| vk.tag() == &SharedKeyId::new(SHARED_VIEW_KEY_ID))
-        .expect("accordant shared keys should always have a view key")
-        .elem();
-    let bob_view = *bob_params
-        .accordant_shared_keys
-        .clone()
-        .into_iter()
-        .find(|vk| vk.tag() == &SharedKeyId::new(SHARED_VIEW_KEY_ID))
-        .expect("accordant shared keys should always have a view key")
-        .elem();
-    (alice_params.spend + bob_params.spend, alice_view + bob_view)
 }
