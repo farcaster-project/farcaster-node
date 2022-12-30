@@ -1215,52 +1215,6 @@ impl Farcaster for FarcasterService {
             .map_err(|_| Status::invalid_argument("accordant_address"))?;
         let deal = Deal::from_str(&str_deal).map_err(|_| Status::invalid_argument("deal"))?;
 
-        let Deal {
-            parameters: deal_parameters,
-            ..
-        } = deal.clone();
-
-        let network = deal_parameters.network;
-        let arbitrating_amount = deal_parameters.arbitrating_amount;
-        let accordant_amount = deal_parameters.accordant_amount;
-
-        if network != bitcoin_address.network.into() {
-            return Err(Status::invalid_argument(format!(
-                "Error: The address {} is not for {}",
-                bitcoin_address, network
-            )));
-        }
-        // monero local address types are mainnet address types
-        if network != monero_address.network.into() && network != Network::Local {
-            return Err(Status::invalid_argument(format!(
-                "Error: The address {} is not for {}",
-                monero_address, network
-            )));
-        }
-
-        if arbitrating_amount > bitcoin::Amount::from_str("0.01 BTC").unwrap()
-            && network == Network::Mainnet
-        {
-            return Err(Status::invalid_argument(format!(
-                "Error: Bitcoin amount {} too high, mainnet amount capped at 0.01 BTC.",
-                arbitrating_amount
-            )));
-        }
-        if accordant_amount > monero::Amount::from_str("2 XMR").unwrap()
-            && network == Network::Mainnet
-        {
-            return Err(Status::invalid_argument(format!(
-                "Error: Monero amount {} too high, mainnet amount capped at 2 XMR.",
-                accordant_amount
-            )));
-        }
-        if accordant_amount < monero::Amount::from_str("0.001 XMR").unwrap() {
-            return Err(Status::invalid_argument(format!(
-                "Error: Monero amount {} too low, require at least 0.001 XMR",
-                accordant_amount
-            )));
-        }
-
         let oneshot_rx = self
             .process_request(BusMsg::Bridge(BridgeMsg::Ctl {
                 request: CtlMsg::TakeDeal(PubDeal {

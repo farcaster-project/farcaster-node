@@ -449,7 +449,11 @@ fn attempt_transition_to_make_deal(
             ..
         })) => {
             // validate deal parameters
-            if let Err(e) = runtime.config.validate_deal_parameters(&deal_parameters) {
+            if let Err(e) = runtime.config.validate_deal_parameters(
+                &deal_parameters,
+                &arbitrating_addr,
+                &accordant_addr,
+            ) {
                 warn!("Deal parameters validation error: {}", e);
                 event.complete_client_ctl(CtlMsg::Failure(Failure {
                     code: FailureCode::Unknown,
@@ -530,7 +534,19 @@ fn attempt_transition_to_taker_connect_or_take_deal(
             bitcoin_address: arb_addr,
             monero_address: acc_addr,
         })) => {
-            // TODO: validate deal parameters with config
+            // validate deal parameters
+            if let Err(e) =
+                runtime
+                    .config
+                    .validate_deal_parameters(&deal.parameters, &arb_addr, &acc_addr)
+            {
+                warn!("Deal parameters validation error: {}", e);
+                event.complete_client_ctl(CtlMsg::Failure(Failure {
+                    code: FailureCode::Unknown,
+                    info: e.to_string(),
+                }))?;
+                return Ok(None);
+            }
             if runtime.consumed_deals_contains(&deal) || runtime.deals.contains(&deal) {
                 let msg = format!(
                     "{} already exists or was already taken, ignoring request",

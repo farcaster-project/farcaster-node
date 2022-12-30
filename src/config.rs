@@ -4,16 +4,18 @@
 // license that can be found in the LICENSE file or at
 // https://opensource.org/licenses/MIT.
 
-use crate::{AccordantBlockchain, ArbitratingBlockchain, Error};
 use farcaster_core::blockchain::Network;
 use farcaster_core::swap::btcxmr::DealParameters;
 use internet2::addr::InetSocketAddr;
+use serde::{Deserialize, Serialize};
+
+use std::convert::TryInto;
 use std::fs::File;
 use std::io::prelude::*;
 use std::path::Path;
 use std::str::FromStr;
 
-use serde::{Deserialize, Serialize};
+use crate::{AccordantBlockchain, ArbitratingBlockchain, Error};
 
 pub const FARCASTER_MAINNET_ELECTRUM_SERVER: &str = "ssl://blockstream.info:700";
 pub const FARCASTER_MAINNET_MONERO_DAEMON: &str = "http://node.community.rino.io:18081";
@@ -196,20 +198,124 @@ impl Config {
         }
     }
 
-    /// Validate a deal against user configuration
-    pub fn validate_deal_parameters(&self, deal: &DealParameters) -> Result<(), Error> {
-        let network = deal.network;
+    /// Validate a deal against user configuration (farcasterd.toml) and user provided addresses
+    pub fn validate_deal_parameters(
+        &self,
+        deal: &DealParameters,
+        arb_addr: &bitcoin::Address,
+        acc_addr: &monero::Address,
+    ) -> Result<(), Error> {
+        self.validate_deal_addresses(deal, arb_addr, acc_addr)?;
+        self.validate_deal_amounts(deal)
+    }
+
+    /// Validate deal amounts against user configuration (farcasterd.toml)
+    pub fn validate_deal_amounts(&self, deal: &DealParameters) -> Result<(), Error> {
+        use config::ConfigError::Message;
         match &self.swap {
-            Some(_swap) => {
+            // Config found, check for assets and network
+            Some(swap) => {
+                match deal.arbitrating_blockchain.try_into()? {
+                    ArbitratingBlockchain::Bitcoin => {
+                        if let Some(chain_config) = swap.bitcoin.get_for_network(deal.network) {
+                            if let Some(tradable_amounts) = chain_config.amounts {
+                                tradable_amounts
+                                    .map()
+                                    .validate_amount(deal.arbitrating_amount)?;
+                            }
+                        }
+                        Ok::<(), Error>(())
+                    }
+                }?;
+                match deal.accordant_blockchain.try_into()? {
+                    AccordantBlockchain::Monero => {
+                        if let Some(chain_config) = swap.monero.get_for_network(deal.network) {
+                            if let Some(tradable_amounts) = chain_config.amounts {
+                                tradable_amounts
+                                    .map()
+                                    .validate_amount(deal.accordant_amount)?;
+                            }
+                        }
+                        Ok::<(), Error>(())
+                    }
+                }?;
                 Ok(())
             }
-            None => {
-                if network == Network::Mainnet {
-                    // TODO
-                }
+            // No config found, apply default rules: only mainnet has defaults
+            None if deal.network == Network::Mainnet => {
+                match deal.arbitrating_blockchain.try_into()? {
+                    ArbitratingBlockchain::Bitcoin => {
+                        use bitcoin::Amount;
+                        let max = Amount::from_btc(SWAP_MAINNET_BITCOIN_MAX_BTC_AMOUNT).unwrap();
+                        if deal.arbitrating_amount > max {
+                            Err(Message(format!(
+                                "{} amount is greater than: {}",
+                                deal.arbitrating_blockchain, max
+                            )))
+                        } else {
+                            Ok(())
+                        }
+                    }
+                }?;
+                match deal.accordant_blockchain.try_into()? {
+                    AccordantBlockchain::Monero => {
+                        use monero::Amount;
+                        let min = Amount::from_xmr(SWAP_MAINNET_MONERO_MIN_XMR_AMOUNT).unwrap();
+                        let max = Amount::from_xmr(SWAP_MAINNET_MONERO_MAX_XMR_AMOUNT).unwrap();
+                        if deal.accordant_amount > max || deal.accordant_amount < min {
+                            Err(Message(format!(
+                                "{} amount is not in range: {} - {}",
+                                deal.arbitrating_blockchain, min, max
+                            )))
+                        } else {
+                            Ok(())
+                        }
+                    }
+                }?;
                 Ok(())
             }
+            // Ok, nothing to validate
+            _ => Ok(()),
         }
+    }
+
+    /// Validate user addresses for arbitrating and accordant blockchain against a deal
+    pub fn validate_deal_addresses(
+        &self,
+        deal: &DealParameters,
+        arb_addr: &bitcoin::Address,
+        acc_addr: &monero::Address,
+    ) -> Result<(), Error> {
+        use config::ConfigError::Message;
+        // validate arbitrating address
+        match deal.arbitrating_blockchain.try_into()? {
+            ArbitratingBlockchain::Bitcoin => {
+                if deal.network != arb_addr.network.into() {
+                    Err(Message(format!(
+                        "{} address is not a {} address",
+                        deal.arbitrating_blockchain, deal.network
+                    )))
+                } else {
+                    Ok(())
+                }
+            }
+        }?;
+        // validate accordant address
+        match deal.accordant_blockchain.try_into()? {
+            AccordantBlockchain::Monero => {
+                // Monero local address types are mainnet address types
+                if deal.network != acc_addr.network.into() && deal.network != Network::Local {
+                    Err(Message(format!(
+                        "{} address is not a {} address",
+                        deal.accordant_blockchain, deal.network
+                    )))
+                } else {
+                    Ok(())
+                }
+            }
+        }?;
+        // all rules passed
+        Ok(())
     }
 }
 
@@ -301,6 +407,38 @@ pub struct TradeableAmounts<T> {
     pub max_amount: Option<T>,
 }
 
+impl<T> TradeableAmounts<T> {
+    /// Map tradeable amounts into new type
+    pub fn map<U>(self) -> TradeableAmounts<U>
+    where
+        T: Into<U>,
+    {
+        TradeableAmounts {
+            min_amount: self.min_amount.map(|min| min.into()),
+            max_amount: self.max_amount.map(|max| max.into()),
+        }
+    }
+
+    /// Validate a given amount based on potential rules (min, max)
+    pub fn validate_amount(&self, amount: T) -> Result<(), Error>
+    where
+        T: std::fmt::Display + PartialOrd<T> + Copy,
+    {
+        use config::ConfigError::Message;
+        if let Some(min) = self.min_amount {
+            if amount < min {
+                return Err(Message(format!("{} is smaller than {}", amount, min)))?;
+            }
+        }
+        if let Some(max) = self.max_amount {
+            if amount > max {
+                return Err(Message(format!("{} is greater than {}", amount, max)))?;
+            }
+        }
+        Ok(())
+    }
+}
+
 mod btc {
     #[derive(Deserialize, Serialize, Debug, Clone)]
     #[serde(crate = "serde_crate")]
@@ -309,6 +447,12 @@ mod btc {
     impl From<bitcoin::Amount> for Amount {
         fn from(b: bitcoin::Amount) -> Self {
             Amount(b)
+        }
+    }
+
+    impl From<Amount> for bitcoin::Amount {
+        fn from(b: Amount) -> Self {
+            b.0
         }
     }
 }
@@ -321,6 +465,12 @@ mod xmr {
     impl From<monero::Amount> for Amount {
         fn from(b: monero::Amount) -> Self {
             Amount(b)
+        }
+    }
+
+    impl From<Amount> for monero::Amount {
+        fn from(b: Amount) -> Self {
+            b.0
         }
     }
 }
