@@ -1856,9 +1856,9 @@ dependencies = [
 
 [[package]]
 name = "monero"
-version = "0.17.2"
+version = "0.17.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8afa5d322a573d345588c3255aaf3316b6a13f3b94f8e776c5ffcde237ec481d"
+checksum = "403883d12972e916dd9754cdb90c25441a9abcf435f8e09c3146de100150eeb0"
 dependencies = [
  "base58-monero",
  "curve25519-dalek",
