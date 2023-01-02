@@ -4,15 +4,21 @@
 // license that can be found in the LICENSE file or at
 // https://opensource.org/licenses/MIT.
 
-use crate::{AccordantBlockchain, ArbitratingBlockchain, Error};
+use config::ConfigError::Message;
 use farcaster_core::blockchain::Network;
+use farcaster_core::swap::btcxmr::DealParameters;
 use internet2::addr::InetSocketAddr;
+use serde::{Deserialize, Serialize};
+use serde_with::DisplayFromStr;
+
+use std::convert::TryInto;
+use std::fmt::Display;
 use std::fs::File;
 use std::io::prelude::*;
 use std::path::Path;
 use std::str::FromStr;
 
-use serde::{Deserialize, Serialize};
+use crate::{AccordantBlockchain, ArbitratingBlockchain, Error};
 
 pub const FARCASTER_MAINNET_ELECTRUM_SERVER: &str = "ssl://blockstream.info:700";
 pub const FARCASTER_MAINNET_MONERO_DAEMON: &str = "http://node.community.rino.io:18081";
@@ -29,7 +35,11 @@ pub const GRPC_BIND_IP_ADDRESS: &str = "127.0.0.1";
 
 pub const SWAP_MAINNET_BITCOIN_SAFETY: u8 = 7;
 pub const SWAP_MAINNET_BITCOIN_FINALITY: u8 = 6;
+pub const SWAP_MAINNET_BITCOIN_MIN_BTC_AMOUNT: f64 = 0.00001;
+pub const SWAP_MAINNET_BITCOIN_MAX_BTC_AMOUNT: f64 = 0.01;
 pub const SWAP_MAINNET_MONERO_FINALITY: u8 = 20;
+pub const SWAP_MAINNET_MONERO_MIN_XMR_AMOUNT: f64 = 0.001;
+pub const SWAP_MAINNET_MONERO_MAX_XMR_AMOUNT: f64 = 2.0;
 
 pub const SWAP_TESTNET_BITCOIN_SAFETY: u8 = 3;
 pub const SWAP_TESTNET_BITCOIN_FINALITY: u8 = 1;
@@ -152,22 +162,20 @@ impl Config {
                     ArbitratingBlockchain::Bitcoin => swap
                         .bitcoin
                         .get_for_network(network)
+                        .map(|c| c.temporality)
                         .or_else(|| ArbConfig::get(arb, network))
                         .ok_or_else(|| {
-                            config::ConfigError::Message(
-                                "No configuration nor defaults founds!".to_string(),
-                            )
+                            Message("No configuration nor defaults founds!".to_string())
                         })?,
                 };
                 let accordant = match acc {
                     AccordantBlockchain::Monero => swap
                         .monero
                         .get_for_network(network)
+                        .map(|c| c.temporality)
                         .or_else(|| AccConfig::get(acc, network))
                         .ok_or_else(|| {
-                            config::ConfigError::Message(
-                                "No configuration nor defaults founds!".to_string(),
-                            )
+                            Message("No configuration nor defaults founds!".to_string())
                         })?,
                 };
                 Ok(ParsedSwapConfig {
@@ -176,17 +184,126 @@ impl Config {
                 })
             }
             None => {
-                let arbitrating = ArbConfig::get(arb, network).ok_or_else(|| {
-                    config::ConfigError::Message("No defaults founds!".to_string())
-                })?;
-                let accordant = AccConfig::get(acc, network).ok_or_else(|| {
-                    config::ConfigError::Message("No defaults founds!".to_string())
-                })?;
+                let arbitrating = ArbConfig::get(arb, network)
+                    .ok_or_else(|| Message("No defaults founds!".to_string()))?;
+                let accordant = AccConfig::get(acc, network)
+                    .ok_or_else(|| Message("No defaults founds!".to_string()))?;
                 Ok(ParsedSwapConfig {
                     arbitrating,
                     accordant,
                 })
             }
+        }
+    }
+
+    /// Validate a deal against user configuration (farcasterd.toml) and user provided addresses
+    pub fn validate_deal_parameters(
+        &self,
+        deal: &DealParameters,
+        arb_addr: &bitcoin::Address,
+        acc_addr: &monero::Address,
+    ) -> Result<(), Error> {
+        self.validate_deal_addresses(deal, arb_addr, acc_addr)?;
+        self.validate_deal_amounts(deal)
+    }
+
+    /// Validate deal amounts against user configuration (farcasterd.toml)
+    pub fn validate_deal_amounts(&self, deal: &DealParameters) -> Result<(), Error> {
+        // assume arbitrating is bitcoin
+        self.swap
+            .as_ref()
+            .and_then(|swap| {
+                swap.bitcoin
+                    .get_for_network(deal.network)
+                    .map(|net| net.amounts)
+            })
+            .or_else(|| Self::btc_default_tradeable(deal.network))
+            .map(|tradeable| tradeable.validate_amount(deal.arbitrating_amount))
+            .transpose()?;
+        // assume accordant is monero
+        self.swap
+            .as_ref()
+            .and_then(|swap| {
+                swap.monero
+                    .get_for_network(deal.network)
+                    .map(|net| net.amounts)
+            })
+            .or_else(|| Self::xmr_default_tradeable(deal.network))
+            .map(|tradeable| tradeable.validate_amount(deal.accordant_amount))
+            .transpose()?;
+
+        Ok(())
+    }
+
+    /// Validate user addresses for arbitrating and accordant blockchain against a deal
+    pub fn validate_deal_addresses(
+        &self,
+        deal: &DealParameters,
+        arb_addr: &bitcoin::Address,
+        acc_addr: &monero::Address,
+    ) -> Result<(), Error> {
+        // validate arbitrating address
+        match deal.arbitrating_blockchain.try_into()? {
+            ArbitratingBlockchain::Bitcoin => {
+                if deal.network != arb_addr.network.into() {
+                    Err(Message(format!(
+                        "{} address is not a {} address",
+                        deal.arbitrating_blockchain, deal.network
+                    )))
+                } else {
+                    Ok(())
+                }
+            }
+        }?;
+        // validate accordant address
+        match deal.accordant_blockchain.try_into()? {
+            AccordantBlockchain::Monero => {
+                // Monero local address types are mainnet address types
+                if deal.network != acc_addr.network.into() && deal.network != Network::Local {
+                    Err(Message(format!(
+                        "{} address is not a {} address",
+                        deal.accordant_blockchain, deal.network
+                    )))
+                } else {
+                    Ok(())
+                }
+            }
+        }?;
+        // all rules passed
+        Ok(())
+    }
+
+    // Helper function to return default btc tradeable amounts by network
+    fn btc_default_tradeable(network: Network) -> Option<TradeableAmounts<bitcoin::Amount>> {
+        match network {
+            Network::Mainnet => Some(Self::mainnet_btc_default_tradeable()),
+            _ => None,
+        }
+    }
+
+    // Helper function to return default mainnet btc tradeable amounts
+    fn mainnet_btc_default_tradeable() -> TradeableAmounts<bitcoin::Amount> {
+        use bitcoin::Amount;
+        TradeableAmounts {
+            min_amount: Amount::from_btc(SWAP_MAINNET_BITCOIN_MIN_BTC_AMOUNT).ok(),
+            max_amount: Amount::from_btc(SWAP_MAINNET_BITCOIN_MAX_BTC_AMOUNT).ok(),
+        }
+    }
+
+    // Helper function to return default xmr tradeable amounts by network
+    fn xmr_default_tradeable(network: Network) -> Option<TradeableAmounts<monero::Amount>> {
+        match network {
+            Network::Mainnet => Some(Self::mainnet_xmr_default_tradeable()),
+            _ => None,
+        }
+    }
+
+    // Helper function to return default mainnet xmr tradeable amounts
+    fn mainnet_xmr_default_tradeable() -> TradeableAmounts<monero::Amount> {
+        use monero::Amount;
+        TradeableAmounts {
+            min_amount: Amount::from_xmr(SWAP_MAINNET_MONERO_MIN_XMR_AMOUNT).ok(),
+            max_amount: Amount::from_xmr(SWAP_MAINNET_MONERO_MAX_XMR_AMOUNT).ok(),
         }
     }
 }
@@ -232,15 +349,35 @@ pub struct FarcasterdConfig {
     pub auto_restore: Option<bool>,
 }
 
+/// This struct holds all swap config, for all chains and all networks
 #[derive(Deserialize, Serialize, Debug, Clone)]
 #[serde(crate = "serde_crate")]
 pub struct SwapConfig {
     /// Swap parameters for the Bitcoin blockchain per network
-    pub bitcoin: Networked<Option<ArbConfig>>,
+    pub bitcoin: Networked<Option<ChainSwapConfig<ArbConfig, bitcoin::Amount>>>,
     /// Swap parameters for the Monero blockchain per network
-    pub monero: Networked<Option<AccConfig>>,
+    pub monero: Networked<Option<ChainSwapConfig<AccConfig, monero::Amount>>>,
 }
 
+/// This struct holds the complete swap config for a chain
+#[derive(Deserialize, Serialize, Debug, Clone)]
+#[serde(crate = "serde_crate")]
+#[serde(bound(serialize = "T: Serialize, A: Display"))]
+#[serde(bound(deserialize = "T: Deserialize<'de>, A: FromStr, A::Err: Display"))]
+pub struct ChainSwapConfig<T, A>
+where
+    A: FromStr + Display,
+    A::Err: Display,
+{
+    #[serde(flatten)]
+    pub temporality: T,
+    #[serde(flatten)]
+    pub amounts: TradeableAmounts<A>,
+}
+
+/// This struct is the result type returned by the config to a service for the pair of arbitrating
+/// and accordant chain in a swap. E.g. for Bitcoin and Monero `[swap.bitcoin...]` is stored in
+/// `arbitrating` and `[swap.monero...]` is stored in `accordant`.
 #[derive(Deserialize, Serialize, Debug, Clone)]
 #[serde(crate = "serde_crate")]
 pub struct ParsedSwapConfig {
@@ -250,6 +387,7 @@ pub struct ParsedSwapConfig {
     pub accordant: AccConfig,
 }
 
+/// Holds the parameters needed for an arbitrating asset in a swap, e.g. Bitcoin
 #[derive(Deserialize, Serialize, Debug, Clone)]
 #[serde(crate = "serde_crate")]
 pub struct ArbConfig {
@@ -286,6 +424,7 @@ impl ArbConfig {
     }
 }
 
+/// Holds the parameters needed for an accordant asset in a swap, e.g. Monero
 #[derive(Deserialize, Serialize, Debug, Clone)]
 #[serde(crate = "serde_crate")]
 pub struct AccConfig {
@@ -322,6 +461,73 @@ impl From<ArbConfig> for AccConfig {
     fn from(arb: ArbConfig) -> Self {
         Self {
             finality: arb.finality,
+        }
+    }
+}
+
+/// Defines a potential minimum and maximum amount for an asset, below or above which the user will
+/// not accept the trade
+#[serde_as]
+#[derive(Deserialize, Serialize, Debug, Clone)]
+#[serde(crate = "serde_crate")]
+#[serde(bound(serialize = "T: Display"))]
+#[serde(bound(deserialize = "T: FromStr, T::Err: Display"))]
+pub struct TradeableAmounts<T>
+where
+    T: FromStr + Display,
+    T::Err: Display,
+{
+    /// If specified, the minimum acceptable amount to trade (>=)
+    #[serde_as(as = "Option<DisplayFromStr>")]
+    #[serde(default)]
+    pub min_amount: Option<T>,
+    /// If specified, the maximum acceptable amount to trade (<=)
+    #[serde_as(as = "Option<DisplayFromStr>")]
+    #[serde(default)]
+    pub max_amount: Option<T>,
+}
+
+impl<T> TradeableAmounts<T>
+where
+    T: FromStr + Display,
+    T::Err: Display,
+{
+    /// Map tradeable amounts into new type
+    pub fn map<U>(self) -> TradeableAmounts<U>
+    where
+        T: Into<U>,
+        U: FromStr + Display,
+        U::Err: Display,
+    {
+        TradeableAmounts {
+            min_amount: self.min_amount.map(|min| min.into()),
+            max_amount: self.max_amount.map(|max| max.into()),
+        }
+    }
+
+    /// Validate a given amount based on potential rules (min, max)
+    pub fn validate_amount(&self, amount: T) -> Result<(), Error>
+    where
+        T: PartialOrd<T> + Copy,
+    {
+        if let Some(min) = self.min_amount {
+            if amount < min {
+                return Err(Message(format!("{} is smaller than {}", amount, min)))?;
+            }
+        }
+        if let Some(max) = self.max_amount {
+            if amount > max {
+                return Err(Message(format!("{} is greater than {}", amount, max)))?;
+            }
+        }
+        Ok(())
+    }
+
+    /// Helper function returning no min nor max amounts
+    pub fn none() -> Self {
+        Self {
+            min_amount: None,
+            max_amount: None,
         }
     }
 }
@@ -409,13 +615,25 @@ impl Default for SwapConfig {
     fn default() -> Self {
         SwapConfig {
             bitcoin: Networked {
-                mainnet: Some(ArbConfig::btc_mainnet_default()),
-                testnet: Some(ArbConfig::btc_testnet_default()),
+                mainnet: Some(ChainSwapConfig {
+                    temporality: ArbConfig::btc_mainnet_default(),
+                    amounts: Config::mainnet_btc_default_tradeable(),
+                }),
+                testnet: Some(ChainSwapConfig {
+                    temporality: ArbConfig::btc_testnet_default(),
+                    amounts: TradeableAmounts::none(),
+                }),
                 local: None,
             },
             monero: Networked {
-                mainnet: Some(AccConfig::xmr_mainnet_default()),
-                testnet: Some(AccConfig::xmr_testnet_default()),
+                mainnet: Some(ChainSwapConfig {
+                    temporality: AccConfig::xmr_mainnet_default(),
+                    amounts: Config::mainnet_xmr_default_tradeable(),
+                }),
+                testnet: Some(ChainSwapConfig {
+                    temporality: AccConfig::xmr_testnet_default(),
+                    amounts: TradeableAmounts::none(),
+                }),
                 local: None,
             },
         }
@@ -443,7 +661,9 @@ pub fn parse_config(path: &str) -> Result<Config, Error> {
         info!("Loading config file at: {}", &config_file);
         let mut settings = config::Config::default();
         settings.merge(config::File::with_name(config_file).required(true))?;
-        settings.try_into::<Config>().map_err(Into::into)
+        let conf = settings.try_into::<Config>().map_err(Into::into);
+        trace!("{:#?}", conf);
+        conf
     } else {
         info!("No configuration file found, generating default config");
         let config = Config::default();

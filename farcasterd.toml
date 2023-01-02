@@ -37,6 +37,17 @@ bitcoin_cookie_path = "~/.bitcoin/testnet3/.cookie"
 # the wallet should have spendable funds
 monero_rpc_wallet = "http://localhost:38084"
 
+# Default mainnet parameters for bitcoin and monero
+[swap.bitcoin.mainnet]
+safety = 7
+finality = 6
+min_amount = "0.00001 BTC"
+max_amount = "0.01 BTC"
+[swap.monero.mainnet]
+finality = 20
+min_amount = "0.001 XMR"
+max_amount = "2 XMR"
+
 # Swap parameter for the Bitcoin blockchain
 [swap.bitcoin.testnet]
 # Avoid broadcasting a transaction if a race can happen in # blocks
@@ -49,11 +60,19 @@ safety = 3
 # Number of confirmations required to consider a transaction final. Must be
 # smaller than safety.
 finality = 1
+# The minimum acceptable amount of bitcoin to trade
+min_amount = "0.00001 BTC"
+# The maximum acceptable amount of bitcoin to trade
+max_amount = "1 BTC"
 
 # Swap parameter for the Monero blockchain
 [swap.monero.testnet]
 # Number of confirmations required to consider a transaction final
 finality = 1
+# The minimum acceptable amount of monero to trade
+min_amount = "0.001 XMR"
+# The maximum acceptable amount of monero to trade
+max_amount = "20 XMR"
 
 # Defines grpc options
 [grpc]
