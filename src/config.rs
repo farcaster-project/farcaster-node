@@ -355,6 +355,7 @@ pub struct FarcasterdConfig {
     pub auto_restore: Option<bool>,
 }
 
+/// This struct holds all swap config, for all chains and all networks
 #[derive(Deserialize, Serialize, Debug, Clone)]
 #[serde(crate = "serde_crate")]
 pub struct SwapConfig {
@@ -364,7 +365,7 @@ pub struct SwapConfig {
     pub monero: Networked<Option<ChainSwapConfig<AccConfig, monero::Amount>>>,
 }
 
-/// This struct holds the complete swap config for a chain; this is just an helper
+/// This struct holds the complete swap config for a chain
 #[derive(Deserialize, Serialize, Debug, Clone)]
 #[serde(crate = "serde_crate")]
 #[serde(bound(serialize = "T: Serialize, A: Display"))]
@@ -380,6 +381,9 @@ where
     pub amounts: TradeableAmounts<A>,
 }
 
+/// This struct is the result type returned by the config to a service for the pair of arbitrating
+/// and accordant chain in a swap. E.g. for Bitcoin and Monero `[swap.bitcoin...]` is stored in
+/// `arbitrating` and `[swap.monero...]` is stored in `accordant`.
 #[derive(Deserialize, Serialize, Debug, Clone)]
 #[serde(crate = "serde_crate")]
 pub struct ParsedSwapConfig {
@@ -389,6 +393,7 @@ pub struct ParsedSwapConfig {
     pub accordant: AccConfig,
 }
 
+/// Holds the parameters needed for an arbitrating asset in a swap, e.g. Bitcoin
 #[derive(Deserialize, Serialize, Debug, Clone)]
 #[serde(crate = "serde_crate")]
 pub struct ArbConfig {
@@ -491,6 +496,7 @@ impl ArbConfig {
     }
 }
 
+/// Holds the parameters needed for an accordant asset in a swap, e.g. Monero
 #[derive(Deserialize, Serialize, Debug, Clone)]
 #[serde(crate = "serde_crate")]
 pub struct AccConfig {
