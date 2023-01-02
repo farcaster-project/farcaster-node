@@ -23,9 +23,10 @@ use monero::ViewPair;
 use strict_encoding::{StrictDecode, StrictEncode};
 
 use crate::{
-    bus::ctl::{BitcoinFundingInfo, MoneroFundingInfo},
+    bus::ctl::BitcoinFundingInfo,
     syncerd::{bitcoin_syncer::p2wpkh_signed_tx_fee, AddressTransaction},
 };
+use crate::{bus::ctl::MoneroFundingInfo, service::SwapLogging};
 use crate::{bus::p2p::Reveal, swapd::temporal_safety::SWEEP_MONERO_THRESHOLD};
 use crate::{
     bus::{
@@ -56,7 +57,7 @@ use crate::{
 };
 
 use super::{
-    runtime::{Runtime, SwapLogging},
+    runtime::Runtime,
     swap_key_manager::{
         AliceSwapKeyManager, AliceTxs, BobSwapKeyManager, BobTxs, WrappedEncryptedSignature,
     },

@@ -12,6 +12,7 @@ use crate::bus::info::{InfoMsg, MadeDeal, TookDeal, ViewableDeal};
 use crate::bus::p2p::{Commit, PeerMsg};
 use crate::bus::{CheckpointEntry, DealInfo, DealStatus, Failure, FailureCode};
 use crate::farcasterd::runtime::{launch_swapd, syncer_up, Runtime};
+use crate::service::{SwapDetails, SwapLogging};
 use crate::LogStyle;
 use crate::{
     bus::{BusMsg, Outcome},
@@ -20,8 +21,9 @@ use crate::{
     ServiceId,
 };
 use farcaster_core::blockchain::Blockchain;
-use farcaster_core::role::TradeRole;
+use farcaster_core::role::{SwapRole, TradeRole};
 use farcaster_core::swap::{btcxmr::Deal, SwapId};
+use farcaster_core::Uuid;
 use internet2::addr::{NodeAddr, NodeId};
 use microservices::esb::Handler;
 use std::convert::TryInto;
@@ -212,37 +214,46 @@ impl From<ConsumedDealRole> for TradeRole {
 
 impl StateMachine<Runtime, Error> for TradeStateMachine {
     fn next(self, event: Event, runtime: &mut Runtime) -> Result<Option<Self>, Error> {
-        debug!(
-            "{} | Checking event request {} from {} for state transition",
-            self.swap_id().map_or("…".to_string(), |s| s.to_string()),
-            event.request,
-            event.source
-        );
+        let log_helper = self.log_helper();
+        log_helper.log_debug(format!(
+            "Checking event request {} from {} for state transition",
+            event.request, event.source
+        ));
         match self {
             TradeStateMachine::StartTaker => {
-                attempt_transition_to_taker_connect_or_take_deal(event, runtime)
+                attempt_transition_to_taker_connect_or_take_deal(event, runtime, log_helper)
             }
-            TradeStateMachine::StartMaker => attempt_transition_to_make_deal(event, runtime),
+            TradeStateMachine::StartMaker => {
+                attempt_transition_to_make_deal(event, runtime, log_helper)
+            }
             TradeStateMachine::StartRestore => {
-                attempt_transition_to_restoring_swapd(event, runtime)
+                attempt_transition_to_restoring_swapd(event, runtime, log_helper)
             }
             TradeStateMachine::TakerConnect(taker_connect) => {
-                attempt_transition_to_take_deal(event, runtime, taker_connect)
+                attempt_transition_to_take_deal(event, runtime, taker_connect, log_helper)
             }
             TradeStateMachine::MakeDeal(make_deal) => {
-                attempt_transition_to_taker_committed(event, runtime, make_deal)
+                attempt_transition_to_taker_committed(event, runtime, make_deal, log_helper)
             }
             TradeStateMachine::TakerCommit(taker_commit) => {
-                attempt_transition_from_taker_commit_to_swapd_launched(event, runtime, taker_commit)
+                attempt_transition_from_taker_commit_to_swapd_launched(
+                    event,
+                    runtime,
+                    taker_commit,
+                    log_helper,
+                )
             }
             TradeStateMachine::TakeDeal(take_deal) => {
-                attempt_transition_from_take_deal_to_swapd_launched(event, runtime, take_deal)
+                attempt_transition_from_take_deal_to_swapd_launched(
+                    event, runtime, take_deal, log_helper,
+                )
             }
             TradeStateMachine::SwapdLaunched(swapd_launched) => {
                 attempt_transition_from_swapd_launched_to_swapd_running(
                     event,
                     runtime,
                     swapd_launched,
+                    log_helper,
                 )
             }
             TradeStateMachine::RestoringSwapd(restoring_swapd) => {
@@ -250,25 +261,29 @@ impl StateMachine<Runtime, Error> for TradeStateMachine {
                     event,
                     runtime,
                     restoring_swapd,
+                    log_helper,
                 )
             }
             TradeStateMachine::SwapdRunning(swapd_running) => {
-                attempt_transition_to_end(event, runtime, swapd_running)
+                attempt_transition_to_end(event, runtime, swapd_running, log_helper)
             }
         }
     }
 
     fn name(&self) -> String {
-        let trade_id = self.swap_id().map(|s| s.to_string()).unwrap_or_else(|| {
-            self.open_deal()
-                .map(|d| d.id().to_string())
-                .unwrap_or_else(|| {
-                    self.consumed_deal()
-                        .map(|(d, _)| d.id().to_string())
-                        .unwrap_or_else(|| "…".to_string())
-                })
-        });
-        format!("{} | Trade", trade_id.swap_id())
+        format!("{} | Trade", self.log_helper().log_prefix())
+    }
+}
+
+struct LogHelper {
+    swap_id: Option<Uuid>,
+    swap_role: Option<SwapRole>,
+    trade_role: Option<TradeRole>,
+}
+
+impl SwapLogging for LogHelper {
+    fn swap_details(&self) -> SwapDetails {
+        (self.swap_id, self.swap_role, self.trade_role)
     }
 }
 
@@ -276,12 +291,61 @@ pub struct TradeStateMachineExecutor {}
 impl StateMachineExecutor<Runtime, Error, TradeStateMachine> for TradeStateMachineExecutor {}
 
 impl TradeStateMachine {
+    fn log_helper(&self) -> LogHelper {
+        LogHelper {
+            swap_id: self.uuid(),
+            swap_role: self.swap_role(),
+            trade_role: self.trade_role(),
+        }
+    }
+
     pub fn open_deal(&self) -> Option<Deal> {
         if let TradeStateMachine::MakeDeal(MakeDeal { deal, .. }) = self {
             Some(deal.clone())
         } else {
             None
         }
+    }
+
+    pub fn deal(&self) -> Option<&Deal> {
+        match self {
+            TradeStateMachine::MakeDeal(MakeDeal { deal, .. }) => Some(deal),
+            TradeStateMachine::TakerConnect(TakerConnect { deal, .. }) => Some(deal),
+            TradeStateMachine::TakeDeal(TakeDeal { deal, .. }) => Some(deal),
+            TradeStateMachine::TakerCommit(TakerCommit { deal, .. }) => Some(deal),
+            TradeStateMachine::SwapdLaunched(SwapdLaunched { deal, .. }) => Some(deal),
+            TradeStateMachine::RestoringSwapd(RestoringSwapd { deal, .. }) => Some(deal),
+            TradeStateMachine::SwapdRunning(SwapdRunning { deal, .. }) => Some(deal),
+            _ => None,
+        }
+    }
+
+    pub fn uuid(&self) -> Option<Uuid> {
+        self.deal().map(|d| d.id().0)
+    }
+
+    pub fn trade_role(&self) -> Option<TradeRole> {
+        match self {
+            TradeStateMachine::StartTaker => Some(TradeRole::Taker),
+            TradeStateMachine::StartMaker => Some(TradeRole::Maker),
+            TradeStateMachine::MakeDeal(_) => Some(TradeRole::Maker),
+            TradeStateMachine::TakerCommit(_) => Some(TradeRole::Maker),
+            TradeStateMachine::TakerConnect(_) => Some(TradeRole::Taker),
+            TradeStateMachine::TakeDeal(_) => Some(TradeRole::Taker),
+            TradeStateMachine::RestoringSwapd(RestoringSwapd { trade_role, .. }) => {
+                Some(*trade_role)
+            }
+            TradeStateMachine::SwapdLaunched(SwapdLaunched {
+                consumed_deal_role, ..
+            }) => Some(consumed_deal_role.clone().into()),
+            TradeStateMachine::SwapdRunning(SwapdRunning { trade_role, .. }) => Some(*trade_role),
+            _ => None,
+        }
+    }
+
+    pub fn swap_role(&self) -> Option<SwapRole> {
+        self.deal()
+            .and_then(|d| self.trade_role().map(|t| d.swap_role(&t)))
     }
 
     pub fn consumed_deal(&self) -> Option<(Deal, TradeRole)> {
@@ -439,6 +503,7 @@ impl TradeStateMachine {
 fn attempt_transition_to_make_deal(
     mut event: Event,
     runtime: &mut Runtime,
+    log_helper: LogHelper,
 ) -> Result<Option<TradeStateMachine>, Error> {
     match event.request.clone() {
         BusMsg::Ctl(CtlMsg::MakeDeal(ProtoDeal {
@@ -474,7 +539,10 @@ fn attempt_transition_to_make_deal(
             };
             match runtime.listen(bind_addr) {
                 Err(err) => {
-                    warn!("Failed to start peerd listen, cannot make deal: {}", err);
+                    log_helper.log_warn(format!(
+                        "Failed to start peerd listen, cannot make deal: {}",
+                        err
+                    ));
                     event.complete_client_ctl(CtlMsg::Failure(Failure {
                         code: FailureCode::Unknown,
                         info: err.to_string(),
@@ -484,11 +552,11 @@ fn attempt_transition_to_make_deal(
                 Ok(node_id) => {
                     let deal = deal_parameters.to_v1(node_id.public_key(), public_addr);
                     let msg = s!("Deal registered, please share with taker.");
-                    info!(
+                    log_helper.log_info(format!(
                         "{}: {:#}",
                         "Deal registered.".bright_green_bold(),
                         deal.id().bright_yellow_bold()
-                    );
+                    ));
                     event.send_ctl_service(
                         ServiceId::Database,
                         CtlMsg::SetDealInfo(DealInfo {
@@ -515,10 +583,10 @@ fn attempt_transition_to_make_deal(
             }
         }
         req => {
-            warn!(
+            log_helper.log_warn(format!(
                 "Request {} from {} invalid for state start maker - invalidating.",
                 req, event.source
-            );
+            ));
             Ok(None)
         }
     }
@@ -527,6 +595,7 @@ fn attempt_transition_to_make_deal(
 fn attempt_transition_to_taker_connect_or_take_deal(
     mut event: Event,
     runtime: &mut Runtime,
+    log_helper: LogHelper,
 ) -> Result<Option<TradeStateMachine>, Error> {
     match event.request.clone() {
         BusMsg::Ctl(CtlMsg::TakeDeal(PubDeal {
@@ -552,7 +621,7 @@ fn attempt_transition_to_taker_connect_or_take_deal(
                     "{} already exists or was already taken, ignoring request",
                     &deal.to_string()
                 );
-                warn!("{}", msg.err());
+                log_helper.log_warn(format!("{}", msg.err()));
                 event.complete_client_ctl(CtlMsg::Failure(Failure {
                     code: FailureCode::Unknown,
                     info: msg,
@@ -564,10 +633,10 @@ fn attempt_transition_to_taker_connect_or_take_deal(
             // connect to the remote peer
             match runtime.connect_peer(&peer_node_addr) {
                 Err(err) => {
-                    warn!(
+                    log_helper.log_warn(format!(
                         "Error connecting to remote peer {}, failed to take deal.",
                         err
-                    );
+                    ));
                     event.complete_client_ctl(CtlMsg::Failure(Failure {
                         code: FailureCode::Unknown,
                         info: err.to_string(),
@@ -577,11 +646,11 @@ fn attempt_transition_to_taker_connect_or_take_deal(
                 Ok((connected, peer_service_id)) => {
                     if connected {
                         let deal_registered = "Deal registered".to_string();
-                        info!(
+                        log_helper.log_info(format!(
                             "{}: {:#}",
                             deal_registered.bright_green_bold(),
                             &deal.id().bright_yellow_bold()
-                        );
+                        ));
                         event.send_ctl_service(
                             ServiceId::Wallet,
                             CtlMsg::CreateSwapKeys(deal.clone(), runtime.wallet_token.clone()),
@@ -609,10 +678,10 @@ fn attempt_transition_to_taker_connect_or_take_deal(
             }
         }
         req => {
-            warn!(
+            log_helper.log_warn(format!(
                 "Request {} from {} invalid for state start restore - invalidating.",
                 req, event.source,
-            );
+            ));
             Ok(None)
         }
     }
@@ -621,6 +690,7 @@ fn attempt_transition_to_taker_connect_or_take_deal(
 fn attempt_transition_to_restoring_swapd(
     mut event: Event,
     runtime: &mut Runtime,
+    log_helper: LogHelper,
 ) -> Result<Option<TradeStateMachine>, Error> {
     // check if databased and walletd are running
     match event.request.clone() {
@@ -654,7 +724,7 @@ fn attempt_transition_to_restoring_swapd(
             let expect_connection = if trade_role == TradeRole::Taker {
                 let peer_node_addr = node_addr_from_deal(&deal);
                 if let Err(err) = runtime.connect_peer(&peer_node_addr) {
-                    warn!("failed to reconnect to peer on restore: {}", err);
+                    log_helper.log_warn(format!("failed to reconnect to peer on restore: {}", err));
                     false
                 } else {
                     true
@@ -673,18 +743,17 @@ fn attempt_transition_to_restoring_swapd(
                 match runtime.config.get_bind_addr() {
                     Ok(bind_addr) => {
                         if let Err(err) = runtime.listen(bind_addr) {
-                            warn!("failed to re-listen on restore: {}", err);
+                            log_helper.log_warn(format!("failed to re-listen on restore: {}", err));
                             false
                         } else {
                             true
                         }
                     }
                     Err(err) => {
-                        let msg = format!(
+                        log_helper.log_error(format!(
                             "Failed to relisten on restore, bad bind address configuration: {}",
                             err
-                        );
-                        error!("{}", msg);
+                        ));
                         false
                     }
                 }
@@ -724,10 +793,10 @@ fn attempt_transition_to_restoring_swapd(
             })))
         }
         req => {
-            warn!(
+            log_helper.log_warn(format!(
                 "Request {} from {} invalid for state start restore - invalidating.",
                 req, event.source,
-            );
+            ));
             Ok(None)
         }
     }
@@ -737,6 +806,7 @@ fn attempt_transition_to_taker_committed(
     mut event: Event,
     runtime: &mut Runtime,
     make_deal: MakeDeal,
+    log_helper: LogHelper,
 ) -> Result<Option<TradeStateMachine>, Error> {
     let MakeDeal {
         deal,
@@ -747,10 +817,8 @@ fn attempt_transition_to_taker_committed(
         (BusMsg::P2p(PeerMsg::TakerCommit(taker_commit)), ServiceId::Peer(..)) => {
             if deal == taker_commit.deal {
                 let source = event.source.clone();
-                let swap_id = taker_commit.swap_id();
-                info!(
-                    "{} | Received TakerCommit for swap - requesting walletd to create swap keys.",
-                    swap_id.swap_id(),
+                log_helper.log_info(
+                    "Received TakerCommit for swap - requesting walletd to create swap keys.",
                 );
                 event.send_ctl_service(
                     ServiceId::Wallet,
@@ -773,7 +841,10 @@ fn attempt_transition_to_taker_committed(
                     target_monero_address: acc_addr,
                 })))
             } else {
-                error!("Received invalid TakerCommit for deal {}.", deal.id());
+                log_helper.log_error(format!(
+                    "Received invalid TakerCommit for deal {}.",
+                    deal.id()
+                ));
                 Ok(Some(TradeStateMachine::MakeDeal(MakeDeal {
                     deal,
                     arb_addr,
@@ -782,9 +853,9 @@ fn attempt_transition_to_taker_committed(
             }
         }
         (BusMsg::Ctl(CtlMsg::RevokeDeal(revoke_deal)), _) => {
-            debug!("attempting to revoke {}", deal);
+            log_helper.log_debug(format!("attempting to revoke {}", deal));
             if revoke_deal == deal {
-                info!("Revoked deal {}", deal.label());
+                log_helper.log_info(format!("Revoked deal {}", deal.label()));
                 event.send_ctl_service(
                     ServiceId::Database,
                     CtlMsg::SetDealInfo(DealInfo {
@@ -800,7 +871,7 @@ fn attempt_transition_to_taker_committed(
                 Ok(None)
             } else {
                 let msg = "Cannot revoke deal, it does not exist".to_string();
-                error!("{}", msg);
+                log_helper.log_error(&msg);
                 event.complete_client_info(InfoMsg::String(msg))?;
                 Ok(Some(TradeStateMachine::MakeDeal(MakeDeal {
                     deal,
@@ -811,16 +882,15 @@ fn attempt_transition_to_taker_committed(
         }
         (req, source) => {
             if let BusMsg::Ctl(CtlMsg::Hello) = req {
-                trace!(
-                    "BusMsg {} from {} invalid for state make deal.",
-                    req,
-                    source
-                );
-            } else {
-                warn!(
+                log_helper.log_trace(format!(
                     "BusMsg {} from {} invalid for state make deal.",
                     req, source
-                );
+                ));
+            } else {
+                log_helper.log_warn(format!(
+                    "BusMsg {} from {} invalid for state make deal.",
+                    req, source
+                ));
             }
             Ok(Some(TradeStateMachine::MakeDeal(MakeDeal {
                 deal,
@@ -835,6 +905,7 @@ fn attempt_transition_from_taker_commit_to_swapd_launched(
     event: Event,
     runtime: &mut Runtime,
     taker_commit: TakerCommit,
+    log_helper: LogHelper,
 ) -> Result<Option<TradeStateMachine>, Error> {
     let TakerCommit {
         peerd,
@@ -846,7 +917,7 @@ fn attempt_transition_from_taker_commit_to_swapd_launched(
     match event.request {
         BusMsg::Ctl(CtlMsg::SwapKeys(swap_keys)) => {
             let swap_id = commit.swap_id();
-            info!("{} | Creating new swap.", swap_id.swap_id());
+            log_helper.log_info("Creating new swap.");
             let tsm = transition_to_swapd_launched_tsm(
                 runtime,
                 ConsumedDealRole::Maker(commit),
@@ -856,14 +927,15 @@ fn attempt_transition_from_taker_commit_to_swapd_launched(
                 target_bitcoin_address,
                 target_monero_address,
                 swap_id,
+                log_helper,
             )?;
             Ok(Some(tsm))
         }
         req => {
             if let BusMsg::Ctl(CtlMsg::Hello) = req {
-                trace!("BusMsg {} from {} invalid for state Taker Commit - expected LaunchSwap request.", req, event.source);
+                log_helper.log_trace(format!("BusMsg {} from {} invalid for state Taker Commit - expected LaunchSwap request.", req, event.source));
             } else {
-                warn!("BusMsg {} from {} invalid for state Taker Commit - expected LaunchSwap request.", req, event.source);
+                log_helper.log_warn(format!("BusMsg {} from {} invalid for state Taker Commit - expected LaunchSwap request.", req, event.source));
             }
             Ok(Some(TradeStateMachine::TakerCommit(TakerCommit {
                 peerd,
@@ -880,6 +952,7 @@ fn attempt_transition_to_take_deal(
     mut event: Event,
     runtime: &mut Runtime,
     taker_connect: TakerConnect,
+    log_helper: LogHelper,
 ) -> Result<Option<TradeStateMachine>, Error> {
     let TakerConnect {
         deal,
@@ -893,11 +966,11 @@ fn attempt_transition_to_take_deal(
         {
             runtime.handle_new_connection(event.source.clone());
             let deal_registered = "Deal registered".to_string();
-            info!(
+            log_helper.log_info(format!(
                 "{}: {:#}",
                 deal_registered.bright_green_bold(),
                 &deal.id().bright_yellow_bold()
-            );
+            ));
             event.send_ctl_service(
                 ServiceId::Wallet,
                 CtlMsg::CreateSwapKeys(deal.clone(), runtime.wallet_token.clone()),
@@ -920,11 +993,11 @@ fn attempt_transition_to_take_deal(
         BusMsg::Ctl(CtlMsg::ConnectFailed)
             if Some(node_addr_from_deal(&deal)) == event.source.node_addr() =>
         {
-            warn!(
+            log_helper.log_warn(format!(
                 "{} | Connection to the remote peer {} failed, cannot  take the deal.",
                 deal.id(),
                 event.source
-            );
+            ));
             runtime.handle_failed_connection(event.endpoints, event.source.clone())?;
             event.send_client_ctl(
                 source,
@@ -937,16 +1010,16 @@ fn attempt_transition_to_take_deal(
         }
         req => {
             if let BusMsg::Ctl(CtlMsg::Hello) = req {
-                trace!(
+                log_helper.log_trace(format!(
                     "BusMsg {} from {} invalid for state Taker Connect - expected ConnectedFailed or ConnectSuccess request.",
                     req,
                     event.source
-                );
+                ));
             } else {
-                warn!(
+                log_helper.log_warn(format!(
                     "BusMsg {} from {} invalid for state Taker Connect - expected ConnectFailed or ConnectSuccess request.",
                     req, event.source
-                );
+                ));
             }
             Ok(Some(TradeStateMachine::TakerConnect(TakerConnect {
                 deal,
@@ -962,6 +1035,7 @@ fn attempt_transition_from_take_deal_to_swapd_launched(
     mut event: Event,
     runtime: &mut Runtime,
     take_deal: TakeDeal,
+    log_helper: LogHelper,
 ) -> Result<Option<TradeStateMachine>, Error> {
     let TakeDeal {
         deal,
@@ -972,7 +1046,7 @@ fn attempt_transition_from_take_deal_to_swapd_launched(
     match &event.request {
         BusMsg::Ctl(CtlMsg::SwapKeys(swap_keys)) => {
             let swap_id: SwapId = deal.id().into(); // The deal id is now used to track a swap
-            info!("{} | Creating new swap.", swap_id.swap_id());
+            log_helper.log_info("Creating new swap.");
             let tsm = transition_to_swapd_launched_tsm(
                 runtime,
                 ConsumedDealRole::Taker,
@@ -982,6 +1056,7 @@ fn attempt_transition_from_take_deal_to_swapd_launched(
                 arb_addr,
                 acc_addr,
                 swap_id,
+                log_helper,
             )?;
             event.send_ctl_service(
                 ServiceId::Database,
@@ -996,16 +1071,15 @@ fn attempt_transition_from_take_deal_to_swapd_launched(
         }
         req => {
             if let BusMsg::Ctl(CtlMsg::Hello) = req {
-                trace!(
-                    "BusMsg {} from {} invalid for state Take Deal - expected LaunchSwap request.",
-                    req,
-                    event.source
-                );
-            } else {
-                warn!(
+                log_helper.log_trace(format!(
                     "BusMsg {} from {} invalid for state Take Deal - expected LaunchSwap request.",
                     req, event.source
-                );
+                ));
+            } else {
+                log_helper.log_trace(format!(
+                    "BusMsg {} from {} invalid for state Take Deal - expected LaunchSwap request.",
+                    req, event.source
+                ));
             }
             Ok(Some(TradeStateMachine::TakeDeal(TakeDeal {
                 deal,
@@ -1026,6 +1100,7 @@ fn transition_to_swapd_launched_tsm(
     target_bitcoin_address: bitcoin::Address,
     target_monero_address: monero::Address,
     swap_id: SwapId,
+    log_helper: LogHelper,
 ) -> Result<TradeStateMachine, Error> {
     let swap_config = runtime.config.get_swap_config(
         deal.parameters.arbitrating_blockchain.try_into()?,
@@ -1047,10 +1122,10 @@ fn transition_to_swapd_launched_tsm(
         deal.parameters.network,
         &runtime.config,
     )?;
-    trace!(
+    log_helper.log_trace(format!(
         "launching swapd with swap_id: {}",
         swap_id.bright_yellow_bold()
-    );
+    ));
 
     runtime.stats.incr_initiated();
     launch_swapd(
@@ -1079,6 +1154,7 @@ fn attempt_transition_from_swapd_launched_to_swapd_running(
     mut event: Event,
     runtime: &mut Runtime,
     swapd_launched: SwapdLaunched,
+    log_helper: LogHelper,
 ) -> Result<Option<TradeStateMachine>, Error> {
     let SwapdLaunched {
         mut peerd,
@@ -1109,11 +1185,10 @@ fn attempt_transition_from_swapd_launched_to_swapd_running(
         }
         (BusMsg::Ctl(CtlMsg::Hello), ServiceId::Peer(..)) => {}
         _ => {
-            trace!(
+            log_helper.log_trace(format!(
                 "{} | BusMsg {} invalid for state swapd launched",
-                swap_id,
-                event.request
-            );
+                swap_id, event.request
+            ));
         }
     }
 
@@ -1138,12 +1213,10 @@ fn attempt_transition_from_swapd_launched_to_swapd_running(
     ) {
         // Tell swapd swap options and link it with the
         // connection daemon
-        debug!(
-            "{} | swap daemon is known: we spawned it to create a swap. \
-                 BusMsging swapd to be the {} of this swap",
-            swap_id,
+        log_helper.log_debug(format!(
+            "Swap daemon is known: we spawned it to create a swap. BusMsging swapd to be the {} of this swap",
             TradeRole::from(consumed_deal_role.clone()),
-        );
+        ));
         let init_swap_req = match &consumed_deal_role {
             ConsumedDealRole::Maker(commit) => CtlMsg::MakeSwap(InitMakerSwap {
                 peerd: peerd.clone(),
@@ -1184,14 +1257,13 @@ fn attempt_transition_from_swapd_launched_to_swapd_running(
             expected_counterparty_node_id: None,
         })))
     } else {
-        debug!(
-            "{} | Not transitioning to SwapdRunning yet, service availability: accordant_syncer: {}, arbitrating_syncer: {}, swapd: {}, peerd: {}",
-            swap_id,
+        log_helper.log_debug(format!(
+            "Not transitioning to SwapdRunning yet, service availability: accordant_syncer: {}, arbitrating_syncer: {}, swapd: {}, peerd: {}",
             accordant_syncer_up.is_some(),
             arbitrating_syncer_up.is_some(),
             swapd_up,
             peerd_up,
-        );
+        ));
 
         Ok(Some(TradeStateMachine::SwapdLaunched(SwapdLaunched {
             swap_id,
@@ -1213,6 +1285,7 @@ fn attempt_transition_from_restoring_swapd_to_swapd_running(
     mut event: Event,
     runtime: &mut Runtime,
     restoring_swapd: RestoringSwapd,
+    log_helper: LogHelper,
 ) -> Result<Option<TradeStateMachine>, Error> {
     let RestoringSwapd {
         swap_id,
@@ -1246,7 +1319,7 @@ fn attempt_transition_from_restoring_swapd_to_swapd_running(
         {
             runtime.handle_new_connection(event.source.clone());
 
-            info!("{} | Peerd connected for restored swap", swap_id.swap_id());
+            log_helper.log_info("Peerd connected for restored swap");
             peerd = Some(event.source.clone());
         }
         (BusMsg::Ctl(CtlMsg::ConnectFailed), source)
@@ -1260,12 +1333,12 @@ fn attempt_transition_from_restoring_swapd_to_swapd_running(
             if let Ok(bind_addr) = runtime.config.get_bind_addr() {
                 if let Some(node_id) = expected_counterparty_node_id {
                     if source.node_addr() == Some(NodeAddr::new(node_id, bind_addr)) {
-                        info!("{} | Peerd connected for restored swap", swap_id.swap_id());
+                        log_helper.log_info("Peerd connected for restored swap");
                         peerd = Some(source);
                     }
                 }
             } else {
-                error!("Invalid bind addr configuration");
+                log_helper.log_error("Invalid bind addr configuration");
             }
         }
         _ => {}
@@ -1276,7 +1349,7 @@ fn attempt_transition_from_restoring_swapd_to_swapd_running(
         swapd_up,
         (!expect_connection || peerd.is_some()), // expect_connection implies connected
     ) {
-        info!("{} | Restoring swap", swap_id.swap_id());
+        log_helper.log_info("Restoring swap");
         runtime.stats.incr_initiated();
 
         if let Some(peerd) = peerd.clone() {
@@ -1325,6 +1398,7 @@ fn attempt_transition_to_end(
     mut event: Event,
     runtime: &mut Runtime,
     swapd_running: SwapdRunning,
+    log_helper: LogHelper,
 ) -> Result<Option<TradeStateMachine>, Error> {
     let SwapdRunning {
         peerd,
@@ -1344,10 +1418,7 @@ fn attempt_transition_to_end(
                 && source.node_addr() == peerd.as_ref().and_then(|p| p.node_addr()) =>
         {
             let swap_service_id = ServiceId::Swap(swap_id);
-            debug!(
-                "{} | Letting you know of peer reconnection.",
-                swap_service_id
-            );
+            log_helper.log_debug("Letting swapd know of peer reconnection.");
             event.complete_ctl_service(swap_service_id, CtlMsg::PeerdReconnected(source))?;
             Ok(Some(TradeStateMachine::SwapdRunning(SwapdRunning {
                 peerd,
@@ -1368,10 +1439,7 @@ fn attempt_transition_to_end(
                 && expected_counterparty_node_id == source.node_addr().map(|a| a.id) =>
         {
             let swap_service_id = ServiceId::Swap(swap_id);
-            debug!(
-                "{} | Letting you know of peer reconnection.",
-                swap_service_id
-            );
+            log_helper.log_debug("Letting swapd know of peer reconnection.");
             event.complete_ctl_service(swap_service_id, CtlMsg::PeerdReconnected(source))?;
             Ok(Some(TradeStateMachine::SwapdRunning(SwapdRunning {
                 peerd,
@@ -1398,8 +1466,8 @@ fn attempt_transition_to_end(
                     .incr_awaiting_funding(&Blockchain::Bitcoin, swap_id);
                 let network = address.network.into();
                 if let Some(auto_fund_config) = runtime.config.get_auto_funding_config(network) {
-                    info!("{} | Attempting to auto-fund Bitcoin", swap_id.swap_id());
-                    debug!("{} | Auto funding config: {:#?}", swap_id, auto_fund_config);
+                    log_helper.log_info("Attempting to auto-fund Bitcoin");
+                    log_helper.log_debug(format!("Auto funding config: {:#?}", auto_fund_config));
 
                     use bitcoincore_rpc::{Auth, Client, Error, RpcApi};
                     use std::path::PathBuf;
@@ -1408,23 +1476,19 @@ fn attempt_transition_to_end(
                     let bitcoin_rpc = match auto_fund_config.bitcoin_cookie_path {
                             Some(cookie) => {
                                 let path = PathBuf::from_str(&shellexpand::tilde(&cookie)).unwrap();
-                                debug!("{} | bitcoin-rpc connecting with cookie auth",
-                                       swap_id.swap_id());
+                                log_helper.log_debug("bitcoin-rpc connecting with cookie auth");
                                 Client::new(&host, Auth::CookieFile(path))
                             }
                             None => {
                                 match (auto_fund_config.bitcoin_rpc_user, auto_fund_config.bitcoin_rpc_pass) {
                                     (Some(rpc_user), Some(rpc_pass)) => {
-                                        debug!("{} | bitcoin-rpc connecting with userpass auth",
-                                               swap_id.swap_id());
+                                        log_helper.log_debug("bitcoin-rpc connecting with userpass auth");
                                         Client::new(&host, Auth::UserPass(rpc_user, rpc_pass))
                                     }
                                     _ => {
-                                        error!(
-                                            "{} | Couldn't instantiate Bitcoin RPC - provide either `bitcoin_cookie_path` or `bitcoin_rpc_user` AND `bitcoin_rpc_pass` configuration parameters",
-                                            swap_id.swap_id()
+                                        log_helper.log_error(
+                                            "Couldn't instantiate Bitcoin RPC - provide either `bitcoin_cookie_path` or `bitcoin_rpc_user` AND `bitcoin_rpc_pass` configuration parameters",
                                         );
-
                                         Err(Error::InvalidCookieFile)}
                                 }
                             }
@@ -1434,11 +1498,10 @@ fn attempt_transition_to_end(
                         .send_to_address(address, amount, None, None, None, None, None, None)
                     {
                         Ok(txid) => {
-                            info!(
-                                "{} | Auto-funded Bitcoin with txid: {}",
-                                swap_id.swap_id(),
+                            log_helper.log_info(format!(
+                                "Auto-funded Bitcoin with txid: {}",
                                 txid.tx_hash()
-                            );
+                            ));
                             Ok(Some(TradeStateMachine::SwapdRunning(SwapdRunning {
                                 peerd,
                                 deal,
@@ -1453,11 +1516,10 @@ fn attempt_transition_to_end(
                             })))
                         }
                         Err(err) => {
-                            warn!("{}", err);
-                            error!(
-                                    "{} | Auto-funding Bitcoin transaction failed, pushing to cli, use `swap-cli needs-funding Bitcoin` to retrieve address and amount",
-                                    swap_id.swap_id()
-                                );
+                            log_helper.log_error(format!(
+                                    "Auto-funding Bitcoin transaction failed, pushing to cli, use `swap-cli needs-funding Bitcoin` to retrieve address and amount: {}",
+                                    err
+                                ));
                             Ok(Some(TradeStateMachine::SwapdRunning(SwapdRunning {
                                 peerd,
                                 deal,
@@ -1497,8 +1559,8 @@ fn attempt_transition_to_end(
                     .incr_awaiting_funding(&Blockchain::Monero, swap_id);
                 let network = address.network.into();
                 if let Some(auto_fund_config) = runtime.config.get_auto_funding_config(network) {
-                    info!("{} | Attempting to auto-fund Monero", swap_id.swap_id());
-                    debug!("{} | Auto funding config: {:#?}", swap_id, auto_fund_config);
+                    log_helper.log_info("Attempting to auto-fund Monero");
+                    log_helper.log_debug(format!("Auto funding config: {:#?}", auto_fund_config));
                     use tokio::runtime::Builder;
                     let rt = Builder::new_multi_thread()
                         .worker_threads(1)
@@ -1524,21 +1586,19 @@ fn attempt_transition_to_end(
                                 .await
                             {
                                 Ok(tx) => {
-                                    info!(
-                                        "{} | Auto-funded Monero with txid: {}",
-                                        &swap_id.swap_id(),
+                                    log_helper.log_info(format!(
+                                        "Auto-funded Monero with txid: {}",
                                         tx.tx_hash.tx_hash()
-                                    );
+                                    ));
                                     auto_funded = true;
                                     break;
                                 }
                                 Err(err) => {
                                     if (err.to_string().contains("not enough") && err.to_string().contains("money")) || retries == 0 {
-                                        warn!("{}", err);
-                                        error!("{} | Auto-funding Monero transaction failed, pushing to cli, use `swap-cli needs-funding Monero` to retrieve address and amount", &swap_id.swap_id());
+                                        log_helper.log_error(format!("Auto-funding Monero transaction failed, pushing to cli, use `swap-cli needs-funding Monero` to retrieve address and amount: {}", err));
                                         break;
                                     } else {
-                                        warn!("{} | Auto-funding Monero transaction failed with {}, retrying, {} retries left", &swap_id.swap_id(), err, retries);
+                                        log_helper.log_warn(format!("Auto-funding Monero transaction failed with {}, retrying, {} retries left", err, retries));
                                         tokio::time::sleep(std::time::Duration::from_millis(10 * retries)).await;
                                     }
                                 }
@@ -1576,11 +1636,7 @@ fn attempt_transition_to_end(
 
         (BusMsg::Ctl(CtlMsg::FundingCompleted(blockchain)), _) => {
             runtime.stats.incr_funded(&blockchain, &swap_id);
-            info!(
-                "{} | Your {} funding completed",
-                swap_id.swap_id(),
-                blockchain.label()
-            );
+            log_helper.log_info(format!("Your {} funding completed", blockchain.label()));
             Ok(Some(TradeStateMachine::SwapdRunning(SwapdRunning {
                 peerd,
                 deal,
@@ -1597,11 +1653,7 @@ fn attempt_transition_to_end(
 
         (BusMsg::Ctl(CtlMsg::FundingCanceled(blockchain)), _) => {
             runtime.stats.incr_funding_canceled(&blockchain, &swap_id);
-            info!(
-                "{} | Your {} funding was canceled.",
-                swap_id.swap_id(),
-                blockchain.label()
-            );
+            log_helper.log_info(format!("Your {} funding was canceled.", blockchain.label()));
             Ok(Some(TradeStateMachine::SwapdRunning(SwapdRunning {
                 peerd,
                 deal,
@@ -1711,12 +1763,12 @@ fn attempt_transition_to_end(
             if ServiceId::Swap(swap_id) == source =>
         {
             if runtime.registered_services.contains(&peerd_service) {
-                warn!(
+                log_helper.log_warn(format!(
                     "Peerd {} was reported to be unreachable, attempting to
                     terminate to kick-off re-connect procedure, if we are
                     taker and the swap is still running.",
                     peerd_service
-                );
+                ));
                 runtime.handle_failed_connection(event.endpoints, peerd_service.clone())?;
                 event.complete_ctl_service(peerd_service, CtlMsg::Terminate)?;
             }
@@ -1750,16 +1802,16 @@ fn attempt_transition_to_end(
             runtime.stats.incr_outcome(&outcome);
             match outcome {
                 Outcome::SuccessSwap => {
-                    debug!("Success on swap {}", swap_id);
+                    log_helper.log_debug(format!("Success on swap {}", swap_id));
                 }
                 Outcome::FailureRefund => {
-                    warn!("Refund on swap {}", swap_id);
+                    log_helper.log_warn(format!("Refund on swap {}", swap_id));
                 }
                 Outcome::FailurePunish => {
-                    warn!("Punish on swap {}", swap_id);
+                    log_helper.log_warn(format!("Punish on swap {}", swap_id));
                 }
                 Outcome::FailureAbort => {
-                    warn!("Aborted swap {}", swap_id);
+                    log_helper.log_warn(format!("Aborted swap {}", swap_id));
                 }
             }
             runtime.stats.success_rate();
@@ -1768,16 +1820,15 @@ fn attempt_transition_to_end(
 
         (req, source) => {
             if let BusMsg::Ctl(CtlMsg::Hello) = req {
-                trace!(
+                log_helper.log_trace(format!(
                     "BusMsg {} from {} invalid for state swapd running.",
-                    req,
-                    source
-                );
+                    req, source
+                ));
             } else {
-                warn!(
+                log_helper.log_warn(format!(
                     "BusMsg {} from {} invalid for state Swapd Running.",
                     req, source
-                );
+                ));
             }
             Ok(Some(TradeStateMachine::SwapdRunning(SwapdRunning {
                 peerd,
