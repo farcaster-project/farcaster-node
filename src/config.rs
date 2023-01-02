@@ -398,71 +398,6 @@ pub struct ArbConfig {
     pub finality: u8,
 }
 
-#[serde_as]
-#[derive(Deserialize, Serialize, Debug, Clone)]
-#[serde(crate = "serde_crate")]
-#[serde(bound(serialize = "T: Display"))]
-#[serde(bound(deserialize = "T: FromStr, T::Err: Display"))]
-pub struct TradeableAmounts<T>
-where
-    T: FromStr + Display,
-    T::Err: Display,
-{
-    /// If specified, the minimum acceptable amount to trade (>=)
-    #[serde_as(as = "Option<DisplayFromStr>")]
-    #[serde(default)]
-    pub min_amount: Option<T>,
-    /// If specified, the maximum acceptable amount to trade (<=)
-    #[serde_as(as = "Option<DisplayFromStr>")]
-    #[serde(default)]
-    pub max_amount: Option<T>,
-}
-
-impl<T> TradeableAmounts<T>
-where
-    T: FromStr + Display,
-    T::Err: Display,
-{
-    /// Map tradeable amounts into new type
-    pub fn map<U>(self) -> TradeableAmounts<U>
-    where
-        T: Into<U>,
-        U: FromStr + Display,
-        U::Err: Display,
-    {
-        TradeableAmounts {
-            min_amount: self.min_amount.map(|min| min.into()),
-            max_amount: self.max_amount.map(|max| max.into()),
-        }
-    }
-
-    /// Validate a given amount based on potential rules (min, max)
-    pub fn validate_amount(&self, amount: T) -> Result<(), Error>
-    where
-        T: PartialOrd<T> + Copy,
-    {
-        if let Some(min) = self.min_amount {
-            if amount < min {
-                return Err(Message(format!("{} is smaller than {}", amount, min)))?;
-            }
-        }
-        if let Some(max) = self.max_amount {
-            if amount > max {
-                return Err(Message(format!("{} is greater than {}", amount, max)))?;
-            }
-        }
-        Ok(())
-    }
-
-    /// Helper function returning no min nor max amounts
-    pub fn none() -> Self {
-        Self {
-            min_amount: None,
-            max_amount: None,
-        }
-    }
-}
-
 impl ArbConfig {
     fn get(blockchain: ArbitratingBlockchain, network: Network) -> Option<Self> {
         match blockchain {
@@ -526,6 +461,71 @@ impl From<ArbConfig> for AccConfig {
     fn from(arb: ArbConfig) -> Self {
         Self {
             finality: arb.finality,
+        }
+    }
+}
+
+#[serde_as]
+#[derive(Deserialize, Serialize, Debug, Clone)]
+#[serde(crate = "serde_crate")]
+#[serde(bound(serialize = "T: Display"))]
+#[serde(bound(deserialize = "T: FromStr, T::Err: Display"))]
+pub struct TradeableAmounts<T>
+where
+    T: FromStr + Display,
+    T::Err: Display,
+{
+    /// If specified, the minimum acceptable amount to trade (>=)
+    #[serde_as(as = "Option<DisplayFromStr>")]
+    #[serde(default)]
+    pub min_amount: Option<T>,
+    /// If specified, the maximum acceptable amount to trade (<=)
+    #[serde_as(as = "Option<DisplayFromStr>")]
+    #[serde(default)]
+    pub max_amount: Option<T>,
+}
+
+impl<T> TradeableAmounts<T>
+where
+    T: FromStr + Display,
+    T::Err: Display,
+{
+    /// Map tradeable amounts into new type
+    pub fn map<U>(self) -> TradeableAmounts<U>
+    where
+        T: Into<U>,
+        U: FromStr + Display,
+        U::Err: Display,
+    {
+        TradeableAmounts {
+            min_amount: self.min_amount.map(|min| min.into()),
+            max_amount: self.max_amount.map(|max| max.into()),
+        }
+    }
+
+    /// Validate a given amount based on potential rules (min, max)
+    pub fn validate_amount(&self, amount: T) -> Result<(), Error>
+    where
+        T: PartialOrd<T> + Copy,
+    {
+        if let Some(min) = self.min_amount {
+            if amount < min {
+                return Err(Message(format!("{} is smaller than {}", amount, min)))?;
+            }
+        }
+        if let Some(max) = self.max_amount {
+            if amount > max {
+                return Err(Message(format!("{} is greater than {}", amount, max)))?;
+            }
+        }
+        Ok(())
+    }
+
+    /// Helper function returning no min nor max amounts
+    pub fn none() -> Self {
+        Self {
+            min_amount: None,
+            max_amount: None,
         }
     }
 }
