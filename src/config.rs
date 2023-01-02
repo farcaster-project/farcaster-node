@@ -465,6 +465,8 @@ impl From<ArbConfig> for AccConfig {
     }
 }
 
+/// Defines a potential minimum and maximum amount for an asset, below or above which the user will
+/// not accept the trade
 #[serde_as]
 #[derive(Deserialize, Serialize, Debug, Clone)]
 #[serde(crate = "serde_crate")]
