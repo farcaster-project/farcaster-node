@@ -4,6 +4,7 @@
 // license that can be found in the LICENSE file or at
 // https://opensource.org/licenses/MIT.
 
+use config::ConfigError::Message;
 use farcaster_core::blockchain::Network;
 use farcaster_core::swap::btcxmr::DealParameters;
 use internet2::addr::InetSocketAddr;
@@ -164,9 +165,7 @@ impl Config {
                         .map(|c| c.temporality)
                         .or_else(|| ArbConfig::get(arb, network))
                         .ok_or_else(|| {
-                            config::ConfigError::Message(
-                                "No configuration nor defaults founds!".to_string(),
-                            )
+                            Message("No configuration nor defaults founds!".to_string())
                         })?,
                 };
                 let accordant = match acc {
@@ -176,9 +175,7 @@ impl Config {
                         .map(|c| c.temporality)
                         .or_else(|| AccConfig::get(acc, network))
                         .ok_or_else(|| {
-                            config::ConfigError::Message(
-                                "No configuration nor defaults founds!".to_string(),
-                            )
+                            Message("No configuration nor defaults founds!".to_string())
                         })?,
                 };
                 Ok(ParsedSwapConfig {
@@ -187,12 +184,10 @@ impl Config {
                 })
             }
             None => {
-                let arbitrating = ArbConfig::get(arb, network).ok_or_else(|| {
-                    config::ConfigError::Message("No defaults founds!".to_string())
-                })?;
-                let accordant = AccConfig::get(acc, network).ok_or_else(|| {
-                    config::ConfigError::Message("No defaults founds!".to_string())
-                })?;
+                let arbitrating = ArbConfig::get(arb, network)
+                    .ok_or_else(|| Message("No defaults founds!".to_string()))?;
+                let accordant = AccConfig::get(acc, network)
+                    .ok_or_else(|| Message("No defaults founds!".to_string()))?;
                 Ok(ParsedSwapConfig {
                     arbitrating,
                     accordant,
@@ -247,7 +242,6 @@ impl Config {
         arb_addr: &bitcoin::Address,
         acc_addr: &monero::Address,
     ) -> Result<(), Error> {
-        use config::ConfigError::Message;
         // validate arbitrating address
         match deal.arbitrating_blockchain.try_into()? {
             ArbitratingBlockchain::Bitcoin => {
@@ -447,7 +441,6 @@ where
     where
         T: PartialOrd<T> + Copy,
     {
-        use config::ConfigError::Message;
         if let Some(min) = self.min_amount {
             if amount < min {
                 return Err(Message(format!("{} is smaller than {}", amount, min)))?;
