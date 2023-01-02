@@ -321,7 +321,7 @@ impl TradeStateMachine {
     }
 
     pub fn uuid(&self) -> Option<Uuid> {
-        self.deal().map(|d| d.id().0)
+        self.deal().map(|d| d.id().into())
     }
 
     pub fn trade_role(&self) -> Option<TradeRole> {
