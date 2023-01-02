@@ -1,6 +1,6 @@
 [package]
 name = "farcaster_node"
-version = "0.8.2"
+version = "0.8.3"
 authors = ["Farcaster Devs"]
 build = "build.rs"
 edition = "2018"
