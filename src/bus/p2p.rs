@@ -8,7 +8,7 @@ use farcaster_core::{
     protocol::message::Abort,
     swap::btcxmr::message::{
         BuyProcedureSignature, CommitAliceParameters, CommitBobParameters, CoreArbitratingSetup,
-        RefundProcedureSignatures, RevealAliceParameters, RevealBobParameters, RevealProof,
+        RefundProcedureSignatures, RevealAliceParameters, RevealBobParameters,
     },
     swap::btcxmr::Deal,
     swap::SwapId,
@@ -137,30 +137,16 @@ impl PeerMsg {
 #[derive(Clone, Debug, Display, StrictEncode, StrictDecode)]
 pub enum Reveal {
     #[display("Alice")]
-    Alice {
-        parameters: RevealAliceParameters,
-        proof: RevealProof,
-    },
-
+    Alice(RevealAliceParameters),
     #[display("Bob")]
-    Bob {
-        parameters: RevealBobParameters,
-        proof: RevealProof,
-    },
+    Bob(RevealBobParameters),
 }
 
 impl Reveal {
     pub fn swap_id(&self) -> SwapId {
         match self {
-            Self::Alice { parameters, .. } => parameters.swap_id,
-            Self::Bob { parameters, .. } => parameters.swap_id,
-        }
-    }
-
-    pub fn validate_ids(&self) -> bool {
-        match self {
-            Self::Alice { parameters, proof } => parameters.swap_id == proof.swap_id,
-            Self::Bob { parameters, proof } => parameters.swap_id == proof.swap_id,
+            Self::Alice(p) => p.swap_id,
+            Self::Bob(p) => p.swap_id,
         }
     }
 }

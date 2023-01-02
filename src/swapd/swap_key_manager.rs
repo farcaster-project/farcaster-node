@@ -25,9 +25,7 @@ use farcaster_core::{
         FullySignedPunish, TxSignatures,
     },
     swap::btcxmr::{
-        message::{
-            RefundProcedureSignatures, RevealAliceParameters, RevealBobParameters, RevealProof,
-        },
+        message::{RefundProcedureSignatures, RevealAliceParameters, RevealBobParameters},
         Alice, Bob, Deal, EncryptedSignature, KeyManager, Parameters,
     },
     transaction::{Broadcastable, Fundable, Transaction, TxLabel, Witnessable},
@@ -176,7 +174,6 @@ impl AliceSwapKeyManager {
         &mut self,
         runtime: &mut Runtime,
         parameters: RevealBobParameters,
-        proof: RevealProof,
         remote_commit: CommitBobParameters,
     ) -> Result<(Option<Reveal>, Parameters), Error> {
         let AliceSwapKeyManager {
@@ -185,13 +182,13 @@ impl AliceSwapKeyManager {
             ..
         } = self;
         runtime.log_trace(format!("Verifying with Bob params: {}", parameters));
-        runtime.log_trace(format!("Verifying with Bob proof: {}", proof));
         remote_commit.verify_with_reveal(&CommitmentEngine, parameters.clone())?;
+        let proof = parameters.proof.clone();
         let remote_params_candidate: Parameters = parameters.into_parameters();
         let proof_verification = key_manager.verify_proof(
             &remote_params_candidate.spend,
             &remote_params_candidate.adaptor,
-            proof.proof,
+            proof,
         );
         if let Err(err) = proof_verification {
             let msg = format!("DLEQ proof from Bob is invalid: {}.", err);
@@ -203,13 +200,9 @@ impl AliceSwapKeyManager {
         // if we're maker, send Reveal back to counterparty
         if runtime.deal.swap_role(&TradeRole::Maker) == SwapRole::Alice {
             Ok((
-                Some(Reveal::Alice {
-                    parameters: local_params.clone().reveal_alice(runtime.swap_id),
-                    proof: RevealProof {
-                        swap_id: runtime.swap_id,
-                        proof: local_params.proof.clone().expect("local always some"),
-                    },
-                }),
+                Some(Reveal::Alice(
+                    local_params.clone().reveal_alice(runtime.swap_id),
+                )),
                 remote_params_candidate,
             ))
         } else {
@@ -221,13 +214,9 @@ impl AliceSwapKeyManager {
     pub fn create_reveal_from_local_params(&self, runtime: &mut Runtime) -> Result<Reveal, Error> {
         let AliceSwapKeyManager { local_params, .. } = self;
         runtime.log_debug("Generating reveal alice message");
-        Ok(Reveal::Alice {
-            parameters: local_params.clone().reveal_alice(runtime.swap_id),
-            proof: RevealProof {
-                swap_id: runtime.swap_id,
-                proof: local_params.proof.clone().expect("local always some"),
-            },
-        })
+        Ok(Reveal::Alice(
+            local_params.clone().reveal_alice(runtime.swap_id),
+        ))
     }
 
     pub fn process_refund_tx(
@@ -582,14 +571,10 @@ impl BobSwapKeyManager {
 
     pub fn create_reveal_from_local_params(&self, runtime: &mut Runtime) -> Result<Reveal, Error> {
         let BobSwapKeyManager { local_params, .. } = self;
-        // craft the correct reveal depending on role
-        Ok(Reveal::Bob {
-            parameters: local_params.clone().reveal_bob(runtime.swap_id),
-            proof: RevealProof {
-                swap_id: runtime.swap_id,
-                proof: local_params.proof.clone().expect("local always some"),
-            },
-        })
+        runtime.log_debug("Generating reveal bob message");
+        Ok(Reveal::Bob(
+            local_params.clone().reveal_bob(runtime.swap_id),
+        ))
     }
 
     pub fn process_buy_tx(
@@ -682,7 +667,6 @@ impl BobSwapKeyManager {
         &mut self,
         runtime: &mut Runtime,
         parameters: RevealAliceParameters,
-        proof: RevealProof,
         remote_commit: CommitAliceParameters,
     ) -> Result<(Option<Reveal>, Parameters), Error> {
         let BobSwapKeyManager {
@@ -691,13 +675,13 @@ impl BobSwapKeyManager {
             ..
         } = self;
         runtime.log_trace(format!("Verifying with Alice params: {}", parameters));
-        runtime.log_trace(format!("Verifying with Alice proof: {}", proof));
+        let proof = parameters.proof.clone();
         remote_commit.verify_with_reveal(&CommitmentEngine, parameters.clone())?;
         let remote_params_candidate: Parameters = parameters.into_parameters();
         let proof_verification = key_manager.verify_proof(
             &remote_params_candidate.spend,
             &remote_params_candidate.adaptor,
-            proof.proof,
+            proof,
         );
         if let Err(err) = proof_verification {
             let msg = format!("DLEQ proof from Alice is invalid: {}.", err);
@@ -708,13 +692,9 @@ impl BobSwapKeyManager {
 
         // if we're maker, send Reveal back to counterparty
         let reveal = if runtime.deal.swap_role(&TradeRole::Maker) == SwapRole::Bob {
-            Some(Reveal::Bob {
-                parameters: local_params.clone().reveal_bob(runtime.swap_id),
-                proof: RevealProof {
-                    swap_id: runtime.swap_id,
-                    proof: local_params.proof.clone().expect("local always some"),
-                },
-            })
+            Some(Reveal::Bob(
+                local_params.clone().reveal_bob(runtime.swap_id),
+            ))
         } else {
             None
         };

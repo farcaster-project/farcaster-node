@@ -2201,10 +2201,10 @@ fn attempt_transition_to_bob_reveal(
     mut swap_key_manager: BobSwapKeyManager,
 ) -> Result<Option<SwapStateMachine>, Error> {
     match event.request.clone() {
-        BusMsg::P2p(PeerMsg::Reveal(Reveal::Alice { parameters, proof })) => {
+        BusMsg::P2p(PeerMsg::Reveal(Reveal::Alice(parameters))) => {
             runtime.log_info("Handling reveal with swap_key_manager");
             let (bob_reveal, remote_params) =
-                swap_key_manager.handle_alice_reveals(runtime, parameters, proof, remote_commit)?;
+                swap_key_manager.handle_alice_reveals(runtime, parameters, remote_commit)?;
 
             // The swap_key_manager only returns reveal if we are Bob Maker
             if let Some(bob_reveal) = bob_reveal {
@@ -2231,10 +2231,10 @@ fn attempt_transition_to_alice_reveal(
     mut swap_key_manager: AliceSwapKeyManager,
 ) -> Result<Option<SwapStateMachine>, Error> {
     match event.request {
-        BusMsg::P2p(PeerMsg::Reveal(Reveal::Bob { parameters, proof })) => {
+        BusMsg::P2p(PeerMsg::Reveal(Reveal::Bob(parameters))) => {
             runtime.log_info("Handling reveal with swap_key_manager");
             let (alice_reveal, remote_params) =
-                swap_key_manager.handle_bob_reveals(runtime, parameters, proof, remote_commit)?;
+                swap_key_manager.handle_bob_reveals(runtime, parameters, remote_commit)?;
 
             // The swap_key_manager only returns reveal if we are Alice Maker
             if let Some(alice_reveal) = alice_reveal {
