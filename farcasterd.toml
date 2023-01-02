@@ -41,6 +41,7 @@ monero_rpc_wallet = "http://localhost:38084"
 [swap.bitcoin.mainnet]
 safety = 7
 finality = 6
+min_amount = "0.00001 BTC"
 max_amount = "0.01 BTC"
 [swap.monero.mainnet]
 finality = 20

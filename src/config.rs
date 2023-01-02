@@ -34,6 +34,7 @@ pub const GRPC_BIND_IP_ADDRESS: &str = "127.0.0.1";
 
 pub const SWAP_MAINNET_BITCOIN_SAFETY: u8 = 7;
 pub const SWAP_MAINNET_BITCOIN_FINALITY: u8 = 6;
+pub const SWAP_MAINNET_BITCOIN_MIN_BTC_AMOUNT: f64 = 0.00001;
 pub const SWAP_MAINNET_BITCOIN_MAX_BTC_AMOUNT: f64 = 0.01;
 pub const SWAP_MAINNET_MONERO_FINALITY: u8 = 20;
 pub const SWAP_MAINNET_MONERO_MIN_XMR_AMOUNT: f64 = 0.001;
@@ -290,7 +291,7 @@ impl Config {
     fn mainnet_btc_default_tradeable() -> TradeableAmounts<bitcoin::Amount> {
         use bitcoin::Amount;
         TradeableAmounts {
-            min_amount: None,
+            min_amount: Amount::from_btc(SWAP_MAINNET_BITCOIN_MIN_BTC_AMOUNT).ok(),
             max_amount: Amount::from_btc(SWAP_MAINNET_BITCOIN_MAX_BTC_AMOUNT).ok(),
         }
     }
