@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- Swapd: Don't add color coding to progress message by @TheCharlatan in <https://github.com/farcaster-project/farcaster-node/pull/903>
+- Farcasterd: Add delay between xmr auto-funding reattempts by @Lederstrumpf in <https://github.com/farcaster-project/farcaster-node/pull/733>
+- Swapd: Simplify key manager encoding by @TheCharlatan in <https://github.com/farcaster-project/farcaster-node/pull/906>
+- Swapd: Simplify commitment creation by @TheCharlatan in <https://github.com/farcaster-project/farcaster-node/pull/908>
+- Doc: Update diagrams by @TheCharlatan in <https://github.com/farcaster-project/farcaster-node/pull/911> and <https://github.com/farcaster-project/farcaster-node/pull/909>
+- Swapd: Some simple refactors by @TheCharlatan in <https://github.com/farcaster-project/farcaster-node/pull/913>
+- Config: Improved deal validation by @h4sh3d in <https://github.com/farcaster-project/farcaster-node/pull/910>
+- TSM: Log with SwapLogging trait by @TheCharlatan in <https://github.com/farcaster-project/farcaster-node/pull/912>
+- Chore: update core to version 0.6.4 by @h4sh3d in <https://github.com/farcaster-project/farcaster-node/pull/915>
+
 ## [0.8.2] - 2022-12-28
 
 ### Changed

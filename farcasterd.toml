@@ -41,12 +41,12 @@ monero_rpc_wallet = "http://localhost:38084"
 [swap.bitcoin.mainnet]
 safety = 7
 finality = 6
-min_amount = "0.00001 BTC"
-max_amount = "0.01 BTC"
+min_amount = "0.00001 btc"
+max_amount = "0.01 btc"
 [swap.monero.mainnet]
 finality = 20
-min_amount = "0.001 XMR"
-max_amount = "2 XMR"
+min_amount = "0.001 xmr"
+max_amount = "2 xmr"
 
 # Swap parameter for the Bitcoin blockchain
 [swap.bitcoin.testnet]
@@ -61,18 +61,18 @@ safety = 3
 # smaller than safety.
 finality = 1
 # The minimum acceptable amount of bitcoin to trade
-min_amount = "0.00001 BTC"
+min_amount = "0.00001 btc"
 # The maximum acceptable amount of bitcoin to trade
-max_amount = "1 BTC"
+max_amount = "1 btc"
 
 # Swap parameter for the Monero blockchain
 [swap.monero.testnet]
 # Number of confirmations required to consider a transaction final
 finality = 1
 # The minimum acceptable amount of monero to trade
-min_amount = "0.001 XMR"
+min_amount = "0.001 xmr"
 # The maximum acceptable amount of monero to trade
-max_amount = "20 XMR"
+max_amount = "20 xmr"
 
 # Defines grpc options
 [grpc]
