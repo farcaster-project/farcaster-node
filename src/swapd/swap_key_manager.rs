@@ -417,9 +417,7 @@ impl BobSwapKeyManager {
                 return Err(Error::Farcaster("Funding already updated".to_string()));
             }
             self.funding_tx.update(tx)?;
-            runtime.log_debug(
-                "Bob's swap key manager informs swapd that funding was successfully updated",
-            );
+            runtime.log_debug("Funding was successfully updated");
             Ok(())
         } else {
             Err(Error::Farcaster(
