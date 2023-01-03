@@ -114,35 +114,7 @@ pub struct BobSwapKeyManager {
 }
 
 impl AliceSwapKeyManager {
-    pub fn new_taker_alice(
-        runtime: &mut Runtime,
-        target_bitcoin_address: bitcoin::Address,
-        target_monero_address: monero::Address,
-        mut key_manager: KeyManager,
-    ) -> Result<Self, Error> {
-        // since we're takers, we are on the other side of the trade
-        let alice = Alice::new(
-            BitcoinSegwitV0::new(),
-            Monero,
-            target_bitcoin_address.clone(),
-            FeePriority::Low,
-        );
-        let local_params = alice.generate_parameters(&mut key_manager, &runtime.deal)?;
-        Ok(AliceSwapKeyManager {
-            alice,
-            local_params,
-            key_manager,
-            target_bitcoin_address,
-            target_monero_address,
-        })
-    }
-
-    pub fn taker_commit(&self, runtime: &mut Runtime) -> CommitAliceParameters {
-        let AliceSwapKeyManager { local_params, .. } = self;
-        local_params.commit_alice(runtime.swap_id, &CommitmentEngine)
-    }
-
-    pub fn new_maker_alice(
+    pub fn new(
         runtime: &mut Runtime,
         target_bitcoin_address: bitcoin::Address,
         target_monero_address: monero::Address,
@@ -155,7 +127,7 @@ impl AliceSwapKeyManager {
             FeePriority::Low,
         );
         let local_params = alice.generate_parameters(&mut key_manager, &runtime.deal)?;
-        runtime.log_info(format!("Loading {}", "Alice Swap Key Manager".label()));
+        runtime.log_info(format!("Creating {}", "Alice Swap Key Manager".label()));
         Ok(AliceSwapKeyManager {
             alice,
             local_params,
@@ -165,7 +137,7 @@ impl AliceSwapKeyManager {
         })
     }
 
-    pub fn maker_commit(&self, runtime: &mut Runtime) -> CommitAliceParameters {
+    pub fn commit(&self, runtime: &mut Runtime) -> CommitAliceParameters {
         let AliceSwapKeyManager { local_params, .. } = self;
         local_params.commit_alice(runtime.swap_id, &CommitmentEngine)
     }
@@ -445,9 +417,7 @@ impl BobSwapKeyManager {
                 return Err(Error::Farcaster("Funding already updated".to_string()));
             }
             self.funding_tx.update(tx)?;
-            runtime.log_debug(
-                "Bob's swap key manager informs swapd that funding was successfully updated",
-            );
+            runtime.log_debug("Funding was successfully updated");
             Ok(())
         } else {
             Err(Error::Farcaster(
@@ -476,54 +446,7 @@ impl BobSwapKeyManager {
         })
     }
 
-    pub fn new_taker_bob(
-        event: &mut Event,
-        runtime: &mut Runtime,
-        target_bitcoin_address: bitcoin::Address,
-        target_monero_address: monero::Address,
-        mut key_manager: KeyManager,
-    ) -> Result<Self, Error> {
-        let Deal {
-            parameters: deal_parameters,
-            ..
-        } = runtime.deal.clone();
-
-        let bob = Bob::new(
-            BitcoinSegwitV0::new(),
-            Monero,
-            target_bitcoin_address.clone(),
-            FeePriority::Low,
-        );
-        let local_params = bob.generate_parameters(&mut key_manager, &runtime.deal)?;
-        let funding_tx = create_funding(&mut key_manager, deal_parameters.network)?;
-        let funding_addr = funding_tx.get_address()?;
-        event.send_ctl_service(
-            ServiceId::Database,
-            CtlMsg::SetAddressSecretKey(AddressSecretKey::Bitcoin {
-                address: funding_addr,
-                secret_key_info: BitcoinSecretKeyInfo {
-                    swap_id: Some(runtime.swap_id),
-                    secret_key: key_manager.get_or_derive_bitcoin_key(ArbitratingKeyId::Lock)?,
-                },
-            }),
-        )?;
-        runtime.log_info(format!("Loading {}", "Bob's Swap Key Manager".label()));
-        Ok(BobSwapKeyManager {
-            bob,
-            local_params,
-            key_manager,
-            funding_tx,
-            target_bitcoin_address,
-            target_monero_address,
-        })
-    }
-
-    pub fn taker_commit(&self, runtime: &Runtime) -> CommitBobParameters {
-        let BobSwapKeyManager { local_params, .. } = self;
-        local_params.commit_bob(runtime.swap_id, &CommitmentEngine)
-    }
-
-    pub fn new_maker_bob(
+    pub fn new(
         event: &mut Event,
         runtime: &mut Runtime,
         target_bitcoin_address: bitcoin::Address,
@@ -541,7 +464,10 @@ impl BobSwapKeyManager {
             FeePriority::Low,
         );
         let local_params = bob.generate_parameters(&mut key_manager, &runtime.deal)?;
-        let funding_tx = create_funding(&mut key_manager, deal_parameters.network)?;
+        let funding_tx = FundingTx::initialize(
+            key_manager.get_pubkey(ArbitratingKeyId::Lock)?,
+            deal_parameters.network,
+        )?;
         let funding_addr = funding_tx.get_address()?;
         event.send_ctl_service(
             ServiceId::Database,
@@ -553,7 +479,7 @@ impl BobSwapKeyManager {
                 },
             }),
         )?;
-        runtime.log_info(format!("Loading {}", "Bob's Swap Key Manager".label()));
+        runtime.log_info(format!("Creating {}", "Bob's Swap Key Manager".label()));
         Ok(BobSwapKeyManager {
             bob,
             local_params,
@@ -564,7 +490,7 @@ impl BobSwapKeyManager {
         })
     }
 
-    pub fn maker_commit(&self, runtime: &mut Runtime) -> CommitBobParameters {
+    pub fn commit(&self, runtime: &Runtime) -> CommitBobParameters {
         let BobSwapKeyManager { local_params, .. } = self;
         local_params.commit_bob(runtime.swap_id, &CommitmentEngine)
     }
@@ -812,15 +738,7 @@ impl BobSwapKeyManager {
     }
 }
 
-pub fn create_funding(
-    key_manager: &mut KeyManager,
-    net: farcaster_core::blockchain::Network,
-) -> Result<FundingTx, Error> {
-    let pk = key_manager.get_pubkey(ArbitratingKeyId::Lock)?;
-    Ok(FundingTx::initialize(pk, net)?)
-}
-
-pub fn aggregate_xmr_spend_view(
+fn aggregate_xmr_spend_view(
     alice_params: &Parameters,
     bob_params: &Parameters,
 ) -> (monero::PublicKey, monero::PrivateKey) {
