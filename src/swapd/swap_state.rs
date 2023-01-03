@@ -678,7 +678,7 @@ fn attempt_transition_to_init_taker(
                         ),
                     );
                     // send taker commit message to counter-party
-                    let local_commit = swap_key_manager.taker_commit(runtime);
+                    let local_commit = swap_key_manager.commit(runtime);
                     let take_swap = TakerCommit {
                         commit: Commit::BobParameters(local_commit),
                         deal: runtime.deal.clone(),
@@ -718,7 +718,7 @@ fn attempt_transition_to_init_taker(
                         ),
                     );
                     // send taker commit message to counter-party
-                    let local_commit = swap_key_manager.taker_commit(runtime);
+                    let local_commit = swap_key_manager.commit(runtime);
                     let take_swap = TakerCommit {
                         commit: Commit::AliceParameters(local_commit),
                         deal: runtime.deal.clone(),
@@ -804,7 +804,7 @@ fn attempt_transition_to_init_maker(
                         ),
                     );
                     // send maker commit message to counter-party
-                    let local_commit = swap_key_manager.maker_commit(runtime);
+                    let local_commit = swap_key_manager.commit(runtime);
                     runtime.log_trace(format!("sending peer MakerCommit msg {}", &local_commit));
                     runtime.send_peer(
                         event.endpoints,
@@ -852,7 +852,7 @@ fn attempt_transition_to_init_maker(
                         ),
                     );
                     // send maker commit message to counter-party
-                    let local_commit = swap_key_manager.maker_commit(runtime);
+                    let local_commit = swap_key_manager.commit(runtime);
                     runtime.log_trace(format!("sending peer MakerCommit msg {}", &local_commit));
                     runtime.send_peer(
                         event.endpoints,

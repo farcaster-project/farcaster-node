@@ -137,12 +137,7 @@ impl AliceSwapKeyManager {
         })
     }
 
-    pub fn taker_commit(&self, runtime: &mut Runtime) -> CommitAliceParameters {
-        let AliceSwapKeyManager { local_params, .. } = self;
-        local_params.commit_alice(runtime.swap_id, &CommitmentEngine)
-    }
-
-    pub fn maker_commit(&self, runtime: &mut Runtime) -> CommitAliceParameters {
+    pub fn commit(&self, runtime: &mut Runtime) -> CommitAliceParameters {
         let AliceSwapKeyManager { local_params, .. } = self;
         local_params.commit_alice(runtime.swap_id, &CommitmentEngine)
     }
@@ -497,12 +492,7 @@ impl BobSwapKeyManager {
         })
     }
 
-    pub fn taker_commit(&self, runtime: &Runtime) -> CommitBobParameters {
-        let BobSwapKeyManager { local_params, .. } = self;
-        local_params.commit_bob(runtime.swap_id, &CommitmentEngine)
-    }
-
-    pub fn maker_commit(&self, runtime: &mut Runtime) -> CommitBobParameters {
+    pub fn commit(&self, runtime: &Runtime) -> CommitBobParameters {
         let BobSwapKeyManager { local_params, .. } = self;
         local_params.commit_bob(runtime.swap_id, &CommitmentEngine)
     }
