@@ -479,7 +479,7 @@ impl BobSwapKeyManager {
                 },
             }),
         )?;
-        runtime.log_info(format!("Loading {}", "Bob's Swap Key Manager".label()));
+        runtime.log_info(format!("Creating {}", "Bob's Swap Key Manager".label()));
         Ok(BobSwapKeyManager {
             bob,
             local_params,
