@@ -649,7 +649,7 @@ fn attempt_transition_to_init_taker(
 
             match swap_role {
                 SwapRole::Bob => {
-                    let swap_key_manager = BobSwapKeyManager::new_taker_bob(
+                    let swap_key_manager = BobSwapKeyManager::new(
                         &mut event,
                         runtime,
                         target_bitcoin_address.clone(),
@@ -690,7 +690,7 @@ fn attempt_transition_to_init_taker(
                     })))
                 }
                 SwapRole::Alice => {
-                    let swap_key_manager = AliceSwapKeyManager::new_taker_alice(
+                    let swap_key_manager = AliceSwapKeyManager::new(
                         runtime,
                         target_bitcoin_address.clone(),
                         target_monero_address,
@@ -775,7 +775,7 @@ fn attempt_transition_to_init_maker(
                             "Local swap role is Bob, but received Bob remote commit".to_string(),
                         ));
                     };
-                    let swap_key_manager = BobSwapKeyManager::new_maker_bob(
+                    let swap_key_manager = BobSwapKeyManager::new(
                         &mut event,
                         runtime,
                         target_bitcoin_address,
@@ -824,7 +824,7 @@ fn attempt_transition_to_init_maker(
                             "Local swap role is Bob, but received Bob remote commit".to_string(),
                         ));
                     };
-                    let swap_key_manager = AliceSwapKeyManager::new_maker_alice(
+                    let swap_key_manager = AliceSwapKeyManager::new(
                         runtime,
                         target_bitcoin_address,
                         target_monero_address,
