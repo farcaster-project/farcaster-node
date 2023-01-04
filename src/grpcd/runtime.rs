@@ -505,6 +505,10 @@ impl Farcaster for FarcasterService {
                     id,
                     deals: deals
                         .drain(..)
+                        .filter(|d| {
+                            network_selector == NetworkSelector::AllNetworks
+                                || Some(d.deal.parameters.network) == network_selector.into()
+                        })
                         .map(|d| DealInfo::new(d.deal, d.local_trade_role, d.status))
                         .collect(),
                 };
