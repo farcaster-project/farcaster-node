@@ -4,62 +4,47 @@
 // license that can be found in the LICENSE file or at
 // https://opensource.org/licenses/MIT.
 
-use crate::bus::bridge::BridgeMsg;
-use crate::bus::ctl::FundingInfo;
-use crate::bus::ctl::ProtoDeal;
-use crate::bus::ctl::PubDeal;
-use crate::bus::info::Address;
-use crate::bus::info::DealStatusSelector;
-use crate::bus::info::ProgressEvent;
-use crate::bus::AddressSecretKey;
-use crate::bus::DealStatus;
-use crate::bus::Failure;
-use crate::bus::HealthCheckSelector;
-use crate::bus::OptionDetails;
-use crate::bus::Outcome;
-use crate::grpcd::runtime::farcaster::NetworkSelector;
-use crate::service::Endpoints;
-use crate::swapd::StateReport;
-use crate::syncerd::Health;
-use crate::syncerd::SweepAddressAddendum;
-use crate::syncerd::SweepBitcoinAddress;
-use crate::syncerd::SweepMoneroAddress;
-use farcaster_core::bitcoin::fee::SatPerKvB;
-use farcaster_core::bitcoin::timelock::CSVTimelock;
-use farcaster_core::blockchain::Blockchain;
-use farcaster_core::blockchain::FeeStrategy;
-use farcaster_core::blockchain::Network;
-use farcaster_core::role::SwapRole;
-use farcaster_core::role::TradeRole;
-use farcaster_core::swap::{
-    btcxmr::{Deal, DealParameters},
-    SwapId,
-};
-use internet2::addr::InetSocketAddr;
-use internet2::session::LocalSession;
-use internet2::SendRecvMessage;
 use std::collections::HashMap;
 use std::net::IpAddr;
 use std::net::SocketAddr;
 use std::str::FromStr;
 use std::sync::mpsc::{Receiver, Sender, TryRecvError};
 use std::sync::Arc;
+
+use farcaster_core::bitcoin::{fee::SatPerKvB, timelock::CSVTimelock};
+use farcaster_core::blockchain::{Blockchain, FeeStrategy, Network};
+use farcaster_core::role::{SwapRole, TradeRole};
+use farcaster_core::swap::{
+    btcxmr::{Deal, DealParameters},
+    SwapId,
+};
+use internet2::{
+    addr::InetSocketAddr, session::LocalSession, zeromq::ZmqSocketType, SendRecvMessage, TypedEnum,
+};
+use microservices::esb;
+use microservices::ZMQ_CONTEXT;
 use tokio::runtime::Builder;
 use tokio::sync::oneshot::error::RecvError;
 use tokio::sync::Mutex;
+use tonic::{transport::Server, Request as GrpcRequest, Response as GrpcResponse, Status};
 use uuid::Uuid;
 
+use crate::bus::bridge::BridgeMsg;
+use crate::bus::ctl::{FundingInfo, ProtoDeal, PubDeal};
+use crate::bus::info::{Address, DealStatusSelector, ProgressEvent};
 use crate::bus::{ctl::CtlMsg, info::InfoMsg, info::SwapInfo};
+use crate::bus::{
+    AddressSecretKey, DealStatus, Failure, HealthCheckSelector, OptionDetails, Outcome,
+};
 use crate::bus::{BusMsg, ServiceBus};
+use crate::grpcd::runtime::farcaster::NetworkSelector;
+use crate::service::Endpoints;
+use crate::swapd::StateReport;
+use crate::syncerd::{Health, SweepAddressAddendum, SweepBitcoinAddress, SweepMoneroAddress};
 use crate::{CtlServer, Error, Service, ServiceConfig, ServiceId};
-use internet2::{zeromq::ZmqSocketType, TypedEnum};
-use microservices::esb;
-use microservices::ZMQ_CONTEXT;
-
-use farcaster::farcaster_server::{Farcaster, FarcasterServer};
-use tonic::{transport::Server, Request as GrpcRequest, Response as GrpcResponse, Status};
 
 use self::farcaster::*;
+use farcaster::farcaster_server::{Farcaster, FarcasterServer};
 
 #[allow(clippy::all)]
 pub mod farcaster {
