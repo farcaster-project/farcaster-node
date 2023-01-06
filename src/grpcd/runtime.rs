@@ -711,6 +711,27 @@ impl Farcaster for FarcasterService {
                 };
                 Ok(GrpcResponse::new(reply))
             }
+            Ok(BusMsg::Info(InfoMsg::MoneroAddressList(addresses))) => {
+                let reply = FundingAddressesResponse {
+                    id,
+                    addresses: addresses
+                        .iter()
+                        .filter(|a| {
+                            network_selector == NetworkSelector::AllNetworks
+                                || Some(Network::from(a.address.network)) == network_selector.into()
+                        })
+                        .map(|a| AddressSwapIdPair {
+                            address: a.address.to_string(),
+                            address_swap_id: a.swap_id.map(|c| {
+                                farcaster::address_swap_id_pair::AddressSwapId::SwapId(
+                                    c.to_string(),
+                                )
+                            }),
+                        })
+                        .collect(),
+                };
+                Ok(GrpcResponse::new(reply))
+            }
             Ok(BusMsg::Ctl(CtlMsg::Failure(Failure { info, .. }))) => Err(Status::internal(info)),
             _ => Err(Status::internal("Received invalid response".to_string())),
         }
