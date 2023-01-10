@@ -965,68 +965,81 @@ impl Runtime {
         }
     }
 
-    fn match_request_to_trade_state_machine(
+    fn match_request_to_trade_state_machines(
         &mut self,
         req: &BusMsg,
         source: &ServiceId,
-    ) -> Result<Option<TradeStateMachine>, Error> {
+    ) -> Result<Option<Vec<TradeStateMachine>>, Error> {
+        // mutate `tsms` by removing all `tsm` matching the predicate and returning them
+        //
+        // we assume tsm are rather small entities and we can clone them even if
+        // we have a couple thousands of them
+        //
+        // only returns an array if at least one element match predicate
+        fn dummy_drain_filter<P: Fn(&TradeStateMachine) -> bool>(
+            tsms: &mut Vec<TradeStateMachine>,
+            predicate: P,
+        ) -> Option<Vec<TradeStateMachine>> {
+            let mut drained = None;
+            let machines = tsms.drain(..).collect::<Vec<TradeStateMachine>>();
+            for tsm in machines {
+                if predicate(&tsm) {
+                    drained.get_or_insert(vec![]).push(tsm);
+                } else {
+                    tsms.push(tsm);
+                }
+            }
+            drained
+        }
         match (req, source) {
             (BusMsg::Ctl(CtlMsg::RestoreCheckpoint(..)), _) => {
-                Ok(Some(TradeStateMachine::StartRestore))
+                Ok(Some(vec![TradeStateMachine::StartRestore]))
             }
-            (BusMsg::Ctl(CtlMsg::MakeDeal(..)), _) => Ok(Some(TradeStateMachine::StartMaker)),
-            (BusMsg::Ctl(CtlMsg::TakeDeal(..)), _) => Ok(Some(TradeStateMachine::StartTaker)),
+            (BusMsg::Ctl(CtlMsg::MakeDeal(..)), _) => Ok(Some(vec![TradeStateMachine::StartMaker])),
+            (BusMsg::Ctl(CtlMsg::TakeDeal(..)), _) => Ok(Some(vec![TradeStateMachine::StartTaker])),
             (BusMsg::P2p(PeerMsg::TakerCommit(TakerCommit { deal, .. })), _)
-            | (BusMsg::Ctl(CtlMsg::RevokeDeal(deal)), _) => Ok(self
-                .trade_state_machines
-                .iter()
-                .position(|tsm| {
+            | (BusMsg::Ctl(CtlMsg::RevokeDeal(deal)), _) => {
+                Ok(dummy_drain_filter(&mut self.trade_state_machines, |tsm| {
                     if let Some(tsm_deal) = tsm.open_deal() {
                         tsm_deal == *deal
                     } else {
                         false
                     }
-                })
-                .map(|pos| self.trade_state_machines.remove(pos))),
-            (BusMsg::Ctl(CtlMsg::SwapKeys(SwapKeys { deal, .. })), _) => Ok(self
-                .trade_state_machines
-                .iter()
-                .position(|tsm| {
+                }))
+            }
+            (BusMsg::Ctl(CtlMsg::SwapKeys(SwapKeys { deal, .. })), _) => {
+                Ok(dummy_drain_filter(&mut self.trade_state_machines, |tsm| {
                     if let Some((tsm_deal, _)) = tsm.consumed_deal() {
                         tsm_deal == *deal
                     } else {
                         false
                     }
-                })
-                .map(|pos| self.trade_state_machines.remove(pos))),
+                }))
+            }
             (BusMsg::Ctl(CtlMsg::ConnectSuccess), ServiceId::Peer(_, addr))
-            | (BusMsg::Ctl(CtlMsg::ConnectFailed), ServiceId::Peer(_, addr)) => Ok(self
-                .trade_state_machines
-                .iter()
-                .position(|tsm| {
+            | (BusMsg::Ctl(CtlMsg::ConnectFailed), ServiceId::Peer(_, addr)) => {
+                Ok(dummy_drain_filter(&mut self.trade_state_machines, |tsm| {
                     if let Some(tsm_addr) = tsm.awaiting_connect_from() {
                         tsm_addr == *addr
                     } else {
                         false
                     }
-                })
-                .map(|pos| self.trade_state_machines.remove(pos))),
+                }))
+            }
             (BusMsg::Ctl(CtlMsg::PeerdUnreachable(..)), ServiceId::Swap(swap_id))
             | (BusMsg::Ctl(CtlMsg::FundingInfo(..)), ServiceId::Swap(swap_id))
             | (BusMsg::Ctl(CtlMsg::FundingCanceled(..)), ServiceId::Swap(swap_id))
             | (BusMsg::Ctl(CtlMsg::FundingCompleted(..)), ServiceId::Swap(swap_id))
             | (BusMsg::Ctl(CtlMsg::Connect(swap_id)), _)
-            | (BusMsg::Ctl(CtlMsg::SwapOutcome(..)), ServiceId::Swap(swap_id)) => Ok(self
-                .trade_state_machines
-                .iter()
-                .position(|tsm| {
+            | (BusMsg::Ctl(CtlMsg::SwapOutcome(..)), ServiceId::Swap(swap_id)) => {
+                Ok(dummy_drain_filter(&mut self.trade_state_machines, |tsm| {
                     if let Some(tsm_swap_id) = tsm.swap_id() {
                         tsm_swap_id == *swap_id
                     } else {
                         false
                     }
-                })
-                .map(|pos| self.trade_state_machines.remove(pos))),
+                }))
+            }
             _ => Ok(None),
         }
     }
@@ -1037,11 +1050,17 @@ impl Runtime {
         source: ServiceId,
         endpoints: &mut Endpoints,
     ) -> Result<(), Error> {
-        if let Some(tsm) = self.match_request_to_trade_state_machine(&request, &source)? {
-            if let Some(new_tsm) =
-                TradeStateMachineExecutor::execute(self, endpoints, source, request, tsm)?
-            {
-                self.trade_state_machines.push(new_tsm);
+        if let Some(tsms) = self.match_request_to_trade_state_machines(&request, &source)? {
+            for tsm in tsms {
+                if let Some(new_tsm) = TradeStateMachineExecutor::execute(
+                    self,
+                    endpoints,
+                    source.clone(),
+                    request.clone(),
+                    tsm,
+                )? {
+                    self.trade_state_machines.push(new_tsm);
+                }
             }
             Ok(())
         } else if let Some(ssm) = self.match_request_to_syncer_state_machine(&request, &source)? {
