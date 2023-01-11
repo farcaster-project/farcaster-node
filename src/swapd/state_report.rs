@@ -54,7 +54,7 @@ impl StateReport {
             ),
             acc_locked: temp_safety.final_tx(
                 syncer_state.get_confs(TxLabel::AccLock).unwrap_or(0),
-                Blockchain::Bitcoin,
+                Blockchain::Monero,
             ),
             canceled: temp_safety.final_tx(
                 syncer_state.get_confs(TxLabel::Cancel).unwrap_or(0),
