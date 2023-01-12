@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## Changed
+
+- Swapd: Refactor key manager init by @TheCharlatan in <https://github.com/farcaster-project/farcaster-node/pull/919>
+- Fix: filter by network all deal list responses by @h4sh3d in <https://github.com/farcaster-project/farcaster-node/pull/920>
+- Fix(grpc): list Monero funding addresses by @h4sh3d in <https://github.com/farcaster-project/farcaster-node/pull/922>
+- Fix(state report): accordant lock used arbitrating params by @h4sh3d in <https://github.com/farcaster-project/farcaster-node/pull/926>
+- Syncer: Bump Monero to ring size 16 by @TheCharlatan in <https://github.com/farcaster-project/farcaster-node/pull/929>
+- Fix(tsm): swaps restoring by @h4sh3d in <https://github.com/farcaster-project/farcaster-node/pull/925>
+
 ## [0.8.3] - 2023-01-02
 
 ### Changed
@@ -321,7 +330,7 @@ Initial version of Farcaster Node :tada:
 - Farcaster daemon to orchestrate the micro-services
 - Swap cli to control farcasterd and other services
 
-[Unreleased]: https://github.com/farcaster-project/farcaster-node/compare/v0.8.3...HEAD
+[unreleased]: https://github.com/farcaster-project/farcaster-node/compare/v0.8.3...HEAD
 [0.8.3]: https://github.com/farcaster-project/farcaster-node/compare/v0.8.2...v0.8.3
 [0.8.2]: https://github.com/farcaster-project/farcaster-node/compare/v0.8.1...v0.8.2
 [0.8.1]: https://github.com/farcaster-project/farcaster-node/compare/v0.8.0...v0.8.1
