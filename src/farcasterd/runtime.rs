@@ -970,11 +970,7 @@ impl Runtime {
         req: &BusMsg,
         source: &ServiceId,
     ) -> Result<Option<Vec<TradeStateMachine>>, Error> {
-        // mutate `tsms` by removing all `tsm` matching the predicate and returning them
-        //
-        // we assume tsm are rather small entities and we can clone them even if
-        // we have a couple thousands of them
-        //
+        // mutate `tsms` by removing all `tsm` matching the predicate and returning them;
         // only returns an array if at least one element match predicate
         fn dummy_drain_filter<P: Fn(&TradeStateMachine) -> bool>(
             tsms: &mut Vec<TradeStateMachine>,
