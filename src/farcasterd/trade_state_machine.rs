@@ -721,16 +721,19 @@ fn attempt_transition_to_restoring_swapd(
             }
 
             // We only try to re-establish a connection if we are the Taker
-            let expect_connection = if trade_role == TradeRole::Taker {
+            let (expect_connection, peerd) = if trade_role == TradeRole::Taker {
                 let peer_node_addr = node_addr_from_deal(&deal);
-                if let Err(err) = runtime.connect_peer(&peer_node_addr) {
-                    log_helper.log_warn(format!("failed to reconnect to peer on restore: {}", err));
-                    false
-                } else {
-                    true
+                match runtime.connect_peer(&peer_node_addr) {
+                    Ok((true, peerd)) => (true, Some(peerd)),
+                    Ok((false, _)) => (true, None),
+                    Err(err) => {
+                        log_helper
+                            .log_warn(format!("failed to reconnect to peer on restore: {}", err));
+                        (false, None)
+                    }
                 }
             } else {
-                false
+                (false, None)
             };
 
             let swap_config = runtime.config.get_swap_config(
@@ -787,7 +790,7 @@ fn attempt_transition_to_restoring_swapd(
                 arbitrating_syncer_up,
                 accordant_syncer_up,
                 swapd_up: false,
-                peerd: None,
+                peerd,
                 expect_connection,
                 listening,
             })))
@@ -1318,7 +1321,6 @@ fn attempt_transition_from_restoring_swapd_to_swapd_running(
                 && trade_role == TradeRole::Taker =>
         {
             runtime.handle_new_connection(event.source.clone());
-
             log_helper.log_info("Peerd connected for restored swap");
             peerd = Some(event.source.clone());
         }
