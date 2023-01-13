@@ -1217,11 +1217,9 @@ fn try_bob_funded_to_bob_refund_procedure_signature(
                 });
             runtime.log_debug("Checkpointing bob refund signature swapd state.");
             // manually add lock_tx to pending broadcasts to ensure it's checkpointed
-            runtime
-                .syncer_state
-                .broadcast(lock_tx.clone(), TxLabel::Lock);
+            runtime.syncer_state.broadcast(&lock_tx, TxLabel::Lock);
             runtime.checkpoint_state(event.endpoints, None, new_ssm.clone())?;
-            runtime.broadcast(lock_tx, TxLabel::Lock, event.endpoints)?;
+            runtime.broadcast(&lock_tx, TxLabel::Lock, event.endpoints)?;
             Ok(Some(new_ssm))
         }
         BusMsg::Ctl(CtlMsg::AbortSwap) => handle_bob_abort_swap(event, runtime, swap_key_manager),
@@ -1486,7 +1484,7 @@ fn try_bob_canceled_to_bob_cancel_final(
             if !runtime.temporal_safety.safe_refund(confirmations) {
                 runtime.log_warn("Publishing refund tx, but we might already have been punished");
             }
-            runtime.broadcast(bob_txs.refund_tx, TxLabel::Refund, event.endpoints)?;
+            runtime.broadcast(&bob_txs.refund_tx, TxLabel::Refund, event.endpoints)?;
             Ok(Some(SwapStateMachine::BobCancelFinal))
         }
         _ => Ok(None),
@@ -1897,7 +1895,7 @@ fn try_alice_accordant_lock_to_alice_buy_procedure_signature(
             ))) = runtime.syncer_state.last_tx_event.get(&TxLabel::Lock)
             {
                 if runtime.temporal_safety.valid_cancel(*confirmations) {
-                    runtime.broadcast(cancel_tx, TxLabel::Cancel, event.endpoints)?;
+                    runtime.broadcast(&cancel_tx, TxLabel::Cancel, event.endpoints)?;
                     return Ok(Some(SwapStateMachine::AliceCanceled(AliceCanceled {
                         remote_params,
                         adaptor_refund,
@@ -1909,7 +1907,7 @@ fn try_alice_accordant_lock_to_alice_buy_procedure_signature(
             }
 
             // Broadcast the Buy transaction
-            runtime.broadcast(buy_tx, TxLabel::Buy, event.endpoints)?;
+            runtime.broadcast(&buy_tx, TxLabel::Buy, event.endpoints)?;
 
             // checkpoint swap alice pre buy
             let new_ssm = SwapStateMachine::AliceBuyProcedureSignature;
@@ -1989,11 +1987,7 @@ fn try_alice_canceled_to_alice_refund_or_alice_punish(
                         runtime.syncer_state.bitcoin_syncer(),
                         SyncMsg::Task(task),
                     )?;
-                    runtime.broadcast(
-                        alice_txs.punish_tx.clone(),
-                        TxLabel::Punish,
-                        event.endpoints,
-                    )?;
+                    runtime.broadcast(&alice_txs.punish_tx, TxLabel::Punish, event.endpoints)?;
                     Ok(Some(SwapStateMachine::AliceCanceled(AliceCanceled {
                         remote_params,
                         adaptor_refund,
@@ -2031,11 +2025,7 @@ fn try_alice_canceled_to_alice_refund_or_alice_punish(
                         runtime.syncer_state.bitcoin_syncer(),
                         SyncMsg::Task(task),
                     )?;
-                    runtime.broadcast(
-                        alice_txs.cancel_tx.clone(),
-                        TxLabel::Cancel,
-                        event.endpoints,
-                    )?;
+                    runtime.broadcast(&alice_txs.cancel_tx, TxLabel::Cancel, event.endpoints)?;
                     Ok(Some(SwapStateMachine::AliceCanceled(AliceCanceled {
                         remote_params,
                         adaptor_refund,
@@ -2275,7 +2265,7 @@ fn handle_bob_swap_interrupt_after_lock(
         {
             watch_cancel_address(runtime, &mut event, &bob_txs)?;
 
-            runtime.broadcast(bob_txs.cancel_tx, TxLabel::Cancel, event.endpoints)?;
+            runtime.broadcast(&bob_txs.cancel_tx, TxLabel::Cancel, event.endpoints)?;
             Ok(None)
         }
 
@@ -2339,7 +2329,7 @@ fn handle_alice_swap_interrupt_after_lock(
             && runtime.temporal_safety.valid_cancel(confirmations)
             && !runtime.syncer_state.broadcasted_tx(&TxLabel::Cancel) =>
         {
-            runtime.broadcast(alice_txs.cancel_tx, TxLabel::Cancel, event.endpoints)?;
+            runtime.broadcast(&alice_txs.cancel_tx, TxLabel::Cancel, event.endpoints)?;
             Ok(None)
         }
         BusMsg::Sync(SyncMsg::Event(SyncEvent::TransactionConfirmations(

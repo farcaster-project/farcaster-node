@@ -112,6 +112,7 @@ pub fn run(config: ServiceConfig, opts: Opts) -> Result<(), Error> {
         xmr_addr_addendum: None,
         confirmations: none!(),
         broadcasted_txs: none!(),
+        failed_broadcasted_txs: none!(),
     };
 
     let state_report = StateReport::new("Start".to_string(), &temporal_safety, &syncer_state);
@@ -278,7 +279,7 @@ impl Runtime {
 
     pub fn broadcast(
         &mut self,
-        tx: bitcoin::Transaction,
+        tx: &bitcoin::Transaction,
         tx_label: TxLabel,
         endpoints: &mut Endpoints,
     ) -> Result<(), Error> {
@@ -426,7 +427,7 @@ impl Runtime {
 
                 self.log_trace("Broadcasting txs pending broadcast");
                 for (tx, label) in pending_broadcasts.drain(..) {
-                    let task = self.syncer_state.broadcast(tx.clone(), label);
+                    let task = self.syncer_state.broadcast(&tx, label);
                     endpoints.send_to(
                         ServiceBus::Sync,
                         self.identity(),
@@ -519,8 +520,11 @@ impl Runtime {
             SyncMsg::Event(ref event) if source == self.syncer_state.monero_syncer => {
                 match &event {
                     Event::HeightChanged(HeightChanged { height, .. }) => {
-                        self.syncer_state
-                            .handle_height_change(*height, Blockchain::Monero);
+                        self.syncer_state.handle_height_change(
+                            *height,
+                            Blockchain::Monero,
+                            endpoints,
+                        );
                     }
 
                     Event::TransactionConfirmations(TransactionConfirmations {
@@ -568,8 +572,11 @@ impl Runtime {
             SyncMsg::Event(ref event) if source == self.syncer_state.bitcoin_syncer => {
                 match &event {
                     Event::HeightChanged(HeightChanged { height, .. }) => {
-                        self.syncer_state
-                            .handle_height_change(*height, Blockchain::Bitcoin);
+                        self.syncer_state.handle_height_change(
+                            *height,
+                            Blockchain::Bitcoin,
+                            endpoints,
+                        );
                     }
 
                     // This re-triggers the tx fetch event in case the transaction was not detected yet

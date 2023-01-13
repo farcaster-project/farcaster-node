@@ -66,6 +66,7 @@ pub struct SyncerState {
     pub confirmations: HashMap<TxLabel, Option<u32>>,
     pub awaiting_funding: bool,
     pub broadcasted_txs: HashMap<TxLabel, bitcoin::Transaction>,
+    pub failed_broadcasted_txs: HashMap<TxLabel, bitcoin::Transaction>,
 }
 
 impl SwapLogging for SyncerState {
@@ -99,9 +100,31 @@ impl SyncerState {
             Blockchain::Monero => self.monero_height,
         }
     }
-    pub fn handle_height_change(&mut self, new_height: u64, blockchain: Blockchain) {
+    pub fn handle_height_change(
+        &mut self,
+        new_height: u64,
+        blockchain: Blockchain,
+        endpoints: &mut Endpoints,
+    ) {
         let height = match blockchain {
-            Blockchain::Bitcoin => &mut self.bitcoin_height,
+            Blockchain::Bitcoin => {
+                // Upon block height change attempt to re-broadcast transactions that previously failed to broadcast
+                for (label, tx) in self.failed_broadcasted_txs.clone().drain() {
+                    let task = self.broadcast(&tx, label);
+                    if let Err(err) = endpoints.send_to(
+                        ServiceBus::Sync,
+                        ServiceId::Swap(self.swap_id),
+                        self.bitcoin_syncer(),
+                        BusMsg::Sync(SyncMsg::Task(task)),
+                    ) {
+                        self.log_error(format!(
+                            "Failed to send task for re-broadcasting {} transaction: {}",
+                            label, err
+                        ));
+                    }
+                }
+                &mut self.bitcoin_height
+            }
             Blockchain::Monero => &mut self.monero_height,
         };
         if &new_height > height {
@@ -335,11 +358,11 @@ impl SyncerState {
         task
     }
 
-    pub fn broadcast(&mut self, tx: bitcoin::Transaction, label: TxLabel) -> Task {
+    pub fn broadcast(&mut self, tx: &bitcoin::Transaction, label: TxLabel) -> Task {
         let id = self.tasks.new_taskid();
         let task = Task::BroadcastTransaction(BroadcastTransaction {
             id,
-            tx: bitcoin::consensus::serialize(&tx),
+            tx: bitcoin::consensus::serialize(tx),
             broadcast_after_height: None,
         });
         self.tasks.tasks.insert(id, task.clone());
@@ -354,7 +377,9 @@ impl SyncerState {
                     "Error broadcasting {} transaction: {}",
                     txlabel, err
                 ));
+                self.log_warn("Retrying broadcast on the next block height increase.");
             } else {
+                self.failed_broadcasted_txs.remove(&txlabel);
                 let tx = match bitcoin::Transaction::consensus_decode(std::io::Cursor::new(
                     event.tx.clone(),
                 )) {
@@ -448,7 +473,7 @@ impl SyncerState {
                         if let Some(tx) = self.broadcasted_txs.get(&txlabel) {
                             let tx = tx.clone();
                             self.log_warn(format!("Tx {} was re-orged or dropped from the mempool. Re-broadcasting tx", txlabel.label()));
-                            let task = self.broadcast(tx, txlabel);
+                            let task = self.broadcast(&tx, txlabel);
                             if let Err(err) = endpoints.send_to(
                                 ServiceBus::Sync,
                                 ServiceId::Swap(swapid),
