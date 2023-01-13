@@ -67,6 +67,21 @@ message InfoResponse {
     repeated string peers = 6;
     repeated string swaps = 7;
     repeated string deals = 8;
+    Stats stats = 9;
+}
+
+message Stats {
+   uint64 success = 1;
+   uint64 refund = 2;
+   uint64 punish = 3;
+   uint64 abort = 4;
+   uint64 initialized = 5;
+   repeated string awaiting_funding_btc = 6;
+   repeated string awaiting_funding_xmr = 7;
+   uint64 funded_xmr = 8;
+   uint64 funded_btc = 9;
+   uint64 funding_canceled_xmr = 10;
+   uint64 funding_canceled_btc = 11;
 }
 
 message SwapInfoRequest {
