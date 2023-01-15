@@ -518,6 +518,7 @@ fn attempt_transition_to_make_deal(
                 &deal_parameters,
                 &arbitrating_addr,
                 &accordant_addr,
+                TradeRole::Maker,
             ) {
                 warn!("Deal parameters validation error: {}", e);
                 event.complete_client_ctl(CtlMsg::Failure(Failure {
@@ -604,11 +605,12 @@ fn attempt_transition_to_taker_connect_or_take_deal(
             monero_address: acc_addr,
         })) => {
             // validate deal parameters
-            if let Err(e) =
-                runtime
-                    .config
-                    .validate_deal_parameters(&deal.parameters, &arb_addr, &acc_addr)
-            {
+            if let Err(e) = runtime.config.validate_deal_parameters(
+                &deal.parameters,
+                &arb_addr,
+                &acc_addr,
+                TradeRole::Taker,
+            ) {
                 warn!("Deal parameters validation error: {}", e);
                 event.complete_client_ctl(CtlMsg::Failure(Failure {
                     code: FailureCode::Unknown,

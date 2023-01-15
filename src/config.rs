@@ -6,6 +6,7 @@
 
 use config::ConfigError::Message;
 use farcaster_core::blockchain::Network;
+use farcaster_core::role::{SwapRole, TradeRole};
 use farcaster_core::swap::btcxmr::DealParameters;
 use internet2::addr::InetSocketAddr;
 use serde::{Deserialize, Serialize};
@@ -202,35 +203,48 @@ impl Config {
         deal: &DealParameters,
         arb_addr: &bitcoin::Address,
         acc_addr: &monero::Address,
+        trade_role: TradeRole,
     ) -> Result<(), Error> {
         self.validate_deal_addresses(deal, arb_addr, acc_addr)?;
-        self.validate_deal_amounts(deal)
+        self.validate_deal_amounts(deal, trade_role)
     }
 
     /// Validate deal amounts against user configuration (farcasterd.toml)
-    pub fn validate_deal_amounts(&self, deal: &DealParameters) -> Result<(), Error> {
-        // assume arbitrating is bitcoin
-        self.swap
-            .as_ref()
-            .and_then(|swap| {
-                swap.bitcoin
-                    .get_for_network(deal.network)
-                    .map(|net| net.amounts)
-            })
-            .or_else(|| Self::btc_default_tradeable(deal.network))
-            .map(|tradeable| tradeable.validate_amount(deal.arbitrating_amount))
-            .transpose()?;
-        // assume accordant is monero
-        self.swap
-            .as_ref()
-            .and_then(|swap| {
-                swap.monero
-                    .get_for_network(deal.network)
-                    .map(|net| net.amounts)
-            })
-            .or_else(|| Self::xmr_default_tradeable(deal.network))
-            .map(|tradeable| tradeable.validate_amount(deal.accordant_amount))
-            .transpose()?;
+    pub fn validate_deal_amounts(
+        &self,
+        deal: &DealParameters,
+        trade_role: TradeRole,
+    ) -> Result<(), Error> {
+        match (trade_role, deal.maker_role) {
+            // validate bitcoin amount only if we're Bob
+            (TradeRole::Maker, SwapRole::Bob) | (TradeRole::Taker, SwapRole::Alice) => {
+                // assume arbitrating is bitcoin
+                self.swap
+                    .as_ref()
+                    .and_then(|swap| {
+                        swap.bitcoin
+                            .get_for_network(deal.network)
+                            .map(|net| net.amounts)
+                    })
+                    .or_else(|| Self::btc_default_tradeable(deal.network))
+                    .map(|tradeable| tradeable.validate_amount(deal.arbitrating_amount))
+                    .transpose()?;
+            }
+            // validate monero amount only if we're Alice
+            (TradeRole::Maker, SwapRole::Alice) | (TradeRole::Taker, SwapRole::Bob) => {
+                // assume accordant is monero
+                self.swap
+                    .as_ref()
+                    .and_then(|swap| {
+                        swap.monero
+                            .get_for_network(deal.network)
+                            .map(|net| net.amounts)
+                    })
+                    .or_else(|| Self::xmr_default_tradeable(deal.network))
+                    .map(|tradeable| tradeable.validate_amount(deal.accordant_amount))
+                    .transpose()?;
+            }
+        }
 
         Ok(())
     }
