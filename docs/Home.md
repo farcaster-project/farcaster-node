@@ -11,7 +11,7 @@ They provide instructions on how to launch the swap node, codenamed `farcasterd`
 
 Follow the instruction in the [Install guide](./Install-guide) to compile sources on your machine, either from the git repo or using `cargo install`. When done you can now launch the services needed for the swap.
 
-First you need to run a `monero rpc wallet` to manage in-transit moneroj. If you have it already installed on your machine you can run (we are assuming a testnet swap)
+First you need to run a `monero rpc wallet` to manage in-transit moneroj. If you have it already installed on your machine you can run (we are assuming a monero stagenet <-> bitcoin testnet swap)
 
 ```
 monero-wallet-rpc --stagenet --rpc-bind-port 38083\
