@@ -20,17 +20,17 @@ use crate::LogStyle;
     serde(crate = "serde_crate")
 )]
 pub struct Stats {
-    success: u64,
-    refund: u64,
-    punish: u64,
-    abort: u64,
-    initialized: u64,
-    awaiting_funding_btc: HashSet<SwapId>,
-    awaiting_funding_xmr: HashSet<SwapId>,
-    funded_xmr: u64,
-    funded_btc: u64,
-    funding_canceled_xmr: u64,
-    funding_canceled_btc: u64,
+    pub success: u64,
+    pub refund: u64,
+    pub punish: u64,
+    pub abort: u64,
+    pub initialized: u64,
+    pub awaiting_funding_btc: HashSet<SwapId>,
+    pub awaiting_funding_xmr: HashSet<SwapId>,
+    pub funded_xmr: u64,
+    pub funded_btc: u64,
+    pub funding_canceled_xmr: u64,
+    pub funding_canceled_btc: u64,
 }
 
 impl Stats {

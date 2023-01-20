@@ -270,6 +270,32 @@ impl From<farcaster::NetworkSelector> for HealthCheckSelector {
     }
 }
 
+impl From<crate::farcasterd::stats::Stats> for Stats {
+    fn from(s: crate::farcasterd::stats::Stats) -> Self {
+        Stats {
+            success: s.success,
+            refund: s.refund,
+            punish: s.punish,
+            abort: s.abort,
+            initialized: s.initialized,
+            awaiting_funding_btc: s
+                .awaiting_funding_btc
+                .iter()
+                .map(|id| id.to_string())
+                .collect(),
+            awaiting_funding_xmr: s
+                .awaiting_funding_xmr
+                .iter()
+                .map(|id| id.to_string())
+                .collect(),
+            funded_xmr: s.funded_xmr,
+            funded_btc: s.funded_btc,
+            funding_canceled_xmr: s.funding_canceled_xmr,
+            funding_canceled_btc: s.funding_canceled_btc,
+        }
+    }
+}
+
 #[derive(Debug, Default, Clone, Copy, Eq, PartialEq, PartialOrd, Hash, Display)]
 #[display(Debug)]
 pub struct IdCounter(u64);
@@ -355,13 +381,14 @@ impl Farcaster for FarcasterService {
                     listens: info
                         .listens
                         .iter()
-                        .map(|listen| format!("{}", listen))
+                        .map(|listen| listen.to_string())
                         .collect(),
                     uptime: info.uptime.as_secs(),
                     since: info.since,
                     peers: info.peers.iter().map(|peer| peer.to_string()).collect(),
                     swaps: info.swaps.iter().map(|swap| swap.to_string()).collect(),
                     deals: info.deals.iter().map(|deal| deal.to_string()).collect(),
+                    stats: Some(info.stats.into()),
                 };
                 Ok(GrpcResponse::new(reply))
             }
