@@ -42,7 +42,7 @@ jobs:
           profile: minimal
 
       - name: Rust cache
-        uses: Swatinem/rust-cache@v2.2.0
+        uses: Swatinem/rust-cache@v2.3.0
 
       - name: Build farcaster daemon
         uses: actions-rs/cargo@v1
