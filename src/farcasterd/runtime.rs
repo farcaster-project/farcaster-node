@@ -410,7 +410,7 @@ impl Runtime {
                     endpoints,
                     source,
                     InfoMsg::NodeInfo(NodeInfo {
-                        listens: self.listens.iter().into_iter().cloned().collect(),
+                        listens: self.listens.iter().cloned().collect(),
                         uptime: SystemTime::now()
                             .duration_since(self.started)
                             .unwrap_or_else(|_| Duration::from_secs(0)),
