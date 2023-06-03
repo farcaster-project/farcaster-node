@@ -19,6 +19,7 @@ service Farcaster {
     rpc ConnectSwap(ConnectSwapRequest) returns (ConnectSwapResponse){}
     rpc ListDeals(ListDealsRequest) returns (ListDealsResponse){}
     rpc HealthCheck(HealthCheckRequest) returns (HealthCheckResponse){}
+    rpc GetBalance(GetBalanceRequest) returns (GetBalanceResponse){}
 }
 
 message HealthCheckRequest {
@@ -379,6 +380,17 @@ message SweepAddressRequest {
 message SweepAddressResponse {
     uint32 id = 1;
     string message = 2;
+}
+
+message GetBalanceRequest {
+    uint32 id = 1;
+    string address = 2;
+}
+
+message GetBalanceResponse {
+    uint32 id = 1;
+    string address = 3;
+    uint64 balance = 4;
 }
 
 enum SwapRole {

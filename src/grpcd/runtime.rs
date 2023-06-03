@@ -31,6 +31,7 @@ use uuid::Uuid;
 
 use crate::bus::bridge::BridgeMsg;
 use crate::bus::ctl::{FundingInfo, ProtoDeal, PubDeal};
+use crate::bus::info::AddressBalance;
 use crate::bus::info::{Address, DealStatusSelector, ProgressEvent};
 use crate::bus::{ctl::CtlMsg, info::InfoMsg, info::SwapInfo};
 use crate::bus::{
@@ -1232,6 +1233,50 @@ impl Farcaster for FarcasterService {
             Ok(BusMsg::Info(InfoMsg::TookDeal(_))) => {
                 let reply = farcaster::TakeResponse { id };
                 Ok(GrpcResponse::new(reply))
+            }
+            res => process_error_response(res),
+        }
+    }
+
+    async fn get_balance(
+        &self,
+        request: GrpcRequest<GetBalanceRequest>,
+    ) -> Result<GrpcResponse<GetBalanceResponse>, Status> {
+        let GetBalanceRequest {
+            id,
+            address: str_address,
+        } = request.into_inner();
+        let address =
+            Address::from_str(&str_address).map_err(|_| Status::invalid_argument("address"))?;
+
+        let oneshot_rx = self
+            .process_request(BusMsg::Bridge(BridgeMsg::Info {
+                request: InfoMsg::GetAddressSecretKey(address),
+                service_id: ServiceId::Database,
+            }))
+            .await?;
+        match oneshot_rx.await {
+            Ok(BusMsg::Info(InfoMsg::AddressSecretKey(address_secret_key))) => {
+                let oneshot_rx = self
+                    .process_request(BusMsg::Bridge(BridgeMsg::Ctl {
+                        request: CtlMsg::GetBalance(address_secret_key),
+                        service_id: ServiceId::Farcasterd,
+                    }))
+                    .await?;
+                match oneshot_rx.await {
+                    Ok(BusMsg::Info(InfoMsg::AddressBalance(AddressBalance {
+                        address,
+                        balance,
+                    }))) => {
+                        let reply = farcaster::GetBalanceResponse {
+                            id,
+                            balance,
+                            address: address.to_string(),
+                        };
+                        Ok(GrpcResponse::new(reply))
+                    }
+                    res => process_error_response(res),
+                }
             }
             res => process_error_response(res),
         }
