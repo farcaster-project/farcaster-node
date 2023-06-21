@@ -1235,7 +1235,7 @@ fn balance_fetcher(
                             event: Event::AddressBalance(AddressBalance {
                                 id: get_balance.id,
                                 address: Address::Bitcoin(address.clone()),
-                                balance: balance.unconfirmed.unsigned_abs(),
+                                balance: balance.unconfirmed.unsigned_abs() + balance.confirmed,
                                 err: None,
                             }),
                             source,
@@ -1244,7 +1244,7 @@ fn balance_fetcher(
                         .expect("error sending address balance event");
                     debug!(
                         "successfully retrieved balance: {} for address {}.",
-                        balance.unconfirmed.unsigned_abs(),
+                        balance.unconfirmed.unsigned_abs() + balance.confirmed,
                         address
                     );
                 }
