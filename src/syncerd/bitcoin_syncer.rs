@@ -1261,7 +1261,7 @@ fn balance_fetcher(
                         })
                         .await
                         .expect("error sending address balance event");
-                    debug!("failed to retrieve balance for address {}: {}", address, e);
+                    warn!("failed to retrieve balance for address {}: {}", address, e);
                 }
             }
         }
