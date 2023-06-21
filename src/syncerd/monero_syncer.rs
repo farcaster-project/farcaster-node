@@ -989,14 +989,14 @@ fn balance_fetcher(
                                 id: get_balance.id,
                                 balance: 0,
                                 err: Some(
-                                    "Sent monero address balance to bitcoin syncer".to_string(),
+                                    "Sent bitcoin address balance to monero syncer".to_string(),
                                 ),
                             }),
                             source,
                         })
                         .await
                         .expect("error sending address balance event");
-                    warn!("Received monero address balance task in bitcoin syncer");
+                    warn!("Received bitcoin address balance task in monero syncer");
                     continue;
                 }
             };
