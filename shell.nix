@@ -3,7 +3,7 @@ let
     name = "nixos-release-24.05";
     url = "https://github.com/nixos/nixpkgs/";
     ref = "refs/heads/release-24.05";
-    rev = "9957cd48326fe8dbd52fdc50dd2502307f188b0d";
+    rev = "5a83f6f984f387d47373f6f0c43b97a64e7755c0";
   }) {
     overlays = [
       (import (builtins.fetchTarball
