@@ -32,6 +32,9 @@ pub struct StateReport {
     pub arb_lock_confirmations: Option<u32>,
     pub acc_lock_confirmations: Option<u32>,
     pub cancel_confirmations: Option<u32>,
+    pub refund_confirmations: Option<u32>,
+    pub punish_confirmations: Option<u32>,
+    pub buy_confirmations: Option<u32>,
     pub blocks_until_cancel_possible: Option<i64>,
     pub blocks_until_punish_possible: Option<i64>,
     pub blocks_until_safe_buy: Option<u32>,
@@ -66,6 +69,9 @@ impl StateReport {
             arb_lock_confirmations: syncer_state.get_confs(TxLabel::Lock),
             acc_lock_confirmations: syncer_state.get_confs(TxLabel::AccLock),
             cancel_confirmations: syncer_state.get_confs(TxLabel::Cancel),
+            refund_confirmations: syncer_state.get_confs(TxLabel::Refund),
+            punish_confirmations: syncer_state.get_confs(TxLabel::Punish),
+            buy_confirmations: syncer_state.get_confs(TxLabel::Buy),
             blocks_until_cancel_possible: syncer_state
                 .get_confs(TxLabel::Lock)
                 .map(|confs| temp_safety.blocks_until_cancel(confs)),
