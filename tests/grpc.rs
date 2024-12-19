@@ -3,7 +3,7 @@ extern crate log;
 
 use crate::farcaster::{
     farcaster_client::FarcasterClient, AbortSwapRequest, CheckpointSelector, CheckpointsRequest,
-    DealInfoRequest, DealSelector, InfoResponse, ListDealsRequest, MakeRequest,
+    DealInfoRequest, DealSelector, HealthCheckRequest, InfoResponse, ListDealsRequest, MakeRequest,
     NeedsFundingRequest, NetworkSelector, PeersRequest, ProgressRequest, RestoreCheckpointRequest,
     RevokeDealRequest, SwapInfoRequest, SweepAddressRequest, TakeRequest,
 };
@@ -49,6 +49,14 @@ async fn grpc_server_functional_test() {
     // Test get info
     let request = tonic::Request::new(InfoRequest { id: 0 });
     let response = farcaster_client_1.info(request).await;
+    assert_eq!(response.unwrap().into_inner().id, 0);
+
+    // Test syncer health
+    let request = tonic::Request::new(HealthCheckRequest {
+        id: 0,
+        selector: NetworkSelector::LocalNetworks.into(),
+    });
+    let response = farcaster_client_1.health_check(request).await;
     assert_eq!(response.unwrap().into_inner().id, 0);
 
     // Test list peers
